@@ -1,6 +1,14 @@
 import React, { useState } from 'react';
 import { Briefcase, Building2, User, Leaf, Truck, Wrench, AlertTriangle, Users, CheckSquare, FilePlus, ChevronRight, Check, PenTool } from 'lucide-react';
-import { personnelRoles } from '../personnelRoles';
+import {
+  ADD_NEW_PERSONNEL_ROLE_VALUE,
+  authorizationLevelLabels,
+  authorizationLevels,
+  getPersonnelRoleDisplayName,
+  getRoleAuthorization,
+  normalizePersonnelRole,
+  personnelRoleSelectOptions,
+} from '../personnelRoles';
 
 export default function EntityForms({ 
   type, 
@@ -44,6 +52,26 @@ export default function EntityForms({
   const [uploadedFiles, setUploadedFiles] = useState<any[]>(() => {
     return formData.jobDocuments || [];
   });
+  const availableDrivers = crewsList.filter((crew) => normalizePersonnelRole(crew.role) === 'Driver');
+  const isAddingCustomRole = formData.role === ADD_NEW_PERSONNEL_ROLE_VALUE;
+  const selectedAuthorizationLevel = isAddingCustomRole
+    ? getRoleAuthorization(formData.customRole, formData.authorizationLevel)
+    : getRoleAuthorization(formData.role);
+
+  const renderDriverOptions = () => (
+    <>
+      <option value="">-- Select Driver --</option>
+      {availableDrivers.length > 0 ? (
+        availableDrivers.map((driver) => (
+          <option key={driver.id} value={driver.name}>
+            {driver.name} ({getPersonnelRoleDisplayName(driver.role)})
+          </option>
+        ))
+      ) : (
+        <option value="" disabled>No drivers available - add personnel first</option>
+      )}
+    </>
+  );
 
   const handleStageImport = () => {
     if (!pastedSpreadsheet.trim()) return;
@@ -130,6 +158,37 @@ export default function EntityForms({
     }
   };
 
+  const handleRoleChange = (value: string) => {
+    if (value === ADD_NEW_PERSONNEL_ROLE_VALUE) {
+      setFormData((prev: any) => ({
+        ...prev,
+        role: value,
+        customRole: prev.customRole || '',
+        authorizationLevel: prev.authorizationLevel && prev.authorizationLevel !== 'full' ? prev.authorizationLevel : 'field',
+      }));
+      return;
+    }
+
+    setFormData((prev: any) => ({
+      ...prev,
+      role: value,
+      customRole: '',
+      authorizationLevel: getRoleAuthorization(value),
+    }));
+  };
+
+  const prepareSubmitData = () => {
+    if (type !== 'employee') return formData;
+
+    const { customRole, ...rest } = formData;
+    const role = isAddingCustomRole ? customRole?.trim() : formData.role;
+    return {
+      ...rest,
+      role,
+      authorizationLevel: getRoleAuthorization(role, formData.authorizationLevel),
+    };
+  };
+
   const validate = () => {
     const err: Record<string, string> = {};
     if (type === 'job') {
@@ -156,6 +215,9 @@ export default function EntityForms({
     } else if (type === 'employee') {
       if (!formData.name) err.name = 'Employee Name is required';
       if (!formData.role) err.role = 'Role is required';
+      if (formData.role === ADD_NEW_PERSONNEL_ROLE_VALUE && !formData.customRole?.trim()) {
+        err.customRole = 'New role/function name is required';
+      }
     } else if (type === 'task') {
       if (!formData.title) err.title = 'Task Title is required';
     } else if (type === 'change_order') {
@@ -207,7 +269,7 @@ export default function EntityForms({
     e.preventDefault();
     if (!validate()) return;
     if (onSaveRecord) {
-      onSaveRecord(type, formData);
+      onSaveRecord(type, prepareSubmitData());
     }
     onClose();
   };
@@ -271,7 +333,7 @@ export default function EntityForms({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Project Manager</label>
-              <input type="text" onChange={e => handleChange('pm', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" placeholder="e.g. PM Carlos" />
+              <input type="text" onChange={e => handleChange('pm', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" placeholder="e.g. Project Manager" />
             </div>
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Work Window / Target Date</label>
@@ -625,11 +687,7 @@ export default function EntityForms({
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Heavy Driver Assignment *</label>
               <select onChange={e => handleChange('driver', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" required>
-                <option value="">-- Select Driver --</option>
-                <option value="Christian">Christian</option>
-                <option value="Alex">Alex</option>
-                <option value="Ron">Ron</option>
-                <option value="Vince">Vince</option>
+                {renderDriverOptions()}
               </select>
             </div>
             <div>
@@ -696,7 +754,7 @@ export default function EntityForms({
             </div>
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Assigned Operator</label>
-              <input type="text" onChange={e => handleChange('operator', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" placeholder="e.g. Luis" />
+              <input type="text" onChange={e => handleChange('operator', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" placeholder="e.g. Assigned operator" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -733,7 +791,7 @@ export default function EntityForms({
             </div>
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Reported By</label>
-              <input type="text" onChange={e => handleChange('reporter', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" placeholder="e.g. Christian" />
+              <input type="text" onChange={e => handleChange('reporter', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" placeholder="e.g. Reporting team member" />
             </div>
           </div>
           <div>
@@ -753,18 +811,41 @@ export default function EntityForms({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Role / Function *</label>
-              <select value={formData.role || ''} onChange={e => handleChange('role', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" required>
+              <select value={formData.role || ''} onChange={e => handleRoleChange(e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" required>
                 <option value="">-- Select Role --</option>
-                {personnelRoles.map(role => (
-                  <option key={role} value={role}>{role}</option>
+                {personnelRoleSelectOptions.map(role => (
+                  <option key={role.value} value={role.value}>{role.label}</option>
                 ))}
               </select>
+              {errors.role && <p className="text-[10px] font-bold text-red-600 mt-1">{errors.role}</p>}
             </div>
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Contact Phone</label>
               <input type="text" value={formData.phone || ''} onChange={e => handleChange('phone', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" placeholder="561-555-0100" />
             </div>
           </div>
+          {isAddingCustomRole && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">New Role / Function *</label>
+                <input type="text" value={formData.customRole || ''} onChange={e => handleChange('customRole', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" placeholder="e.g. Crane Operator" required />
+                {errors.customRole && <p className="text-[10px] font-bold text-red-600 mt-1">{errors.customRole}</p>}
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Authorization</label>
+                <select value={selectedAuthorizationLevel} onChange={e => handleChange('authorizationLevel', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500">
+                  {authorizationLevels.filter(level => level.value !== 'full').map(level => (
+                    <option key={level.value} value={level.value}>{level.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+          {!isAddingCustomRole && formData.role && (
+            <div className="rounded-lg border border-jdt-border bg-jdt-sand/40 px-3 py-2 text-xs font-bold text-zinc-600">
+              Authorization: <span className="font-black text-jdt-text">{authorizationLevelLabels[selectedAuthorizationLevel]}</span>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Language Preference</label>
@@ -792,7 +873,7 @@ export default function EntityForms({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Assign User / Crew</label>
-              <input type="text" onChange={e => handleChange('owner', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" placeholder="e.g. Carlos" />
+              <input type="text" onChange={e => handleChange('owner', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" placeholder="e.g. Crew Leader or Project Manager" />
             </div>
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Milestone Deadline</label>
@@ -1124,11 +1205,7 @@ export default function EntityForms({
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Heavy Driver Assignment *</label>
               <select value={formData.driver || ''} onChange={e => handleChange('driver', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" required>
-                <option value="">-- Select Driver --</option>
-                <option value="Christian">Christian</option>
-                <option value="Alex">Alex</option>
-                <option value="Ron">Ron</option>
-                <option value="Vince">Vince</option>
+                {renderDriverOptions()}
               </select>
             </div>
           </div>
@@ -1181,7 +1258,7 @@ export default function EntityForms({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Crew Leader Name *</label>
-              <input type="text" value={formData.crewLead || ''} onChange={e => handleChange('crewLead', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" placeholder="e.g. Carlos Gomez" required />
+              <input type="text" value={formData.crewLead || ''} onChange={e => handleChange('crewLead', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" placeholder="e.g. Crew Leader" required />
             </div>
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Root Growth Integrity</label>
@@ -1247,7 +1324,7 @@ export default function EntityForms({
             </div>
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Inspected By PM *</label>
-              <input type="text" value={formData.inspectedBy || ''} onChange={e => handleChange('inspectedBy', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" placeholder="e.g. Carlos Gomez" required />
+              <input type="text" value={formData.inspectedBy || ''} onChange={e => handleChange('inspectedBy', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" placeholder="e.g. Project Manager" required />
             </div>
           </div>
           <div className="p-4 rounded-xl border border-jdt-border bg-jdt-sand/20 space-y-2">
@@ -1344,11 +1421,7 @@ export default function EntityForms({
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Heavy Driver Assignment *</label>
               <select value={formData.driver || ''} onChange={e => handleChange('driver', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" required>
-                <option value="">-- Select Driver --</option>
-                <option value="Christian">Christian</option>
-                <option value="Alex">Alex</option>
-                <option value="Ron">Ron</option>
-                <option value="Vince">Vince</option>
+                {renderDriverOptions()}
               </select>
             </div>
           </div>
@@ -1394,7 +1467,7 @@ export default function EntityForms({
             </div>
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1 font-sans">Reported By</label>
-              <input type="text" value={formData.reporter || ''} onChange={e => handleChange('reporter', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" placeholder="e.g. PM Carlos" />
+              <input type="text" value={formData.reporter || ''} onChange={e => handleChange('reporter', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none" placeholder="e.g. Project Manager" />
             </div>
           </div>
           <div>
