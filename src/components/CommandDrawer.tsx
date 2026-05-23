@@ -70,7 +70,7 @@ export default function CommandDrawer({
         client: 'Bellaire HOA',
         location: '120 Bellaire Blvd',
         date: '2026-05-28',
-        pm: 'PM Carlos',
+        pm: 'Unassigned',
         status: 'onSchedule',
         notes: 'Stage spade near north lake entrance'
       };
@@ -85,7 +85,7 @@ export default function CommandDrawer({
               </div>
               <div className="bg-jdt-sand border border-jdt-border rounded-xl p-4">
                 <p className="text-[10px] font-black uppercase text-zinc-400 mb-1">PROJECT COORDINATOR</p>
-                <p className="text-lg font-black text-jdt-text">{job.pm || 'Luis (Team Lead)'}</p>
+                <p className="text-lg font-black text-jdt-text">{job.pm || 'Unassigned'}</p>
               </div>
             </div>
 
@@ -293,8 +293,8 @@ export default function CommandDrawer({
 
       if (activeTab === 'history') {
         const historyList = job.history || [
-          { date: '2026-05-22 08:30 AM', user: 'PM Carlos', event: 'Job Initialized', notes: 'Setup site coordinates and access rules.' },
-          { date: '2026-05-22 10:15 AM', user: 'Luis', event: 'Utility Inspection Passed', notes: '811 markings verified on north fence.' }
+          { date: '2026-05-22 08:30 AM', user: 'System', event: 'Job Initialized', notes: 'Setup site coordinates and access rules.' },
+          { date: '2026-05-22 10:15 AM', user: 'System', event: 'Utility Inspection Passed', notes: '811 markings verified on north fence.' }
         ];
         return (
           <div className="space-y-4">
@@ -367,14 +367,14 @@ export default function CommandDrawer({
                 <span className="h-2 w-2 bg-emerald-500 rounded-full mt-1.5 shrink-0"></span>
                 <div>
                   <p className="font-black text-xs text-jdt-text">Mycorrhizae Root Stimulator Injected</p>
-                  <p className="text-[11px] font-bold text-zinc-400 mt-0.5">May 10, 2026 &bull; Luis</p>
+                  <p className="text-[11px] font-bold text-zinc-400 mt-0.5">May 10, 2026 &bull; System</p>
                 </div>
               </div>
               <div className="p-3.5 bg-jdt-panel border border-jdt-border rounded-xl flex items-start gap-3">
                 <span className="h-2 w-2 bg-emerald-500 rounded-full mt-1.5 shrink-0"></span>
                 <div>
                   <p className="font-black text-xs text-jdt-text">Water Ring Clean & Reset</p>
-                  <p className="text-[11px] font-bold text-zinc-400 mt-0.5">Apr 24, 2026 &bull; Carlos</p>
+                  <p className="text-[11px] font-bold text-zinc-400 mt-0.5">Apr 24, 2026 &bull; System</p>
                 </div>
               </div>
             </div>
@@ -394,8 +394,8 @@ export default function CommandDrawer({
 
       if (activeTab === 'history') {
         const historyList = tree.history || [
-          { date: '2025-10-14', user: 'Luis', event: 'Root Pruned Stage 1', notes: 'North arc root prune using Spade #3. Hand-poured multivitamin stimulus.' },
-          { date: '2026-03-12', user: 'Carlos', event: 'Annual Canopy Thinning', notes: 'Cleared dead center limbs. Health rating: Excellent.' }
+          { date: '2025-10-14', user: 'System', event: 'Root Pruned Stage 1', notes: 'North arc root prune using Spade #3. Hand-poured multivitamin stimulus.' },
+          { date: '2026-03-12', user: 'System', event: 'Annual Canopy Thinning', notes: 'Cleared dead center limbs. Health rating: Excellent.' }
         ];
         return (
           <div className="space-y-4">
@@ -407,7 +407,7 @@ export default function CommandDrawer({
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="font-extrabold text-xs text-jdt-text">{h.event || 'Prune/Cut Logged'}</p>
-                      <span className="text-[10px] font-black uppercase bg-jdt-sand border border-jdt-border px-1.5 py-0.5 rounded text-zinc-500">{h.user || 'Carlos'}</span>
+                      <span className="text-[10px] font-black uppercase bg-jdt-sand border border-jdt-border px-1.5 py-0.5 rounded text-zinc-500">{h.user || 'System'}</span>
                     </div>
                     <p className="text-[11px] font-bold text-zinc-400 mt-1">{h.date || 'Just Now'}</p>
                     {h.notes && <p className="text-xs font-bold text-zinc-600 mt-1 leading-relaxed">{h.notes}</p>}
@@ -423,7 +423,7 @@ export default function CommandDrawer({
     if (type === 'freight') {
       const load = matchedFreight || {
         title: itemId,
-        driver: 'Christian',
+        driver: 'Unassigned',
         truck: 'Truck #2',
         origin: 'Office Block A',
         delivery: 'Waterford Golf Club',
@@ -483,7 +483,7 @@ export default function CommandDrawer({
         name: itemId,
         id: 'EQ-loader',
         status: 'Available',
-        operator: 'Santiago',
+        operator: 'Unassigned',
         hours: 380,
         serviceDueHours: 400
       };
