@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { collection, onSnapshot, doc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebase';
+import { shouldSeedCollection } from './seedData';
 
 export function useFirestoreSyncState<T extends { id: string }>(collectionName: string, initialData: T[], enabled: boolean = true) {
   const [data, setData] = useState<T[]>(initialData);
@@ -12,7 +13,7 @@ export function useFirestoreSyncState<T extends { id: string }>(collectionName: 
     const colRef = collection(db, collectionName);
     const unsubscribe = onSnapshot(colRef, (snapshot) => {
       const fetchedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
-      if (fetchedData.length === 0 && initialData.length > 0 && !seeded.current) {
+      if (fetchedData.length === 0 && shouldSeedCollection(collectionName, initialData) && !seeded.current) {
         seeded.current = true;
         setData(initialData);
         // Seed database
