@@ -31,7 +31,7 @@ export type FleetPosition = {
 const mockTelemetry: FleetPosition[] = [
   {
     id: 'tlm-1', provider: 'verizon', providerVehicleId: 'V9001',
-    assetName: 'Semi Truck 04 (Heavy)', assetType: 'semi', driverName: 'Christian Dispatch', assignedLoadId: 'FRT-0522-01',
+    assetName: 'Semi Truck 04 (Heavy)', assetType: 'semi', driverName: 'Unassigned', assignedLoadId: 'FRT-0522-01',
     lat: 34.0522, lng: -118.2437, speedMph: 65, heading: 90, ignitionStatus: 'on', status: 'moving',
     recordedAt: new Date().toISOString(), receivedAt: new Date().toISOString(),
     route: 'I-10 E to Waterford Golf Club', eta: '14:30 EST', maintenanceStatus: 'OK - Next PM 14k mi', 
@@ -39,7 +39,7 @@ const mockTelemetry: FleetPosition[] = [
   },
   {
     id: 'tlm-2', provider: 'verizon', providerVehicleId: 'V9022',
-    assetName: 'Crew Crane Truck 2', assetType: 'work_truck', driverName: 'John Doe', assignedJobId: 'JOB-992',
+    assetName: 'Crew Crane Truck 2', assetType: 'work_truck', driverName: 'Unassigned', assignedJobId: 'JOB-992',
     lat: 34.1, lng: -118.3, speedMph: 0, heading: 0, ignitionStatus: 'off', status: 'at_job',
     recordedAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(), receivedAt: new Date(Date.now() - 1000 * 60 * 4).toISOString(),
     route: 'On Site', maintenanceStatus: 'Needs Oil Change (Overdue)',
@@ -54,7 +54,7 @@ const mockTelemetry: FleetPosition[] = [
   },
   {
     id: 'tlm-4', provider: 'verizon', providerVehicleId: 'V9100',
-    assetName: 'Semi Truck 02', assetType: 'semi', driverName: 'Alex Dispatch', assignedLoadId: 'FRT-0522-04',
+    assetName: 'Semi Truck 02', assetType: 'semi', driverName: 'Unassigned', assignedLoadId: 'FRT-0522-04',
     lat: 34.2, lng: -118.4, speedMph: 15, heading: 45, ignitionStatus: 'on', status: 'delayed',
     recordedAt: new Date(Date.now() - 1000 * 30).toISOString(), receivedAt: new Date().toISOString(),
     route: 'Hwy 60 to Base', eta: '17:00 EST (Delayed)', maintenanceStatus: 'OK',
