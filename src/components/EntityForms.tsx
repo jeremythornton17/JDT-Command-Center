@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Briefcase, Building2, User, Leaf, Truck, Wrench, AlertTriangle, Users, CheckSquare, FilePlus, ChevronRight, Check, PenTool } from 'lucide-react';
-import { personnelRoles } from '../personnelRoles';
 
 export default function EntityForms({ 
   type, 
@@ -755,9 +754,11 @@ export default function EntityForms({
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Role / Function *</label>
               <select value={formData.role || ''} onChange={e => handleChange('role', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" required>
                 <option value="">-- Select Role --</option>
-                {personnelRoles.map(role => (
-                  <option key={role} value={role}>{role}</option>
-                ))}
+                <option value="Crew Leader">Crew Leader</option>
+                <option value="Field Hand">Field Hand</option>
+                <option value="Heavy Haul Driver">Heavy Haul Driver</option>
+                <option value="Lead Mechanic">Lead Mechanic</option>
+                <option value="Project Manager">Project Manager</option>
               </select>
             </div>
             <div>

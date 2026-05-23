@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
 import { UserCheck, Users, Wrench, Shield, Globe, Award, ClipboardCheck, MessageSquare, Phone, Plus, AlertCircle } from 'lucide-react';
-import { normalizePersonnelRole, personnelRoleFilters, roleMatchesFilter } from '../personnelRoles';
 
 export default function CrewsBoard({ crews, openModal, openDrawer }: { crews: any[], openModal: (type: string, data?: any) => void, openDrawer: (type: string, id: string) => void }) {
   const [roleFilter, setRoleFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
 
   const filteredCrews = crews.filter(c => {
-    const matchesRole = roleMatchesFilter(c.role, roleFilter);
+    const matchesRole = roleFilter === 'All' || c.role.toLowerCase().includes(roleFilter.toLowerCase()) || (roleFilter === 'Crew Lead' && c.type?.includes('Crew'));
     const matchesStatus = statusFilter === 'All' || c.availability === statusFilter;
     return matchesRole && matchesStatus;
   });
@@ -45,9 +44,11 @@ export default function CrewsBoard({ crews, openModal, openDrawer }: { crews: an
             onChange={e => setRoleFilter(e.target.value)}
             className="w-full bg-jdt-panel border border-jdt-border rounded-md px-2.5 py-1.5 text-xs font-bold text-zinc-700"
           >
-            {personnelRoleFilters.map(filter => (
-              <option key={filter.value} value={filter.value}>{filter.label}</option>
-            ))}
+            <option value="All">All Roles</option>
+            <option value="Crew Lead">Crew Leaders</option>
+            <option value="Driver">Drivers</option>
+            <option value="Mechanic">Mechanics</option>
+            <option value="Manager">PMs</option>
           </select>
         </div>
         <div className="flex-1 min-w-[120px]">
@@ -82,7 +83,7 @@ export default function CrewsBoard({ crews, openModal, openDrawer }: { crews: an
                 </div>
                 <div>
                   <h4 className="text-base font-black text-jdt-primary leading-tight">{member.name}</h4>
-                  <p className="text-xs font-bold text-zinc-500 mt-1">{normalizePersonnelRole(member.role) || member.role}</p>
+                  <p className="text-xs font-bold text-zinc-500 mt-1">{member.role}</p>
                 </div>
               </div>
               <span className={`inline-flex rounded border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${getStatusBadgeColor(member.availability)}`}>
@@ -100,7 +101,7 @@ export default function CrewsBoard({ crews, openModal, openDrawer }: { crews: an
               {member.activeJob && (
                 <div>
                   <p className="text-[9px] font-black uppercase text-zinc-400 mb-0.5">Active Job / Load</p>
-                  <p className="font-bold text-jdt-text flex items-center gap-1.5 cursor-pointer text-blue-700 hover:underline" onClick={() => openDrawer(normalizePersonnelRole(member.role) === 'Driver' ? 'freight' : 'job', member.activeJob)}>
+                  <p className="font-bold text-jdt-text flex items-center gap-1.5 cursor-pointer text-blue-700 hover:underline" onClick={() => openDrawer(member.role.toLowerCase().includes('driver') ? 'freight' : 'job', member.activeJob)}>
                     <ClipboardCheck className="h-3.5 w-3.5" /> {member.activeJob}
                   </p>
                 </div>
