@@ -7,10 +7,10 @@ export default function CalendarBoard({ jobs, loads, openDrawer }: { jobs: any[]
   // Create a structured schedule index
   const events = [
     { day: 20, type: 'nursery', title: 'Harvest 15 Live Oaks', site: '40 Acre Farm Block C', time: '8:00 AM' },
-    { day: 21, type: 'freight', title: 'Load FRT-0522-04 Dispatch', driver: 'Alex', time: '1:00 PM', linkId: 'FRT-0522-04' },
+    { day: 21, type: 'freight', title: 'Load FRT-0522-04 Dispatch', driver: 'Unassigned', time: '1:00 PM', linkId: 'FRT-0522-04' },
     { day: 22, type: 'relocation', title: 'Bellaire Club Root Prune', site: 'Site B Entrance', time: '7:30 AM', linkId: 'Bellaire Club' },
     { day: 23, type: 'relocation', title: 'Boca West CC Relocate', site: 'Secondary Gate', time: '7:00 AM', linkId: 'Boca West Country Club' },
-    { day: 24, type: 'freight', title: 'Dispatch Load FRT-0522-01', driver: 'Christian', time: '6:30 AM', linkId: 'FRT-0522-01' },
+    { day: 24, type: 'freight', title: 'Dispatch Load FRT-0522-01', driver: 'Unassigned', time: '6:30 AM', linkId: 'FRT-0522-01' },
     { day: 25, type: 'equipment', title: 'CAT 988G Hydraulic Check', site: 'Yard Service Shop', time: '9:00 AM' },
     { day: 26, type: 'nursery', title: 'Block D Fertilizer Loop', site: 'Farm 2 Block D', time: '4:00 PM' },
     { day: 27, type: 'relocation', title: 'Waterford Site Inspection', site: 'Waterford Gate 3', time: '9:00 AM', linkId: 'Waterford Golf Club' },
