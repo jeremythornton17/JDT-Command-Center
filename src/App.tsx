@@ -25,7 +25,8 @@ import MapsBoard from './components/MapsBoard';
 import ReportsBoard from './components/ReportsBoard';
 import DocumentsBoard from './components/DocumentsBoard';
 import SettingsBoard from './components/SettingsBoard';
-import { getCrewAllocationType, normalizePersonnelRole } from './personnelRoles';
+import { getCrewAllocationType, getPersonnelRoleDisplayName, getRoleAuthorization, normalizePersonnelRole } from './personnelRoles';
+import { seededOperationsCrew } from './seedData';
 
 const mainNav = [
   { id: "board", label: "Command Board", icon: LayoutGrid },
@@ -64,7 +65,7 @@ export default function App() {
   const [loads, setLoads] = useFirestoreSyncState<any>('loads', [], !!user);
   const [ranchOaks, setRanchOaks] = useFirestoreSyncState<any>('ranchOaks', [], !!user);
   const [equipment, setEquipment] = useFirestoreSyncState<any>('equipment', [], !!user);
-  const [crews, setCrews] = useFirestoreSyncState<any>('crews', [], !!user);
+  const [crews, setCrews] = useFirestoreSyncState<any>('crews', seededOperationsCrew, !!user);
   const [clients, setClients] = useFirestoreSyncState<any>('clients', [], !!user);
   const [alerts, setAlerts] = useFirestoreSyncState<any>('alerts', [], !!user);
 
@@ -142,12 +143,15 @@ export default function App() {
         break;
 
       case 'employee':
-        const normalizedRole = normalizePersonnelRole(recordData.role) || recordData.role;
+        const normalizedRole = getPersonnelRoleDisplayName(recordData.role);
+        const authorizationLevel = getRoleAuthorization(normalizedRole, recordData.authorizationLevel);
         if (recordData.id) {
           setCrews(prev => prev.map(m => m.id === recordData.id ? {
             ...m,
             name: recordData.name,
             role: normalizedRole,
+            authorizationLevel,
+            type: getCrewAllocationType(normalizedRole),
             phone: recordData.phone || 'N/A',
             language: recordData.language || 'Bilingual',
             skills: [recordData.skill || normalizedRole]
@@ -159,6 +163,7 @@ export default function App() {
               id: newId, 
               name: recordData.name, 
               role: normalizedRole, 
+              authorizationLevel,
               availability: 'Available', 
               type: getCrewAllocationType(normalizedRole), 
               phone: recordData.phone || 'N/A', 
@@ -525,7 +530,7 @@ export default function App() {
 
     crews.forEach(cr => {
       if (cr.name.toLowerCase().includes(query) || cr.skills.some((s: string) => s.toLowerCase().includes(query))) {
-        results.push({ id: cr.id, name: cr.name, type: 'crew', sub: `Personnel &bull; ${cr.role}` });
+        results.push({ id: cr.id, name: cr.name, type: 'crew', sub: `Personnel &bull; ${getPersonnelRoleDisplayName(cr.role)}` });
       }
     });
 
@@ -803,7 +808,7 @@ export default function App() {
                                </div>
                                <div>
                                  <p className="text-[9px] font-black uppercase text-zinc-400 flex items-center gap-1"><User className="h-3 w-3"/> Lead</p>
-                                 <p className="text-xs font-black text-jdt-text mt-0.5">Carlos</p>
+                                 <p className="text-xs font-black text-jdt-text mt-0.5">Unassigned</p>
                                </div>
                             </div>
                             
@@ -866,7 +871,7 @@ export default function App() {
                             <div className="mt-4 grid grid-cols-3 gap-2 py-3 border-y border-jdt-border">
                                <div>
                                  <p className="text-[9px] font-black uppercase text-zinc-400 flex items-center gap-1"><User className="h-3 w-3"/> Driver</p>
-                                 <p className="text-xs font-black text-jdt-text mt-0.5">Christian</p>
+                                 <p className="text-xs font-black text-jdt-text mt-0.5">Unassigned</p>
                                </div>
                                <div>
                                  <p className="text-[9px] font-black uppercase text-zinc-400 flex items-center gap-1"><Clock className="h-3 w-3"/> Depart</p>
@@ -979,7 +984,7 @@ export default function App() {
                             <div className="mt-4 grid grid-cols-3 gap-2 py-3 border-y border-jdt-border">
                                <div>
                                  <p className="text-[9px] font-black uppercase text-zinc-400 flex items-center gap-1"><User className="h-3 w-3"/> Lead</p>
-                                 <p className="text-xs font-black text-jdt-text mt-0.5">Luis</p>
+                                 <p className="text-xs font-black text-jdt-text mt-0.5">Unassigned</p>
                                </div>
                                <div>
                                  <p className="text-[9px] font-black uppercase text-zinc-400 flex items-center gap-1"><Clock className="h-3 w-3"/> Hours</p>
@@ -1120,7 +1125,7 @@ export default function App() {
                               {job.date || 'TBD'}
                             </td>
                             <td className="px-5 py-4 font-bold text-zinc-600">
-                              {job.crew || 'Carlos'} &bull; {job.contact || 'PM'}
+                              {job.crew || 'Unassigned'} &bull; {job.contact || 'PM'}
                             </td>
                             <td className="px-5 py-4 text-right">
                               <button className="px-3 py-1 text-[10px] uppercase font-black tracking-wider text-zinc-500 hover:text-jdt-text border border-jdt-border bg-white rounded shadow-sm">View Profile</button>
