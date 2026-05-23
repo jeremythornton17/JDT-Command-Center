@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --color-jdt-primary: #123524;
+  --color-jdt-dark: #1F4A34;
+  --color-jdt-olive: #6F7D4D;
+  --color-jdt-tan: #B89563;
+  --color-jdt-sand: #F4EFE7;
+  --color-jdt-panel: #FBF8F1;
+  --color-jdt-border: #D9D1C2;
+  --color-jdt-text: #1E2520;
+  --color-jdt-alert: #C77B22;
+  --color-jdt-urgent: #A6402D;
+  --color-jdt-success: #2F7D4A;
+}
+
+body {
+  @apply bg-jdt-sand text-jdt-text font-sans;
+}

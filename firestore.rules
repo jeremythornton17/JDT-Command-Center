@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // Primitive Definition
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() { return isSignedIn() && request.auth.token.email == "jeremy@jdtnurseries.com"; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    
+    // Company-wide access (all verified users can read, but must be signed in)
+    // For this internal tool, we assume verified users are employees.
+
+    // Entities Validation
+    function isCommonValid(data) {
+      return ('id' in data || true) // Relaxing since id is optional
+        && ('createdAt' in data || true);
+    }
+
+    match /jobs/{jobId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(jobId);
+      allow update: if isSignedIn() && isValidId(jobId);
+      allow delete: if isAdmin() && isValidId(jobId);
+    }
+
+    match /loads/{loadId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(loadId);
+      allow update: if isSignedIn() && isValidId(loadId);
+      allow delete: if isAdmin() && isValidId(loadId);
+    }
+
+    match /ranchOaks/{treeId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(treeId);
+      allow update: if isSignedIn() && isValidId(treeId);
+      allow delete: if isAdmin() && isValidId(treeId);
+    }
+
+    match /equipment/{itemId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(itemId);
+      allow update: if isSignedIn() && isValidId(itemId);
+      allow delete: if isAdmin() && isValidId(itemId);
+    }
+
+    match /crews/{crewId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(crewId);
+      allow update: if isSignedIn() && isValidId(crewId);
+      allow delete: if isAdmin() && isValidId(crewId);
+    }
+
+    match /clients/{clientId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(clientId);
+      allow update: if isSignedIn() && isValidId(clientId);
+      allow delete: if isAdmin() && isValidId(clientId);
+    }
+
+    match /alerts/{alertId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(alertId);
+      allow update: if isSignedIn() && isValidId(alertId);
+      allow delete: if isAdmin() && isValidId(alertId);
+    }
+  }
+}

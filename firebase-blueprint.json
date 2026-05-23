@@ -1,0 +1,149 @@
+{
+  "entities": {
+    "Job": {
+      "title": "Job Card",
+      "description": "Represents a job card.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "division": { "type": "string" },
+        "client": { "type": "string" },
+        "phase": { "type": "string" },
+        "status": { "type": "string" },
+        "priority": { "type": "string" },
+        "location": { "type": "string" },
+        "date": { "type": "string" },
+        "crewName": { "type": "string" },
+        "crewLead": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["title", "createdAt", "updatedAt"]
+    },
+    "Load": {
+      "title": "Freight Load",
+      "description": "Represents a freight transportation load.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "jobCardId": { "type": "string" },
+        "loadNumber": { "type": "string" },
+        "driver": { "type": "string" },
+        "status": { "type": "string" },
+        "origin": { "type": "string" },
+        "destination": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["title", "createdAt", "updatedAt"]
+    },
+    "RanchOak": {
+      "title": "Ranch Oak",
+      "description": "Represents an oak tree from the nursery.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "treeId": { "type": "string" },
+        "species": { "type": "string" },
+        "status": { "type": "string" },
+        "location": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["treeId", "createdAt", "updatedAt"]
+    },
+    "Equipment": {
+      "title": "Equipment",
+      "description": "Represents pieces of equipment and machinery.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "status": { "type": "string" },
+        "location": { "type": "string" },
+        "operator": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["name", "createdAt", "updatedAt"]
+    },
+    "Crew": {
+      "title": "Crew Member",
+      "description": "Represents a crew member or employee.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "availability": { "type": "string" },
+        "type": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["name", "createdAt", "updatedAt"]
+    },
+    "Client": {
+      "title": "Client",
+      "description": "Represents a client partner.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "contactName": { "type": "string" },
+        "phone": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["name", "createdAt", "updatedAt"]
+    },
+    "Alert": {
+      "title": "Alert",
+      "description": "Represents an alert in the system.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "message": { "type": "string" },
+        "source": { "type": "string" },
+        "level": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["message", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "jobs/{jobId}": {
+      "schema": { "$ref": "#/entities/Job" },
+      "description": "All job cards."
+    },
+    "loads/{loadId}": {
+      "schema": { "$ref": "#/entities/Load" },
+      "description": "All freight loads."
+    },
+    "ranchOaks/{treeId}": {
+      "schema": { "$ref": "#/entities/RanchOak" },
+      "description": "All ranch oak inventory items."
+    },
+    "equipment/{itemId}": {
+      "schema": { "$ref": "#/entities/Equipment" },
+      "description": "All equipment pieces."
+    },
+    "crews/{crewId}": {
+      "schema": { "$ref": "#/entities/Crew" },
+      "description": "All crew members."
+    },
+    "clients/{clientId}": {
+      "schema": { "$ref": "#/entities/Client" },
+      "description": "All registered clients."
+    },
+    "alerts/{alertId}": {
+      "schema": { "$ref": "#/entities/Alert" },
+      "description": "System alerts."
+    }
+  }
+}
