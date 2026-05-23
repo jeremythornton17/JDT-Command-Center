@@ -1,10 +1,18 @@
 import React, { useState } from 'react';
 import { UserCheck, Users, Wrench, Shield, Globe, Award, ClipboardCheck, MessageSquare, Phone, Plus, AlertCircle } from 'lucide-react';
-import { normalizePersonnelRole, personnelRoleFilters, roleMatchesFilter } from '../personnelRoles';
+import {
+  authorizationLevelLabels,
+  buildPersonnelRoleFilters,
+  getPersonnelRoleDisplayName,
+  getRoleAuthorization,
+  normalizePersonnelRole,
+  roleMatchesFilter
+} from '../personnelRoles';
 
 export default function CrewsBoard({ crews, openModal, openDrawer }: { crews: any[], openModal: (type: string, data?: any) => void, openDrawer: (type: string, id: string) => void }) {
   const [roleFilter, setRoleFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
+  const roleFilters = buildPersonnelRoleFilters(crews);
 
   const filteredCrews = crews.filter(c => {
     const matchesRole = roleMatchesFilter(c.role, roleFilter);
@@ -45,7 +53,7 @@ export default function CrewsBoard({ crews, openModal, openDrawer }: { crews: an
             onChange={e => setRoleFilter(e.target.value)}
             className="w-full bg-jdt-panel border border-jdt-border rounded-md px-2.5 py-1.5 text-xs font-bold text-zinc-700"
           >
-            {personnelRoleFilters.map(filter => (
+            {roleFilters.map(filter => (
               <option key={filter.value} value={filter.value}>{filter.label}</option>
             ))}
           </select>
@@ -82,7 +90,7 @@ export default function CrewsBoard({ crews, openModal, openDrawer }: { crews: an
                 </div>
                 <div>
                   <h4 className="text-base font-black text-jdt-primary leading-tight">{member.name}</h4>
-                  <p className="text-xs font-bold text-zinc-500 mt-1">{normalizePersonnelRole(member.role) || member.role}</p>
+                  <p className="text-xs font-bold text-zinc-500 mt-1">{getPersonnelRoleDisplayName(member.role)}</p>
                 </div>
               </div>
               <span className={`inline-flex rounded border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${getStatusBadgeColor(member.availability)}`}>
@@ -97,6 +105,10 @@ export default function CrewsBoard({ crews, openModal, openDrawer }: { crews: an
                   <p className="font-bold text-jdt-text flex items-center gap-1.5"><Users className="h-3.5 w-3.5 text-zinc-500"/> {member.type}</p>
                 </div>
               )}
+              <div>
+                <p className="text-[9px] font-black uppercase text-zinc-400 mb-0.5">Authorization</p>
+                <p className="font-bold text-jdt-text flex items-center gap-1.5"><Shield className="h-3.5 w-3.5 text-zinc-500"/> {authorizationLevelLabels[getRoleAuthorization(member.role, member.authorizationLevel)]}</p>
+              </div>
               {member.activeJob && (
                 <div>
                   <p className="text-[9px] font-black uppercase text-zinc-400 mb-0.5">Active Job / Load</p>
@@ -122,7 +134,7 @@ export default function CrewsBoard({ crews, openModal, openDrawer }: { crews: an
                 </div>
                 <div>
                   <p className="text-[9px] font-black uppercase text-zinc-400 mb-0.5">Primary Skill</p>
-                  <p className="font-bold text-jdt-text flex items-center gap-1"><Award className="h-3 w-3 text-zinc-400" /> {member.skills?.[0] || 'Field Hand'}</p>
+                  <p className="font-bold text-jdt-text flex items-center gap-1"><Award className="h-3 w-3 text-zinc-400" /> {member.skills?.[0] || getPersonnelRoleDisplayName(member.role)}</p>
                 </div>
               </div>
             </div>
