@@ -25,6 +25,7 @@ import MapsBoard from './components/MapsBoard';
 import ReportsBoard from './components/ReportsBoard';
 import DocumentsBoard from './components/DocumentsBoard';
 import SettingsBoard from './components/SettingsBoard';
+import { getCrewAllocationType, normalizePersonnelRole } from './personnelRoles';
 
 const mainNav = [
   { id: "board", label: "Command Board", icon: LayoutGrid },
@@ -141,14 +142,15 @@ export default function App() {
         break;
 
       case 'employee':
+        const normalizedRole = normalizePersonnelRole(recordData.role) || recordData.role;
         if (recordData.id) {
           setCrews(prev => prev.map(m => m.id === recordData.id ? {
             ...m,
             name: recordData.name,
-            role: recordData.role,
+            role: normalizedRole,
             phone: recordData.phone || 'N/A',
             language: recordData.language || 'Bilingual',
-            skills: [recordData.skill || 'Field Hand']
+            skills: [recordData.skill || normalizedRole]
           } : m));
           addToast(`Updated employee profile: ${recordData.name}`, 'success');
         } else {
@@ -156,14 +158,14 @@ export default function App() {
             { 
               id: newId, 
               name: recordData.name, 
-              role: recordData.role, 
+              role: normalizedRole, 
               availability: 'Available', 
-              type: recordData.role === 'Heavy Haul Driver' ? 'Lowboy Freight' : 'Field Crew', 
+              type: getCrewAllocationType(normalizedRole), 
               phone: recordData.phone || 'N/A', 
               activeJob: 'Awaiting dispatch', 
               assignedEquipment: [], 
               language: recordData.language || 'Bilingual', 
-              skills: [recordData.skill || 'Field Hand'] 
+              skills: [recordData.skill || normalizedRole] 
             }, 
             ...prev
           ]);
