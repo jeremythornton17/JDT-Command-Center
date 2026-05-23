@@ -1,5 +1,11 @@
 import React, { useState } from 'react';
 import { Settings, Shield, Key, Database, RefreshCw, FileSpreadsheet, Check, Download, ArrowUpRight } from 'lucide-react';
+import {
+  authorizationLevelLabels,
+  authorizedWorkspaceUsers,
+  personnelRoles,
+  roleAuthorizations,
+} from '../personnelRoles';
 
 export default function SettingsBoard({ openModal }: { openModal: (type: string) => void }) {
   const [activeSubTab, setActiveSubTab] = useState('general');
@@ -115,13 +121,32 @@ export default function SettingsBoard({ openModal }: { openModal: (type: string)
               </div>
 
               <div className="space-y-3">
-                <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-lg flex justify-between items-center text-xs font-bold text-zinc-600">
-                  <span>Current Authorized User:</span>
-                  <span className="font-extrabold text-jdt-text">jeremy@jdtnurseries.com</span>
+                <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-bold text-zinc-600">
+                  <span className="block uppercase text-[10px] font-black text-zinc-400 mb-2">Owner Workspace Accounts</span>
+                  <div className="space-y-2">
+                    {authorizedWorkspaceUsers.map(user => (
+                      <div key={user.email} className="flex justify-between items-center gap-3">
+                        <span>{user.name}</span>
+                        <span className="font-extrabold text-jdt-text text-right">{user.email} &bull; {user.role}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-lg flex justify-between items-center text-xs font-bold text-zinc-600">
                   <span>Workspace ID:</span>
                   <span className="font-mono text-zinc-500 select-all">jdt-cmd-b195</span>
+                </div>
+              </div>
+
+              <div className="border-t border-jdt-border pt-4">
+                <h4 className="text-sm font-black text-jdt-text uppercase mb-3">Role Authorization Map</h4>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {personnelRoles.map(role => (
+                    <div key={role} className="p-3 bg-jdt-sand/40 border border-jdt-border rounded-lg flex items-center justify-between gap-3 text-xs">
+                      <span className="font-black text-jdt-text">{role}</span>
+                      <span className="font-bold text-zinc-600">{authorizationLevelLabels[roleAuthorizations[role]]}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
