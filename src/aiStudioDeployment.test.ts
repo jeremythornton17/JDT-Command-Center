@@ -38,4 +38,11 @@ describe("AI Studio deployment source guard", () => {
       assert.doesNotMatch(readProjectFile(filePath), /Verizon|Michelin/i, `${filePath} contains removed fleet provider copy`);
     }
   });
+
+  it("does not seed blank workspaces with mock operational records", () => {
+    const firestoreHook = readProjectFile("src/useFirestoreCollection.ts");
+
+    assert.equal(existsSync(path.join(repoRoot, "src/commandCenter/seedData.ts")), false);
+    assert.doesNotMatch(firestoreHook, /Seed database|initialData\.forEach|initialData\.map|initialData\.length/);
+  });
 });
