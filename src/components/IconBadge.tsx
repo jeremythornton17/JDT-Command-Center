@@ -4,7 +4,7 @@ import { LucideIcon } from 'lucide-react';
 interface IconBadgeProps {
   icon: LucideIcon;
   colorClass?: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   animated?: boolean;
 }
 
@@ -42,7 +42,6 @@ export function IconBadge({ icon: Icon, colorClass = 'text-jdt-primary', size = 
         ${colorClass}
         ${animated ? 'animate-[bounce_1.5s_infinite]' : ''}
       `} />
-      {/* Subtle accent dot to give it that 'field badge' look */}
       {variant === 'badge' && (
         <span className="absolute -top-px -right-px w-1.5 h-1.5 rounded-full bg-jdt-olive/40 border border-[#FDFAF7]"></span>
       )}
