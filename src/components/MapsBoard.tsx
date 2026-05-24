@@ -39,7 +39,7 @@ import { useFirestoreSyncState } from '../useFirestoreCollection';
 
 export type FleetPosition = {
   id: string;
-  provider: 'verizon' | 'michelin' | 'manual';
+  provider: 'manual';
   providerVehicleId: string;
   assetName: string;
   assetType: 'work_truck' | 'semi' | 'trailer' | 'equipment';
@@ -67,7 +67,7 @@ const defaultFieldCenter = { lat: 26.5, lng: -80.35 };
 
 const mockTelemetry: FleetPosition[] = [
   {
-    id: 'tlm-1', provider: 'verizon', providerVehicleId: 'V9001',
+    id: 'tlm-1', provider: 'manual', providerVehicleId: 'MANUAL-001',
     assetName: 'Semi Truck 04 (Heavy)', assetType: 'semi', driverName: 'Unassigned', assignedLoadId: 'FRT-0522-01',
     lat: 26.48, lng: -80.34, speedMph: 65, heading: 90, ignitionStatus: 'on', status: 'moving',
     recordedAt: new Date().toISOString(), receivedAt: new Date().toISOString(),
@@ -75,7 +75,7 @@ const mockTelemetry: FleetPosition[] = [
     recentHistory: ['12:15 - Left JDT Yard', '1:00 - Passed weigh station'], dispatchNotes: 'Driver reports heavy traffic near delivery gate.'
   },
   {
-    id: 'tlm-2', provider: 'verizon', providerVehicleId: 'V9022',
+    id: 'tlm-2', provider: 'manual', providerVehicleId: 'MANUAL-002',
     assetName: 'Crew Crane Truck 2', assetType: 'work_truck', driverName: 'Unassigned', assignedJobId: 'JOB-992',
     lat: 26.56, lng: -80.39, speedMph: 0, heading: 0, ignitionStatus: 'off', status: 'at_job',
     recordedAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(), receivedAt: new Date(Date.now() - 1000 * 60 * 4).toISOString(),
@@ -83,7 +83,7 @@ const mockTelemetry: FleetPosition[] = [
     recentHistory: ['6:00 - Left yard', '7:30 - Arrived at Bellaire Club'], dispatchNotes: 'Will need fuel on return trip.'
   },
   {
-    id: 'tlm-3', provider: 'michelin', providerVehicleId: 'M1105',
+    id: 'tlm-3', provider: 'manual', providerVehicleId: 'MANUAL-003',
     assetName: 'Lowboy Trailer 44', assetType: 'trailer',
     lat: 26.43, lng: -80.28, speedMph: 0, status: 'idle',
     recordedAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(), receivedAt: new Date(Date.now() - 1000 * 60 * 14).toISOString(),
@@ -547,8 +547,8 @@ function FleetTelemetryView({ telemetryNodes, selectedPin, setSelectedPin, openD
         <div className="absolute inset-0 bg-jdt-dark/15" />
 
         <div className="absolute top-4 left-4 flex flex-wrap gap-2">
-          <ProviderBadge label="Verizon Reveal API: LIVE" color="blue" />
-          <ProviderBadge label="Michelin Fleet: LIVE" color="orange" />
+          <ProviderBadge label="Manual Fleet Positions" color="blue" />
+          <ProviderBadge label="External Fleet APIs Not Connected" color="orange" />
         </div>
 
         {telemetryNodes.map((pin: any) => (
