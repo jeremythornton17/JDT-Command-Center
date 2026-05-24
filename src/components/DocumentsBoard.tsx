@@ -1,128 +1,92 @@
 import React, { useState } from 'react';
-import { Folder, FileText, CheckCircle2, AlertTriangle, Printer, Download, Eye, UploadCloud, Search, Plus } from 'lucide-react';
-import { IconBadge, IconButton } from './IconBadge';
+import { Folder, FileText, UploadCloud, Search, Plus } from 'lucide-react';
+import { IconBadge } from './IconBadge';
 
-export default function DocumentsBoard({ openModal }: { openModal: (type: string) => void }) {
-  const [docCategory, setDocCategory] = useState('All');
-  const [docSearch, setDocSearch] = useState('');
-  const [docsList, setDocsList] = useState([
-    { id: '1', name: 'Waterford Site Trench Permit', job: 'Waterford Golf Club', size: '2.4 MB', type: 'Permit', status: 'Approved', category: 'Permits' },
-    { id: '2', name: 'HOA Access Escort Agreement', job: 'Boca West Country Club', size: '1.1 MB', type: 'Contract', status: 'Signed', category: 'HOA Docs' },
-    { id: '3', name: 'FRT-0522-01 Driver Bill of Lading', job: 'FRT-0522-01 Load', size: '890 KB', type: 'dispatch', status: 'Awaiting Sign', category: 'Dispatch' },
-    { id: '4', name: 'Miami Canopy Trimming Clearance', job: 'Bellaire Club', size: '4.8 MB', type: 'Permit', status: 'Reviewing', category: 'Permits' },
-    { id: '5', name: 'Proof of Delivery - LO-101 Oak', job: 'Waterford Golf Club', size: '1.2 MB', type: 'POD', status: 'Approved', category: 'Proofs' },
-  ]);
+type DocumentsBoardProps = {
+  openModal: (type: string, data?: any) => void;
+};
 
-  const handleSimulateUpload = () => {
-    const name = prompt("Enter Document Name:", "New Site Map Plan");
-    const job = prompt("Enter Linked Project:", "Waterford Golf Club");
-    if (!name || !job) return;
-    setDocsList([
-      { id: `doc-${Date.now()}`, name, job, size: `${(Math.random()*4 + 1).toFixed(1)} MB`, type: 'PDF Plan', status: 'Reviewing', category: 'Plans' },
-      ...docsList
-    ]);
-  };
-
-  const filteredDocs = docsList.filter(d => {
-    const matchesCategory = docCategory === 'All' || d.category === docCategory || (docCategory === 'Permits' && d.type === 'Permit');
-    const matchesSearch = d.name.toLowerCase().includes(docSearch.toLowerCase()) || d.job.toLowerCase().includes(docSearch.toLowerCase());
-    return matchesCategory && matchesSearch;
+export default function DocumentsBoard({ openModal }: DocumentsBoardProps) {
+  const [query, setQuery] = useState('');
+  const documents: any[] = [];
+  const filteredDocuments = documents.filter((doc) => {
+    const haystack = `${doc.name || ''} ${doc.job || ''} ${doc.category || ''}`.toLowerCase();
+    return haystack.includes(query.toLowerCase());
   });
+
+  const handleImportDocument = () => {
+    const name = prompt('Enter document name:', '');
+    if (!name) return;
+
+    const linkedProject = prompt('Enter linked project:', '') || 'Unassigned';
+    openModal('document', {
+      name,
+      job: linkedProject,
+      status: 'Needs Review',
+      category: 'Imported',
+    });
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-jdt-border pb-5">
         <div>
-          <h2 className="text-2xl font-black text-jdt-primary">Operations Document Cabinet</h2>
-          <p className="text-sm font-bold text-zinc-500 mt-1">Access site blueprints, ROW permits, driver bill-of-lading (BOL), and signed POD sheets</p>
+          <h2 className="text-2xl font-black text-jdt-primary">Documents</h2>
+          <p className="text-sm font-bold text-zinc-500 mt-1">Permits, bills of lading, proofs, and project files you add</p>
         </div>
-        <div className="flex gap-2">
-          <button 
-            onClick={handleSimulateUpload}
-            className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-black uppercase bg-jdt-primary text-white hover:bg-jdt-dark transition-colors shadow-sm"
-          >
-            <UploadCloud className="h-4 w-4"/> Import Document
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={handleImportDocument}
+          className="inline-flex items-center gap-2 rounded-lg bg-jdt-primary px-4 py-2 text-xs font-black uppercase text-white shadow-sm hover:bg-jdt-dark transition-colors"
+        >
+          <Plus className="h-4 w-4" /> Add Document
+        </button>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-jdt-panel border border-jdt-border p-4 rounded-xl shadow-sm">
-        <div className="relative w-full max-w-md">
-           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-           <input 
-             type="text"
-             placeholder="Search by file name, linked project..."
-             className="w-full bg-jdt-panel border border-jdt-border rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-zinc-500 font-bold text-jdt-text"
-             value={docSearch}
-             onChange={e => setDocSearch(e.target.value)}
-           />
+      <div className="bg-jdt-panel border border-jdt-border rounded-xl shadow-sm p-4">
+        <div className="relative mb-4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search documents"
+            className="w-full rounded-lg border border-jdt-border bg-white pl-9 pr-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-jdt-olive"
+          />
         </div>
-        <div className="flex gap-1.5 flex-wrap">
-          {['All', 'Permits', 'Dispatch', 'HOA Docs', 'Proofs'].map(c => (
-            <button
-              key={c}
-              onClick={() => setDocCategory(c)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-colors ${docCategory === c ? 'bg-jdt-primary text-white' : 'bg-jdt-sand hover:bg-zinc-200 text-zinc-500 hover:text-zinc-700'}`}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-      </div>
 
-      <div className="bg-jdt-panel rounded-xl border border-jdt-border shadow-sm overflow-hidden text-sm">
-        <table className="w-full text-left whitespace-nowrap">
-          <thead className="bg-jdt-sand text-zinc-500 border-b border-jdt-border">
-            <tr>
-              <th className="px-5 py-3 font-black uppercase tracking-wide text-[10px]">Document Title</th>
-              <th className="px-5 py-3 font-black uppercase tracking-wide text-[10px]">Linked Work</th>
-              <th className="px-5 py-3 font-black uppercase tracking-wide text-[10px]">File Size/Type</th>
-              <th className="px-5 py-3 font-black uppercase tracking-wide text-[10px]">Status</th>
-              <th className="px-5 py-3 font-black uppercase tracking-wide text-[10px] text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-200">
-            {filteredDocs.map(doc => (
-              <tr key={doc.id} className="hover:bg-jdt-sand transition-colors group">
-                <td className="px-5 py-4">
-                  <div className="flex items-center gap-3">
-                    <IconBadge icon={FileText} size="sm" colorClass="text-zinc-500 group-hover:text-blue-600 transition-colors" />
-                    <div>
-                      <p className="font-extrabold text-jdt-text">{doc.name}</p>
-                      <p className="text-[10px] font-black uppercase text-zinc-400 mt-0.5">{doc.category}</p>
-                    </div>
+        {filteredDocuments.length > 0 ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredDocuments.map((doc) => (
+              <button
+                type="button"
+                key={doc.id || doc.name}
+                onClick={() => openModal('document', doc)}
+                className="group rounded-lg border border-jdt-border bg-white p-4 text-left hover:border-jdt-olive transition-colors"
+              >
+                <div className="flex items-start gap-3">
+                  <IconBadge icon={FileText} size="sm" colorClass="text-zinc-500 group-hover:text-jdt-primary transition-colors" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-black text-jdt-text truncate">{doc.name}</p>
+                    <p className="text-xs font-bold text-zinc-500 truncate mt-1">{doc.job || 'Unassigned'}</p>
                   </div>
-                </td>
-                <td className="px-5 py-4">
-                  <span className="font-bold text-zinc-600">{doc.job}</span>
-                </td>
-                <td className="px-5 py-4 text-xs font-bold text-zinc-500">
-                  {doc.size} &bull; {doc.type.toUpperCase()}
-                </td>
-                <td className="px-5 py-4">
-                  <span className={`inline-flex rounded px-2 py-0.5 text-[9px] font-black uppercase ${doc.status === 'Approved' || doc.status === 'Signed' ? 'bg-emerald-100 text-emerald-800' : doc.status === 'Reviewing' ? 'bg-amber-100 text-amber-800' : 'bg-zinc-100 text-zinc-700'}`}>
-                    {doc.status}
-                  </span>
-                </td>
-                <td className="px-5 py-4 text-right">
-                  <div className="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
-                    <IconButton variant="ghost" size="sm" icon={Eye} title="View PDF" colorClass="text-zinc-500" />
-                    <IconButton variant="ghost" size="sm" icon={Download} title="Download" colorClass="text-zinc-500" />
-                    <IconButton variant="ghost" size="sm" icon={Printer} title="Print File" colorClass="text-zinc-500" />
-                  </div>
-                </td>
-              </tr>
+                </div>
+              </button>
             ))}
-
-            {filteredDocs.length === 0 && (
-              <tr>
-                <td colSpan={5} className="py-16 text-center text-zinc-400 font-bold">
-                  No binders or document credentials matched your filter.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-jdt-border p-10 text-center">
+            <Folder className="h-10 w-10 text-zinc-300 mx-auto mb-3" />
+            <p className="text-sm font-black text-jdt-text">No documents yet</p>
+            <p className="text-xs font-bold text-zinc-500 mt-1">Upload or connect your real files to build this library.</p>
+            <button
+              type="button"
+              onClick={handleImportDocument}
+              className="mt-4 inline-flex items-center gap-2 rounded-lg border border-jdt-border bg-white px-4 py-2 text-xs font-black uppercase text-jdt-text hover:border-jdt-olive transition-colors"
+            >
+              <UploadCloud className="h-4 w-4" /> Import First Document
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
