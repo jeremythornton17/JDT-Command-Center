@@ -1,11 +1,14 @@
-import React from 'react';
+import { useState } from 'react';
 import { Settings, Shield, Key, Database, FileSpreadsheet, ArrowUpRight, Trash2 } from 'lucide-react';
+import { collection, deleteDoc, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 
 type SettingsBoardProps = {
   openModal: (type: string, data?: any) => void;
 };
 
 export default function SettingsBoard({ openModal }: SettingsBoardProps) {
+  const [clearingType, setClearingType] = useState<string | null>(null);
   const sections = [
     { icon: Shield, title: 'Security', description: 'Review Firebase rules, user access, and app protection settings.' },
     { icon: Key, title: 'API Keys', description: 'Add your Google Drive, Picker, and Maps credentials from environment variables.' },
@@ -13,15 +16,34 @@ export default function SettingsBoard({ openModal }: SettingsBoardProps) {
     { icon: FileSpreadsheet, title: 'Sources', description: 'No tracker sources connected yet.' },
   ];
   const clearActions = [
-    { type: 'clear_jobs', label: 'Projects' },
-    { type: 'clear_freight', label: 'Freight' },
-    { type: 'clear_trees', label: 'Trees' },
-    { type: 'clear_crews', label: 'Crews' },
-    { type: 'clear_equipment', label: 'Equipment' },
-    { type: 'clear_clients', label: 'Clients' },
-    { type: 'clear_alerts', label: 'Alerts' },
-    { type: 'clear_all', label: 'Everything' },
+    { type: 'clear_jobs', label: 'Projects', collections: ['jobs'] },
+    { type: 'clear_freight', label: 'Freight', collections: ['loads'] },
+    { type: 'clear_trees', label: 'Trees', collections: ['ranchOaks'] },
+    { type: 'clear_crews', label: 'Crews', collections: ['crews'] },
+    { type: 'clear_equipment', label: 'Equipment', collections: ['equipment'] },
+    { type: 'clear_clients', label: 'Clients', collections: ['clients'] },
+    { type: 'clear_alerts', label: 'Alerts', collections: ['alerts'] },
+    { type: 'clear_all', label: 'Everything', collections: ['jobs', 'loads', 'ranchOaks', 'equipment', 'crews', 'clients', 'alerts'] },
   ];
+
+  const clearCollections = async (action: typeof clearActions[number]) => {
+    const confirmed = window.confirm(`Clear ${action.label.toLowerCase()} from Firebase? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setClearingType(action.type);
+    try {
+      for (const collectionName of action.collections) {
+        const snapshot = await getDocs(collection(db, collectionName));
+        await Promise.all(snapshot.docs.map((docSnapshot) => deleteDoc(docSnapshot.ref)));
+      }
+      window.alert(`${action.label} cleared.`);
+    } catch (error) {
+      console.error('Unable to clear Firebase data', error);
+      window.alert('Firebase data could not be cleared. Check your Firestore rules and try again.');
+    } finally {
+      setClearingType(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -76,10 +98,11 @@ export default function SettingsBoard({ openModal }: SettingsBoardProps) {
             <button
               key={action.type}
               type="button"
-              onClick={() => openModal(action.type)}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-black uppercase text-red-800 transition-colors hover:bg-red-100"
+              onClick={() => clearCollections(action)}
+              disabled={clearingType !== null}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-black uppercase text-red-800 transition-colors hover:bg-red-100 disabled:cursor-wait disabled:opacity-60"
             >
-              <Trash2 className="h-4 w-4" /> Clear {action.label}
+              <Trash2 className="h-4 w-4" /> {clearingType === action.type ? 'Clearing' : 'Clear'} {action.label}
             </button>
           ))}
         </div>

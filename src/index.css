@@ -14,6 +14,68 @@
   --color-jdt-success: #2F7D4A;
 }
 
+:root {
+  --jdt-logo-url: url('/jd-thornton-logo.png');
+}
+
 body {
   @apply bg-jdt-sand text-jdt-text font-sans;
+}
+
+div[class*="min-h-screen"][class*="justify-center"] .mx-auto.mb-5.h-14.w-14.rounded-xl.bg-jdt-primary {
+  width: min(15rem, 78vw);
+  height: 9.5rem;
+  margin-bottom: 1rem;
+  border-radius: 0;
+  background: var(--jdt-logo-url) center / contain no-repeat;
+  box-shadow: none;
+}
+
+div[class*="min-h-screen"][class*="justify-center"] .mx-auto.mb-5.h-14.w-14.rounded-xl.bg-jdt-primary svg {
+  display: none;
+}
+
+div[class*="lg:hidden"][class*="sticky"][class*="bg-jdt-primary"] > span {
+  position: relative;
+  display: inline-block;
+  width: min(11rem, 52vw);
+  height: 2.7rem;
+  overflow: hidden;
+  color: transparent;
+}
+
+div[class*="lg:hidden"][class*="sticky"][class*="bg-jdt-primary"] > span::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: var(--jdt-logo-url) center / contain no-repeat;
+}
+
+aside [class*="border-white/10"][class*="px-5"][class*="py-5"] > div::before {
+  display: block;
+  width: 12.5rem;
+  height: 5.4rem;
+  margin-bottom: 0.65rem;
+  content: "";
+  background: var(--jdt-logo-url) left center / contain no-repeat;
+}
+
+aside [class*="border-white/10"][class*="px-5"][class*="py-5"] p {
+  display: none;
+}
+
+aside [class*="border-white/10"][class*="px-5"][class*="py-5"] h1 {
+  font-size: 0.78rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.82);
+}
+
+aside [class*="border-white/10"][class*="px-5"][class*="py-5"] h1::after {
+  display: block;
+  margin-top: 0.22rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.22em;
+  color: rgb(255 255 255 / 0.5);
+  content: "Big Trees, Big Moves";
 }
