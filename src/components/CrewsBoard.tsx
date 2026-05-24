@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserCheck, Users, Wrench, Shield, Globe, Award, ClipboardCheck, MessageSquare, Phone, Plus, AlertCircle } from 'lucide-react';
+import { UserCheck, Users, Wrench, Shield, Globe, Award, ClipboardCheck, MessageSquare, Phone, Plus, AlertCircle, Star } from 'lucide-react';
 
 export default function CrewsBoard({ crews, openModal, openDrawer }: { crews: any[], openModal: (type: string, data?: any) => void, openDrawer: (type: string, id: string) => void }) {
   const [roleFilter, setRoleFilter] = useState('All');
@@ -84,9 +84,18 @@ export default function CrewsBoard({ crews, openModal, openDrawer }: { crews: an
                 <div>
                   <h4 className="text-base font-black text-jdt-primary leading-tight">{member.name}</h4>
                   <p className="text-xs font-bold text-zinc-500 mt-1">{member.role}</p>
+                  {member.exceptionalSkills && member.exceptionalSkills.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {member.exceptionalSkills.map((es: string, i: number) => (
+                        <span key={i} className="inline-flex items-center gap-1 bg-orange-100 text-orange-800 border border-orange-200 rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide">
+                          <Star className="h-2.5 w-2.5 fill-orange-500 text-orange-500" /> {es}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
-              <span className={`inline-flex rounded border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${getStatusBadgeColor(member.availability)}`}>
+              <span className={`inline-flex rounded border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide self-start mt-1 ${getStatusBadgeColor(member.availability)}`}>
                 {member.availability}
               </span>
             </div>
@@ -116,14 +125,25 @@ export default function CrewsBoard({ crews, openModal, openDrawer }: { crews: an
                   </div>
                 </div>
               )}
+              
               <div className="grid grid-cols-2 gap-2 pt-2 border-t border-jdt-border">
                 <div>
                   <p className="text-[9px] font-black uppercase text-zinc-400 mb-0.5">Language</p>
                   <p className="font-bold text-jdt-text flex items-center gap-1"><Globe className="h-3 w-3 text-zinc-400" /> {member.language || 'English'}</p>
                 </div>
                 <div>
-                  <p className="text-[9px] font-black uppercase text-zinc-400 mb-0.5">Primary Skill</p>
-                  <p className="font-bold text-jdt-text flex items-center gap-1"><Award className="h-3 w-3 text-zinc-400" /> {member.skills?.[0] || 'Field Hand'}</p>
+                  <p className="text-[9px] font-black uppercase text-zinc-400 mb-1">Primary Skills</p>
+                  <div className="flex flex-col gap-1">
+                    {(member.skills && member.skills.length > 0) ? (
+                      member.skills.map((s: string, i: number) => (
+                        <p key={i} className="font-bold text-jdt-text flex items-center gap-1.5"><Award className="h-3 w-3 text-zinc-400 shrink-0" /> {s}</p>
+                      ))
+                    ) : member.skill ? (
+                       <p className="font-bold text-jdt-text flex items-center gap-1.5"><Award className="h-3 w-3 text-zinc-400 shrink-0" /> {member.skill}</p>
+                    ) : (
+                       <p className="font-bold text-jdt-text flex items-center gap-1.5"><Award className="h-3 w-3 text-zinc-400 shrink-0" /> Field Hand</p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -132,10 +152,16 @@ export default function CrewsBoard({ crews, openModal, openDrawer }: { crews: an
               <span className="text-[11px] font-black text-zinc-600 flex items-center gap-1"><Phone className="h-3 w-3" /> {member.phone}</span>
               <div className="flex gap-1.5">
                 <button 
+                  onClick={() => openModal('delete_employee', member)} 
+                  className="px-2.5 py-1.5 text-[9px] font-black uppercase rounded bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 transition-colors"
+                >
+                  Delete
+                </button>
+                <button 
                   onClick={() => openModal('employee', member)} 
                   className="px-2.5 py-1.5 text-[9px] font-black uppercase rounded bg-jdt-sand border border-jdt-border hover:bg-jdt-border text-zinc-700 transition-colors"
                 >
-                  Edit Profile
+                  Edit
                 </button>
                 <button 
                   onClick={() => openModal('assign_crew', member)} 

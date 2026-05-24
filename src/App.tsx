@@ -25,6 +25,7 @@ import MapsBoard from './components/MapsBoard';
 import ReportsBoard from './components/ReportsBoard';
 import DocumentsBoard from './components/DocumentsBoard';
 import SettingsBoard from './components/SettingsBoard';
+import { IconBadge, IconButton } from './components/IconBadge';
 
 const mainNav = [
   { id: "board", label: "Command Board", icon: LayoutGrid },
@@ -68,6 +69,24 @@ export default function App() {
   const [alerts, setAlerts] = useFirestoreSyncState<any>('alerts', [], !!user);
 
   // Toast manager
+  useEffect(() => {
+    if (clients.length > 0 && !(window as any).__migratedInternalClient) {
+      (window as any).__migratedInternalClient = true;
+      const internalClient = clients.find((c: any) => 
+        c.name && (
+          c.name.toLowerCase().includes('jd thornton') || 
+          c.name.toLowerCase() === 'internal' || 
+          c.name.toLowerCase() === 'jdt nurseries' ||
+          c.name.toLowerCase() === 'jdt'
+        ) && 
+        c.name !== 'JD Thornton Nurseries (Internal)'
+      );
+      if (internalClient) {
+        setClients(prev => prev.map((c: any) => c.id === internalClient.id ? { ...c, name: 'JD Thornton Nurseries (Internal)' } : c));
+      }
+    }
+  }, [clients, setClients]);
+
   const addToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     const id = `t-${Date.now()}`;
     setToasts(prev => [...prev, { id, message, type }]);
@@ -85,6 +104,36 @@ export default function App() {
   };
 
   // State-altering Record Creators
+  const onDeleteRecord = (recordType: string, id: string) => {
+    switch (recordType) {
+      case 'employee':
+        setCrews(prev => prev.filter(c => c.id !== id));
+        addToast('Employee profile deleted', 'info');
+        break;
+      case 'client':
+        setClients(prev => prev.filter(c => c.id !== id));
+        addToast('Client profile deleted', 'info');
+        break;
+      case 'job':
+        setJobs(prev => prev.filter(j => j.id !== id));
+        addToast('Project deleted', 'info');
+        break;
+      case 'freight':
+      case 'load':
+        setLoads(prev => prev.filter(l => l.id !== id));
+        addToast('Freight load deleted', 'info');
+        break;
+      case 'equipment':
+        setEquipment(prev => prev.filter(e => e.id !== id));
+        addToast('Equipment profile deleted', 'info');
+        break;
+      case 'tree':
+        setRanchOaks(prev => prev.filter(t => t.id !== id));
+        addToast('Tree inventory item deleted', 'info');
+        break;
+    }
+  };
+
   const onSaveRecord = (recordType: string, recordData: any) => {
     const newId = `${recordType.slice(0, 3)}-${Date.now().toString().slice(-4)}`;
     const dataWithId = { id: newId, ...recordData };
@@ -579,6 +628,25 @@ export default function App() {
     );
   }
 
+  const handleClearData = (clearType: string) => {
+    if (clearType === 'clients') {
+      setClients([]);
+      addToast('All clients have been deleted', 'success');
+    } else if (clearType === 'jobs') {
+      setJobs([]);
+      addToast('All jobs/projects have been deleted', 'success');
+    } else if (clearType === 'all') {
+      setJobs([]);
+      setLoads([]);
+      setRanchOaks([]);
+      setEquipment([]);
+      setCrews([]);
+      setClients([]);
+      setAlerts([]);
+      addToast('Workspace factory reset complete', 'success');
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-jdt-sand text-jdt-text font-sans selection:bg-jdt-olive selection:text-white pointer-events-auto">
       {/* Mobile Backdrop Overlay */}
@@ -615,7 +683,7 @@ export default function App() {
                  onClick={() => { setActiveTab(nav.id); setSearchQuery(''); setIsSidebarOpen(false); }}
                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all ${activeTab === nav.id ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-300 hover:bg-white/5 hover:text-white'}`}
                >
-                 <nav.icon className="h-5 w-5 opacity-80" />
+                 <IconBadge icon={nav.icon} size="sm" colorClass={activeTab === nav.id ? "text-white" : "text-white/80"} variant={activeTab === nav.id ? "sidebar" : "transparent"} />
                  {nav.label}
                </button>
              ))}
@@ -631,7 +699,7 @@ export default function App() {
                   className={`w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-sm font-semibold transition-all group ${activeTab === nav.id ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-300 hover:bg-white/5 hover:text-white'}`}
                 >
                   <div className="flex items-center gap-3">
-                    <nav.icon className="h-4 w-4 opacity-70 group-hover:opacity-100 transition-opacity" />
+                    <IconBadge icon={nav.icon} size="sm" colorClass={activeTab === nav.id ? "text-white" : "text-white/70"} variant={activeTab === nav.id ? "sidebar" : "transparent"} />
                     {nav.label}
                   </div>
                   {nav.badge && alerts.length > 0 && (
@@ -648,7 +716,7 @@ export default function App() {
                onClick={logOut}
                className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all text-zinc-300 hover:bg-white/5 hover:text-white"
              >
-               <LogOut className="h-4 w-4 opacity-70 group-hover:opacity-100 transition-opacity" />
+               <IconBadge icon={LogOut} size="sm" colorClass="text-white/70" variant="transparent" />
                Sign Out
              </button>
            </div>
@@ -808,18 +876,14 @@ export default function App() {
                             <div className="mt-4 flex-1">
                                <p className="text-[10px] font-black uppercase text-zinc-400 mb-2">Equipment Assigned</p>
                                <div className="flex gap-4">
-                                  <div className="text-center">
-                                    <div className="bg-jdt-sand border border-jdt-border p-2 rounded-lg mb-1 h-10 w-16 mx-auto flex items-center justify-center">
-                                      <Wrench className="h-5 w-5 text-jdt-olive" />
-                                    </div>
-                                    <p className="text-[10px] font-black text-jdt-text leading-tight">Komatsu</p>
+                                  <div className="text-center flex flex-col items-center">
+                                    <IconBadge icon={Wrench} size="md" colorClass="text-jdt-olive" />
+                                    <p className="text-[10px] font-black text-jdt-text leading-tight mt-1">Komatsu</p>
                                     <p className="text-[9px] font-bold text-zinc-500">Loader</p>
                                   </div>
-                                  <div className="text-center">
-                                    <div className="bg-jdt-sand border border-jdt-border p-2 rounded-lg mb-1 h-10 w-16 mx-auto flex items-center justify-center">
-                                      <Truck className="h-5 w-5 text-jdt-olive" />
-                                    </div>
-                                    <p className="text-[10px] font-black text-jdt-text leading-tight">Semi #4</p>
+                                  <div className="text-center flex flex-col items-center">
+                                    <IconBadge icon={Truck} size="md" colorClass="text-jdt-olive" />
+                                    <p className="text-[10px] font-black text-jdt-text leading-tight mt-1">Semi #4</p>
                                     <p className="text-[9px] font-bold text-zinc-500">Truck</p>
                                   </div>
                                </div>
@@ -965,9 +1029,7 @@ export default function App() {
                          </div>
                          <div className="p-4 flex-1 flex flex-col">
                             <div className="flex gap-4">
-                               <div className="w-24 h-20 bg-zinc-200 rounded-lg overflow-hidden shrink-0 relative border border-zinc-300 flex items-center justify-center p-2">
-                                 <Truck className="h-12 w-12 text-jdt-tan animate-bounce" />
-                               </div>
+                               <IconBadge icon={Truck} size="xl" animated colorClass="text-jdt-tan" />
                                <div>
                                  <h4 className="text-lg font-black uppercase text-jdt-text leading-tight cursor-pointer hover:underline" onClick={() => openDrawer('equipment', 'CAT 988G Loader')}>CAT 988G<br/>Loader</h4>
                                  <p className="text-xs font-bold text-zinc-500 mt-1 leading-snug"><MapPin className="h-3 w-3 inline mr-1" />Waterford Jobsite</p>
@@ -1210,6 +1272,8 @@ export default function App() {
         data={modalConfig.data}
         openModal={openModal}
         onSaveRecord={onSaveRecord}
+        onDeleteRecord={onDeleteRecord}
+        onClearData={handleClearData}
         jobsList={jobs}
         loadsList={loads}
         ranchOaksList={ranchOaks}

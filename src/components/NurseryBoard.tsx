@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Search, Plus, Edit2, QrCode, ClipboardList, MapPin } from 'lucide-react';
+import { Search, Plus, Edit2, QrCode, ClipboardList, MapPin, Trash2 } from 'lucide-react';
+import { IconButton } from './IconBadge';
 
 export default function NurseryBoard({ starterRanchOaks, openDrawer, openModal }: { starterRanchOaks: any[], openDrawer: (type: string, id: string) => void, openModal: (type: string, data?: any) => void }) {
   const [inventoryFarm, setInventoryFarm] = useState('Office');
@@ -162,7 +163,7 @@ export default function NurseryBoard({ starterRanchOaks, openDrawer, openModal }
                        
                        <div className="mt-4 pt-3 border-t border-zinc-100 flex gap-2">
                           <button onClick={(e) => { e.stopPropagation(); openModal('assign_tree', oak); }} className="flex-1 bg-jdt-sand hover:bg-zinc-200 text-zinc-700 font-black uppercase text-[10px] rounded py-1.5 transition-colors z-10 relative">Assign</button>
-                          <button onClick={(e) => { e.stopPropagation(); openModal('qr', oak); }} className="bg-jdt-sand hover:bg-zinc-200 text-zinc-700 font-black uppercase text-[10px] rounded px-3 py-1.5 transition-colors flex items-center gap-1 z-10 relative"><QrCode className="h-3 w-3"/></button>
+                          <IconButton onClick={(e) => { e.stopPropagation(); openModal('qr', oak); }} icon={QrCode} size="sm" variant="ghost" colorClass="text-zinc-700" title="QR Code" className="z-10 relative bg-jdt-sand" />
                        </div>
                     </article>
                  ))}
@@ -226,8 +227,9 @@ export default function NurseryBoard({ starterRanchOaks, openDrawer, openModal }
                             <p className="text-[11px] font-bold text-zinc-500 mt-1"><span className="text-zinc-400">Spray:</span> {oak.lastSprayed || '-'} <span className="text-zinc-400">({oak.sprayType || '-'})</span></p>
                           </td>
                           <td className="px-4 py-3 text-right group-hover/row:bg-jdt-panel transition-colors">
-                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover/row:opacity-100 transition-opacity">
-                              <button onClick={(e) => { e.stopPropagation(); openModal('edit_tree', oak); }} className="p-1.5 hover:text-jdt-text text-zinc-400 bg-jdt-panel border border-jdt-border shadow-sm rounded-md z-10 relative"><Edit2 className="h-3.5 w-3.5" /></button>
+                            <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <IconButton onClick={(e) => { e.stopPropagation(); openModal('delete_tree', oak); }} icon={Trash2} title="Delete Tree" colorClass="text-red-600" />
+                              <IconButton onClick={(e) => { e.stopPropagation(); openModal('edit_tree', oak); }} icon={Edit2} title="Edit Tree" colorClass="text-zinc-500" />
                             </div>
                           </td>
                         </tr>

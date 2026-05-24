@@ -57,13 +57,22 @@ export default function ClientsBoard({ clients, openModal, openDrawer }: { clien
                   <p className="text-[11px] font-black uppercase text-zinc-400 mt-1 tracking-wider">{client.id.toUpperCase()}</p>
                 </div>
               </div>
-              <button 
-                onClick={() => openModal('client', client)}
-                className="p-1.5 text-zinc-400 hover:text-jdt-text bg-jdt-panel border border-jdt-border shadow-sm rounded-md transition-colors"
-                title="Edit Account"
-              >
-                Edit Account
-              </button>
+              <div className="flex gap-1.5">
+                <button 
+                  onClick={() => openModal('delete_client', client)}
+                  className="p-1.5 text-xs text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 shadow-sm rounded-md transition-colors font-black uppercase"
+                  title="Delete Account"
+                >
+                  Delete
+                </button>
+                <button 
+                  onClick={() => openModal('client', client)}
+                  className="p-1.5 text-xs text-zinc-500 hover:text-jdt-text bg-jdt-panel border border-jdt-border shadow-sm rounded-md transition-colors font-black uppercase"
+                  title="Edit Account"
+                >
+                  Edit
+                </button>
+              </div>
             </div>
 
             <div className="p-4 flex-1 grid sm:grid-cols-2 gap-4 text-xs">
@@ -81,6 +90,19 @@ export default function ClientsBoard({ clients, openModal, openDrawer }: { clien
                   <p className="text-[9px] font-black uppercase text-zinc-400 mb-0.5">Billing Address</p>
                   <p className="font-bold text-zinc-600 flex items-start gap-1.5"><MapPin className="h-3.5 w-3.5 text-zinc-400 shrink-0 mt-0.5"/> {client.billingAddress}</p>
                 </div>
+                {client.members && client.members.length > 0 && (
+                  <div className="pt-2 border-t border-dashed border-zinc-200 mt-2">
+                    <p className="text-[9px] font-black uppercase text-zinc-400 mb-1 flex items-center gap-1"><User className="h-2.5 w-2.5" /> Additional Reps</p>
+                    <div className="space-y-2">
+                      {client.members.map((m: any, i: number) => (
+                        <div key={i} className="text-[10px] leading-tight text-zinc-600">
+                          <p className="font-black text-jdt-text">{m.name} <span className="text-zinc-400 font-bold uppercase tracking-wide">({m.role})</span></p>
+                          <p className="font-bold">{m.phone} | {m.email}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-3">

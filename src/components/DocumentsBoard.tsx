@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Folder, FileText, CheckCircle2, AlertTriangle, Printer, Download, Eye, UploadCloud, Search, Plus } from 'lucide-react';
+import { IconBadge, IconButton } from './IconBadge';
 
 export default function DocumentsBoard({ openModal }: { openModal: (type: string) => void }) {
   const [docCategory, setDocCategory] = useState('All');
@@ -85,7 +86,7 @@ export default function DocumentsBoard({ openModal }: { openModal: (type: string
               <tr key={doc.id} className="hover:bg-jdt-sand transition-colors group">
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-3">
-                    <FileText className="h-5 w-5 text-zinc-400 group-hover:text-blue-600 shrink-0" />
+                    <IconBadge icon={FileText} size="sm" colorClass="text-zinc-500 group-hover:text-blue-600 transition-colors" />
                     <div>
                       <p className="font-extrabold text-jdt-text">{doc.name}</p>
                       <p className="text-[10px] font-black uppercase text-zinc-400 mt-0.5">{doc.category}</p>
@@ -105,9 +106,9 @@ export default function DocumentsBoard({ openModal }: { openModal: (type: string
                 </td>
                 <td className="px-5 py-4 text-right">
                   <div className="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
-                    <button className="p-1.5 text-zinc-400 hover:text-jdt-text hover:bg-zinc-200/50 rounded" title="View PDF"><Eye className="h-4 w-4" /></button>
-                    <button className="p-1.5 text-zinc-400 hover:text-jdt-text hover:bg-zinc-200/50 rounded" title="Download"><Download className="h-4 w-4" /></button>
-                    <button className="p-1.5 text-zinc-400 hover:text-jdt-text hover:bg-zinc-200/50 rounded" title="Print File"><Printer className="h-4 w-4" /></button>
+                    <IconButton variant="ghost" size="sm" icon={Eye} title="View PDF" colorClass="text-zinc-500" />
+                    <IconButton variant="ghost" size="sm" icon={Download} title="Download" colorClass="text-zinc-500" />
+                    <IconButton variant="ghost" size="sm" icon={Printer} title="Print File" colorClass="text-zinc-500" />
                   </div>
                 </td>
               </tr>

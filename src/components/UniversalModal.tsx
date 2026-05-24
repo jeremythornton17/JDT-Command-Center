@@ -9,6 +9,8 @@ export default function UniversalModal({
   data, 
   openModal,
   onSaveRecord, // state-altering callback
+  onDeleteRecord,
+  onClearData,
   jobsList = [],
   ranchOaksList = [],
   equipmentList = [],
@@ -20,6 +22,14 @@ export default function UniversalModal({
   const handleSave = () => {
     setIsSaving(true);
     setTimeout(() => {
+      const typeLower = type.toLowerCase();
+      if (typeLower.startsWith('delete_') && data && onDeleteRecord) {
+        const recordType = typeLower.replace('delete_', '');
+        onDeleteRecord(recordType, data.id);
+      } else if (typeLower.startsWith('clear_') && onClearData) {
+        const clearType = typeLower.replace('clear_', '');
+        onClearData(clearType);
+      }
       setIsSaving(false);
       onClose();
     }, 600);
@@ -84,6 +94,30 @@ export default function UniversalModal({
       config.title = `Edit Employee Profile: ${data.name || ''}`;
       config.desc = 'Update roles, phone, or specific skillset';
       config.btn = 'Save Changes';
+    } else if (type.toLowerCase() === 'delete_employee') {
+      config.title = `Delete Employee: ${data.name || ''}`;
+      config.desc = 'Are you sure you want to permanently delete this profile?';
+      config.btn = 'Yes, Delete Employee';
+    } else if (type.toLowerCase() === 'delete_job') {
+      config.title = `Delete Project: ${data.title || ''}`;
+      config.desc = 'Are you sure you want to permanently delete this project?';
+      config.btn = 'Yes, Delete Project';
+    } else if (type.toLowerCase() === 'delete_freight') {
+      config.title = `Delete Freight: ${data.loadNumber || data.title || ''}`;
+      config.desc = 'Are you sure you want to permanently delete this freight load?';
+      config.btn = 'Yes, Delete Freight';
+    } else if (type.toLowerCase() === 'delete_tree') {
+      config.title = `Delete Tree: ${data.treeId || ''}`;
+      config.desc = 'Are you sure you want to permanently delete this tree inventory record?';
+      config.btn = 'Yes, Delete Tree';
+    } else if (type.toLowerCase() === 'delete_equipment') {
+      config.title = `Delete Equipment: ${data.name || ''}`;
+      config.desc = 'Are you sure you want to permanently delete this equipment record?';
+      config.btn = 'Yes, Delete Equipment';
+    } else if (type.toLowerCase() === 'delete_client') {
+      config.title = `Delete Client: ${data.name || ''}`;
+      config.desc = 'Are you sure you want to permanently delete this client profile?';
+      config.btn = 'Yes, Delete Client';
     } else if (type.toLowerCase() === 'client') {
       config.title = `Edit Client Profile: ${data.name || ''}`;
       config.desc = 'Update client account and contact details';
@@ -109,6 +143,20 @@ export default function UniversalModal({
       config.desc = 'Update client, schedule window, or PM';
       config.btn = 'Save Changes';
     }
+  }
+
+  if (type.toLowerCase() === 'clear_clients') {
+    config.title = 'Clear All Clients';
+    config.desc = 'Are you sure you want to permanently delete ALL client profiles?';
+    config.btn = 'Yes, Clear Clients';
+  } else if (type.toLowerCase() === 'clear_jobs') {
+    config.title = 'Clear All Jobs';
+    config.desc = 'Are you sure you want to permanently delete ALL projects?';
+    config.btn = 'Yes, Clear Jobs';
+  } else if (type.toLowerCase() === 'clear_all') {
+    config.title = 'Factory Reset Workspace';
+    config.desc = 'Are you sure you want to permanently delete ALL data across the entire workspace?';
+    config.btn = 'Yes, Wipe Everything';
   }
 
   // If the form should manage its own footer buttons (which all stateful EntityForms do)
@@ -148,6 +196,16 @@ export default function UniversalModal({
                   crewsList={crewsList}
                   clientsList={clientsList}
                 />
+             ) : type.toLowerCase().startsWith('delete_') || type.toLowerCase().startsWith('clear_') ? (
+                <div className="flex flex-col items-center py-6 text-center space-y-4">
+                  <div className="h-16 w-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-2">
+                    <X className="h-8 w-8" />
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-black text-jdt-text mb-1">Confirm Deletion</h4>
+                    <p className="text-zinc-500 text-sm font-bold">This action cannot be undone. Are you sure you want to proceed?</p>
+                  </div>
+                </div>
              ) : (
              <div className="space-y-4">
                {['Field 1', 'Field 2', 'Notes'].map((f, i) => (
@@ -166,8 +224,8 @@ export default function UniversalModal({
           {!hasSelfFooter && type.toLowerCase() !== 'add_new' && (
             <div className="px-6 py-4 border-t border-jdt-border bg-jdt-panel flex items-center gap-3 justify-end pointer-events-auto">
                <button onClick={onClose} disabled={isSaving} className="px-4 py-2.5 text-xs font-black uppercase rounded-lg border border-jdt-border bg-jdt-panel text-zinc-700 shadow-sm hover:bg-jdt-sand disabled:opacity-50">Cancel</button>
-               <button onClick={handleSave} disabled={isSaving} className="flex flex-1 items-center justify-center gap-2 px-6 py-2.5 text-xs font-black uppercase rounded-lg bg-jdt-primary text-white shadow-sm hover:bg-jdt-dark transition-colors disabled:opacity-50 font-sans">
-                 {isSaving ? 'Saving...' : type.toLowerCase() === 'qr' ? 'Done' : <><Check className="h-4 w-4" /> {config.btn}</>}
+               <button onClick={handleSave} disabled={isSaving} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 text-xs font-black uppercase rounded-lg text-white shadow-sm transition-colors disabled:opacity-50 font-sans ${type.toLowerCase().startsWith('delete_') ? 'bg-red-600 hover:bg-red-700' : 'bg-jdt-primary hover:bg-jdt-dark'}`}>
+                 {isSaving ? (type.toLowerCase().startsWith('delete_') ? 'Deleting...' : 'Saving...') : type.toLowerCase() === 'qr' ? 'Done' : <><Check className="h-4 w-4" /> {config.btn}</>}
                </button>
             </div>
           )}

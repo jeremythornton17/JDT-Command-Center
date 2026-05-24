@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Wrench, MapPin, UserCheck, AlertTriangle, Clock, Activity, QrCode, ClipboardList, PenTool } from 'lucide-react';
+import { Wrench, MapPin, UserCheck, AlertTriangle, Clock, Activity, QrCode, ClipboardList, PenTool, Truck } from 'lucide-react';
+import { IconBadge, IconButton } from './IconBadge';
 
 export default function EquipmentBoard({ starterEquipment, openDrawer, openModal }: { starterEquipment: any[], openDrawer: (type: string, id: string) => void, openModal: (type: string, data?: any) => void }) {
 
@@ -56,11 +57,17 @@ export default function EquipmentBoard({ starterEquipment, openDrawer, openModal
                           onClick={() => openDrawer('equipment', eq.id)}
                         >
                            <div>
-                             <div className="flex items-center gap-2">
-                               <Wrench className="h-5 w-5 text-orange-600 group-hover:scale-110 transition-transform" />
-                               <h4 className="text-xl font-black text-jdt-primary group-hover:text-blue-700 transition-colors">{eq.name}</h4>
+                             <div className="flex items-center gap-3">
+                               <IconBadge 
+                                  icon={eq.type?.toLowerCase().includes('truck') ? Truck : Wrench} 
+                                  size="md" 
+                                  colorClass="text-orange-600 group-hover:scale-110 transition-transform" 
+                               />
+                               <div>
+                                 <h4 className="text-xl font-black text-jdt-primary group-hover:text-blue-700 transition-colors">{eq.name}</h4>
+                                 <p className="text-xs font-black uppercase text-zinc-500 tracking-wider mt-1">{eq.type} \u2022 {eq.id}</p>
+                               </div>
                              </div>
-                             <p className="text-xs font-black uppercase text-zinc-500 tracking-wider mt-1">{eq.type} \u2022 {eq.id}</p>
                            </div>
                            <span className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-black uppercase tracking-wider ${StatusColor(eq.status)}`}>
                              {eq.status}
@@ -99,11 +106,13 @@ export default function EquipmentBoard({ starterEquipment, openDrawer, openModal
                            )}
                         </div>
                         
-                        <div className="p-4 border-t border-jdt-border bg-jdt-panel/50 grid grid-cols-2 md:flex md:flex-wrap gap-2">
-                           <button onClick={() => openModal('set_eq_status', eq)} className="md:flex-1 rounded-md bg-jdt-primary py-2 text-xs font-black uppercase text-white shadow-sm hover:bg-jdt-dark whitespace-nowrap text-center">Edit Status</button>
-                           <button onClick={() => openModal('log_issue', eq)} className="md:flex-1 rounded-md bg-jdt-panel border border-jdt-border py-2 text-xs font-black uppercase text-zinc-800 shadow-sm hover:bg-jdt-panel whitespace-nowrap flex justify-center items-center gap-1.5"><PenTool className="h-3.5 w-3.5" /> Log Issue</button>
-                           <button onClick={() => openModal('print_card', eq)} className="rounded-md border border-jdt-border bg-jdt-panel px-3 py-2 text-zinc-600 hover:bg-jdt-panel shadow-sm flex items-center justify-center" title="Print Service Card"><ClipboardList className="h-4 w-4" /></button>
-                           <button onClick={() => openModal('qr', eq)} className="rounded-md border border-jdt-border bg-jdt-panel px-3 py-2 text-zinc-600 hover:bg-jdt-panel shadow-sm flex items-center justify-center" title="Show QR"><QrCode className="h-4 w-4" /></button>
+                        <div className="p-4 border-t border-jdt-border bg-jdt-panel/50 flex flex-wrap gap-2">
+                           <button onClick={() => openModal('set_eq_status', eq)} className="flex-1 rounded-md bg-jdt-primary py-2 px-2 text-[10px] font-black uppercase text-white shadow-sm hover:bg-jdt-dark whitespace-nowrap text-center">Set Status</button>
+                           <button onClick={() => openModal('log_issue', eq)} className="flex-1 rounded-md bg-jdt-panel border border-jdt-border py-2 px-2 text-[10px] font-black uppercase text-zinc-800 shadow-sm hover:bg-jdt-panel whitespace-nowrap flex justify-center items-center gap-1.5"><PenTool className="h-3 w-3" /> Log Issue</button>
+                           <button onClick={() => openModal('edit_equipment', eq)} className="flex-1 rounded-md bg-jdt-panel border border-jdt-border py-2 px-2 text-[10px] font-black uppercase text-zinc-800 shadow-sm hover:bg-jdt-panel whitespace-nowrap text-center">Edit</button>
+                           <button onClick={() => openModal('delete_equipment', eq)} className="flex-1 rounded-md bg-red-50 border border-red-200 text-red-700 py-2 px-2 text-[10px] font-black uppercase shadow-sm hover:bg-red-100 whitespace-nowrap text-center">Delete</button>
+                           <IconButton onClick={(e) => { e.stopPropagation(); openModal('print_card', eq); }} icon={ClipboardList} title="Print Service Card" />
+                           <IconButton onClick={(e) => { e.stopPropagation(); openModal('qr', eq); }} icon={QrCode} title="Show QR" />
                         </div>
                      </article>
                    ))}

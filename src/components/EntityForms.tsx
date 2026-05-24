@@ -1,5 +1,16 @@
-import React, { useState } from 'react';
-import { Briefcase, Building2, User, Leaf, Truck, Wrench, AlertTriangle, Users, CheckSquare, FilePlus, ChevronRight, Check, PenTool } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Briefcase, Building2, User, Leaf, Truck, Wrench, AlertTriangle, Users, CheckSquare, FilePlus, ChevronRight, Check, PenTool, Plus, Trash2 } from 'lucide-react';
+
+const formatPhoneNumber = (value: string) => {
+  if (!value) return value;
+  const phoneNumber = value.replace(/[^\d]/g, '');
+  const phoneNumberLength = phoneNumber.length;
+  if (phoneNumberLength < 4) return phoneNumber;
+  if (phoneNumberLength < 7) {
+    return `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(3)}`;
+  }
+  return `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(3, 6)}-${phoneNumber.slice(6, 10)}`;
+};
 
 export default function EntityForms({ 
   type, 
@@ -27,8 +38,8 @@ export default function EntityForms({
   const [formData, setFormData] = useState<any>(() => {
     if (data) {
       const initial = { ...data };
-      if (initial.skills && initial.skills.length > 0 && !initial.skill) {
-        initial.skill = initial.skills[0];
+      if (!initial.skills && initial.skill && typeof initial.skill === 'string') {
+        initial.skills = initial.skill.split(',').map((s: string) => s.trim()).filter(Boolean);
       }
       return initial;
     }
@@ -43,6 +54,36 @@ export default function EntityForms({
   const [uploadedFiles, setUploadedFiles] = useState<any[]>(() => {
     return formData.jobDocuments || [];
   });
+  const [skillInput, setSkillInput] = useState('');
+  const [exceptionalSkillInput, setExceptionalSkillInput] = useState('');
+
+  const availableSkills = useMemo(() => {
+    const skills = new Set<string>();
+    crewsList?.forEach(c => {
+      if (c.skills && Array.isArray(c.skills)) {
+        c.skills.forEach((s: string) => skills.add(s));
+      } else if (c.skill && typeof c.skill === 'string') {
+        c.skill.split(',').forEach((s: string) => skills.add(s.trim()));
+      }
+      
+      if (c.exceptionalSkills && Array.isArray(c.exceptionalSkills)) {
+        c.exceptionalSkills.forEach((s: string) => skills.add(s));
+      }
+    });
+    return Array.from(skills).filter(Boolean).sort();
+  }, [crewsList]);
+
+  const availableRoles = useMemo(() => {
+    const roles = new Set<string>();
+    clientsList?.forEach(c => {
+      if (Array.isArray(c.members)) {
+        c.members.forEach((m: any) => {
+          if (m.role) roles.add(m.role);
+        });
+      }
+    });
+    return Array.from(roles).sort();
+  }, [clientsList]);
 
   const handleStageImport = () => {
     if (!pastedSpreadsheet.trim()) return;
@@ -433,7 +474,7 @@ export default function EntityForms({
             </div>
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Phone Number *</label>
-              <input type="text" value={formData.phone || ''} onChange={e => handleChange('phone', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" placeholder="561-555-0100" required />
+              <input type="text" value={formData.phone || ''} onChange={e => handleChange('phone', formatPhoneNumber(e.target.value))} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" placeholder="561-555-0100" required />
             </div>
           </div>
           <div>
@@ -447,6 +488,80 @@ export default function EntityForms({
           <div>
             <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Gate / Site Access Instructions</label>
             <textarea value={formData.accessNotes || ''} onChange={e => handleChange('accessNotes', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none h-20 focus:border-zinc-500" placeholder="Acreage gate keycode 8200#. Ask for Mike on radio channel 3." />
+          </div>
+          <div className="pt-4 border-t border-jdt-border mt-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <label className="block text-xs font-black uppercase text-jdt-text">Additional Representation / Team</label>
+                <p className="text-[10px] font-bold text-zinc-500 mt-0.5">Attach PMs, Site Supers, Architects, etc.</p>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setFormData((prev: any) => ({ ...prev, members: [...(prev.members || []), { name: '', role: '', phone: '', email: '' }] }))}
+                className="px-3 py-1.5 bg-jdt-sand border border-jdt-border rounded-lg text-[10px] font-black uppercase hover:bg-jdt-border transition-colors flex items-center gap-1 shadow-sm"
+              >
+                <Plus className="h-3 w-3" /> Add Member
+              </button>
+            </div>
+            
+            <datalist id="company-roles">
+              {availableRoles.map(role => (
+                <option key={role} value={role} />
+              ))}
+            </datalist>
+
+            <div className="space-y-3">
+              {(formData.members || []).map((m: any, i: number) => (
+                <div key={i} className="p-4 bg-white border border-jdt-border rounded-lg relative shadow-sm">
+                  <button 
+                    type="button"
+                    onClick={() => setFormData((prev: any) => ({ ...prev, members: prev.members.filter((_: any, idx: number) => idx !== i) }))}
+                    className="absolute top-3 right-3 text-red-400 hover:text-red-600 hover:bg-red-50 rounded p-1.5 transition-colors"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                  <div className="grid sm:grid-cols-2 gap-4 mr-8">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Name *</label>
+                      <input type="text" value={m.name || ''} onChange={e => {
+                        const newMembers = [...(formData.members || [])];
+                        newMembers[i] = { ...newMembers[i], name: e.target.value };
+                        handleChange('members', newMembers);
+                      }} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" required />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Role Type *</label>
+                      <input type="text" list="company-roles" value={m.role || ''} onChange={e => {
+                        const newMembers = [...(formData.members || [])];
+                        newMembers[i] = { ...newMembers[i], role: e.target.value };
+                        handleChange('members', newMembers);
+                      }} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" placeholder="e.g. Architect, Super" required />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Phone</label>
+                      <input type="text" value={m.phone || ''} onChange={e => {
+                        const newMembers = [...(formData.members || [])];
+                        newMembers[i] = { ...newMembers[i], phone: formatPhoneNumber(e.target.value) };
+                        handleChange('members', newMembers);
+                      }} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Email</label>
+                      <input type="email" value={m.email || ''} onChange={e => {
+                        const newMembers = [...(formData.members || [])];
+                        newMembers[i] = { ...newMembers[i], email: e.target.value };
+                        handleChange('members', newMembers);
+                      }} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {(formData.members?.length === 0 || !formData.members) && (
+                <div className="p-8 text-center border-2 border-dashed border-jdt-border rounded-lg text-zinc-400 font-bold text-sm bg-jdt-panel">
+                  No additional team members attached
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -474,7 +589,7 @@ export default function EntityForms({
             </div>
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Contact Phone</label>
-              <input type="text" value={formData.phone || ''} onChange={e => handleChange('phone', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" />
+              <input type="text" value={formData.phone || ''} onChange={e => handleChange('phone', formatPhoneNumber(e.target.value))} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" />
             </div>
           </div>
           <div>
@@ -763,10 +878,10 @@ export default function EntityForms({
             </div>
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Contact Phone</label>
-              <input type="text" value={formData.phone || ''} onChange={e => handleChange('phone', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" placeholder="561-555-0100" />
+              <input type="text" value={formData.phone || ''} onChange={e => handleChange('phone', formatPhoneNumber(e.target.value))} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" placeholder="561-555-0100" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-4">
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Language Preference</label>
               <select value={formData.language || 'Bilingual'} onChange={e => handleChange('language', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500">
@@ -775,9 +890,100 @@ export default function EntityForms({
                 <option value="English">English Only</option>
               </select>
             </div>
+            
+            <datalist id="available-skills">
+              {availableSkills.map(s => <option key={s} value={s} />)}
+            </datalist>
+
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Primary Operation Skills</label>
-              <input type="text" value={formData.skill || ''} onChange={e => handleChange('skill', e.target.value)} className="w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" placeholder="e.g. Rigging, Large Spade" />
+              <div className="flex gap-2 mb-2">
+                <input 
+                  type="text" 
+                  list="available-skills"
+                  value={skillInput} 
+                  onChange={e => setSkillInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && skillInput.trim()) {
+                      e.preventDefault();
+                      handleChange('skills', [...(formData.skills || []), skillInput.trim()]);
+                      setSkillInput('');
+                    }
+                  }}
+                  className="flex-1 rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-zinc-500" 
+                  placeholder="e.g. Rigging, Large Spade" 
+                />
+                <button 
+                  type="button"
+                  onClick={() => {
+                    if (skillInput.trim()) {
+                      handleChange('skills', [...(formData.skills || []), skillInput.trim()]);
+                      setSkillInput('');
+                    }
+                  }}
+                  className="px-3 py-2 bg-jdt-sand border border-jdt-border rounded-lg text-xs font-black uppercase hover:bg-jdt-border transition-colors flex items-center gap-1 shadow-sm"
+                >
+                  <Plus className="h-4 w-4" /> Add
+                </button>
+              </div>
+              {formData.skills && formData.skills.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {formData.skills.map((s: string, i: number) => (
+                    <span key={i} className="bg-white border border-jdt-border text-jdt-text rounded px-2 py-1 text-[10px] font-bold flex items-center gap-1 shadow-sm">
+                      {s}
+                      <button type="button" onClick={() => handleChange('skills', formData.skills.filter((_: any, idx: number) => idx !== i))} className="text-zinc-400 hover:text-red-500 ml-1">
+                        &times;
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Exceptional Skill(s)</label>
+              <p className="text-[9px] font-bold text-zinc-400 mb-2 leading-tight">Key skill that separates individuals within a role field. Exhibited just beneath role.</p>
+              <div className="flex gap-2 pr-1 mb-2">
+                <input 
+                  type="text" 
+                  list="available-skills"
+                  value={exceptionalSkillInput} 
+                  onChange={e => setExceptionalSkillInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && exceptionalSkillInput.trim()) {
+                      e.preventDefault();
+                      handleChange('exceptionalSkills', [...(formData.exceptionalSkills || []), exceptionalSkillInput.trim()]);
+                      setExceptionalSkillInput('');
+                    }
+                  }}
+                  className="flex-1 rounded-lg border border-orange-200 bg-orange-50/30 px-3 py-2 text-sm font-bold text-orange-900 outline-none focus:border-orange-400" 
+                  placeholder="e.g. Master Grafter, CDL Class A" 
+                />
+                <button 
+                  type="button"
+                  onClick={() => {
+                    if (exceptionalSkillInput.trim()) {
+                      handleChange('exceptionalSkills', [...(formData.exceptionalSkills || []), exceptionalSkillInput.trim()]);
+                      setExceptionalSkillInput('');
+                    }
+                  }}
+                  className="px-3 py-2 bg-orange-100 border border-orange-200 text-orange-800 rounded-lg text-xs font-black uppercase hover:bg-orange-200 transition-colors flex items-center gap-1 shadow-sm"
+                >
+                  <Plus className="h-4 w-4" /> Add
+                </button>
+              </div>
+              {formData.exceptionalSkills && formData.exceptionalSkills.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {formData.exceptionalSkills.map((s: string, i: number) => (
+                    <span key={i} className="bg-orange-100 border border-orange-200 text-orange-800 rounded px-2 py-1 text-[10px] font-bold flex items-center gap-1 shadow-sm">
+                      {s}
+                      <button type="button" onClick={() => handleChange('exceptionalSkills', formData.exceptionalSkills.filter((_: any, idx: number) => idx !== i))} className="text-orange-400 hover:text-red-500 ml-1">
+                        &times;
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

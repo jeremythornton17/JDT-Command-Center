@@ -1,5 +1,6 @@
 import React from 'react';
 import { Truck, MapPin, Clock, CheckCircle2, UserCheck, AlertTriangle, QrCode, FileText } from 'lucide-react';
+import { IconButton } from './IconBadge';
 
 export function InfoTag({ icon: Icon, label, value, bg = "bg-jdt-sand/50" }: any) {
   return (
@@ -119,11 +120,12 @@ export default function FreightBoard({ loads, openDrawer, openModal }: { loads: 
                  
                  <div className="mt-6 flex flex-wrap gap-2">
                    <button onClick={() => openModal('set_freight_status', load)} className="flex-1 rounded-md bg-jdt-primary py-2.5 text-xs font-black uppercase text-white shadow-sm hover:bg-jdt-dark">Set Status</button>
-                   <button onClick={() => openModal('edit_freight', load)} className="flex-1 rounded-md bg-jdt-panel border border-jdt-border py-2.5 text-xs font-black uppercase text-zinc-800 shadow-sm hover:bg-jdt-panel border-r-0">Edit Load</button>
+                   <button onClick={() => openModal('edit_freight', load)} className="flex-1 rounded-md bg-jdt-panel border border-jdt-border py-2.5 text-xs font-black uppercase text-zinc-800 shadow-sm hover:bg-jdt-panel">Edit</button>
+                   <button onClick={() => openModal('delete_freight', load)} className="flex-1 rounded-md bg-red-50 border border-red-200 text-red-700 py-2.5 text-xs font-black uppercase shadow-sm hover:bg-red-100">Delete</button>
                    <button onClick={() => openModal('delay', load)} className="rounded-md border border-red-200 bg-red-50 text-red-700 px-3 py-2 hover:bg-red-100 shadow-sm font-black uppercase text-[10px]" title="Mark Delayed">Delay</button>
-                   <button onClick={() => openModal('complete', load)} className="rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 px-3 py-2 hover:bg-emerald-100 shadow-sm font-black uppercase text-[10px]" title="Mark Completed"><CheckCircle2 className="h-3.5 w-3.5" /></button>
-                   <button onClick={() => openModal('log_issue', load)} className="rounded-md border border-jdt-border bg-jdt-panel px-3 py-2 text-zinc-600 hover:bg-jdt-panel shadow-sm" title="Add Issue Note"><FileText className="h-4 w-4" /></button>
-                   <button onClick={() => openModal('qr', load)} className="rounded-md border border-jdt-border bg-jdt-panel px-3 py-2 text-zinc-600 hover:bg-jdt-panel shadow-sm" title="Driver QR"><QrCode className="h-4 w-4" /></button>
+                   <button onClick={() => openModal('complete', load)} className="flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 px-3 py-2 hover:bg-emerald-100 shadow-sm font-black uppercase text-[10px]" title="Mark Completed"><CheckCircle2 className="h-3.5 w-3.5" /></button>
+                   <IconButton onClick={() => openModal('log_issue', load)} icon={FileText} title="Add Issue Note" />
+                   <IconButton onClick={() => openModal('qr', load)} icon={QrCode} title="Driver QR" />
                  </div>
                </div>
              </div>

@@ -130,8 +130,8 @@ export default function SettingsBoard({ openModal }: { openModal: (type: string)
           {activeSubTab === 'database' && (
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-black text-jdt-text uppercase">Local DB Backup Status</h3>
-                <p className="text-xs font-bold text-zinc-500 mt-1">Export active jobs, client details, fleet assets, and alerts as offline files</p>
+                <h3 className="text-lg font-black text-jdt-text uppercase">Local DB Backup Status & Control</h3>
+                <p className="text-xs font-bold text-zinc-500 mt-1">Export active jobs, client details, fleet assets, and alerts as offline files, or reset environments.</p>
               </div>
 
               <div className="flex gap-2">
@@ -139,6 +139,34 @@ export default function SettingsBoard({ openModal }: { openModal: (type: string)
                   <Download className="h-8 w-8 text-zinc-400 mb-3" />
                   Download Complete DB (JSON)
                 </button>
+              </div>
+
+              <div className="border-t border-jdt-border pt-6 mt-6">
+                <div className="bg-red-50/50 border border-red-200 rounded-xl p-6">
+                   <h4 className="text-sm font-black text-red-900 uppercase mb-1">Danger Zone</h4>
+                   <p className="text-xs text-red-700/80 font-bold mb-4">Clearing database tables will permanently delete these records for all connected users.</p>
+                   
+                   <div className="flex flex-wrap gap-3">
+                     <button 
+                       onClick={() => openModal('clear_clients')}
+                       className="bg-red-100 hover:bg-red-200 text-red-800 border border-red-200 shadow-sm px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
+                     >
+                       Clear All Clients
+                     </button>
+                     <button 
+                       onClick={() => openModal('clear_jobs')}
+                       className="bg-red-100 hover:bg-red-200 text-red-800 border border-red-200 shadow-sm px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
+                     >
+                       Clear All Jobs
+                     </button>
+                     <button 
+                       onClick={() => openModal('clear_all')}
+                       className="bg-red-600 hover:bg-red-700 text-white shadow-sm px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
+                     >
+                       Wipe Factory Reset
+                     </button>
+                   </div>
+                </div>
               </div>
             </div>
           )}

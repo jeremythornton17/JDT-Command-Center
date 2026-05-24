@@ -6,6 +6,7 @@ import { doc, getDocFromServer } from "firebase/firestore";
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  accessToken: string | null;
   signIn: () => Promise<void>;
   logOut: () => Promise<void>;
 }
@@ -17,6 +18,7 @@ export const useAuth = () => useContext(AuthContext);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
     // Validate connection
@@ -33,6 +35,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const unsubscribe = auth.onAuthStateChanged((user) => {
       setUser(user);
+      if (!user) {
+        setAccessToken(null);
+      }
       setLoading(false);
     });
 
@@ -41,15 +46,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async () => {
     const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    provider.addScope('https://www.googleapis.com/auth/drive');
+    provider.addScope('https://www.googleapis.com/auth/calendar');
+    provider.addScope('https://www.googleapis.com/auth/spreadsheets');
+    provider.addScope('https://mail.google.com/');
+    provider.addScope('https://www.googleapis.com/auth/contacts');
+    
+    // Request additional prompt for refresh mechanics if needed later
+    provider.setCustomParameters({
+      prompt: 'consent'
+    });
+
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setAccessToken(credential.accessToken);
+      }
+    } catch (error) {
+      console.error("Sign in failed", error);
+    }
   };
 
   const logOut = async () => {
     await signOut(auth);
+    setAccessToken(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, logOut }}>
+    <AuthContext.Provider value={{ user, loading, accessToken, signIn, logOut }}>
       {!loading && children}
     </AuthContext.Provider>
   );
