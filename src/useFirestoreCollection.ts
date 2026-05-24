@@ -1,10 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { useState, useEffect } from 'react';
+import { collection, onSnapshot, doc, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebase';
 
-export function useFirestoreSyncState<T extends { id: string }>(collectionName: string, initialData: T[], enabled: boolean = true) {
-  const [data, setData] = useState<T[]>(initialData);
-  const seeded = useRef(false);
+export function useFirestoreSyncState<T extends { id: string }>(collectionName: string, _initialData: T[], enabled: boolean = true) {
+  const [data, setData] = useState<T[]>([]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -12,25 +11,13 @@ export function useFirestoreSyncState<T extends { id: string }>(collectionName: 
     const colRef = collection(db, collectionName);
     const unsubscribe = onSnapshot(colRef, (snapshot) => {
       const fetchedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
-      if (fetchedData.length === 0 && initialData.length > 0 && !seeded.current) {
-        seeded.current = true;
-        setData(initialData);
-        // Seed database
-        const batch = writeBatch(db);
-        initialData.forEach(item => {
-          const docRef = doc(db, collectionName, item.id);
-          batch.set(docRef, item);
-        });
-        batch.commit().catch(err => console.error("Seed error:", err));
-      } else {
-        setData(fetchedData);
-      }
+      setData(fetchedData);
     }, (err) => {
       handleFirestoreError(err, OperationType.LIST, collectionName);
     });
 
     return () => unsubscribe();
-  }, [collectionName]);
+  }, [collectionName, enabled]);
 
   const customSetData = (action: T[] | ((prev: T[]) => T[])) => {
     setData((prev) => {
