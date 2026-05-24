@@ -36,6 +36,7 @@ export default function UniversalModal({
   };
 
   if (!isOpen) return null;
+  const typeLower = type.toLowerCase();
 
   const MODAL_CONFIG: any = {
     'add_new': { title: 'What are you adding?', desc: 'Select the type of record to create', btn: 'Continue' },
@@ -84,89 +85,102 @@ export default function UniversalModal({
     'move_unfinished', 'edit_project', 'print_packet', 'import_csv', 'export_csv', 'closeout', 'sync_all', 'connect_source', 
     'add_mapping', 'apply_sync', 'save_profile', 'review_errors', 'set_freight_status', 'edit_freight', 'edit_equipment', 
     'assign_tree', 'add_tree', 'log_prune', 'treatment', 'move_check', 'edit_tree'
-  ].includes(type.toLowerCase());
-  const baseConfig = MODAL_CONFIG[type.toLowerCase()] || { title: type.toUpperCase(), desc: 'Action Form', btn: 'Confirm' };
+  ].includes(typeLower);
+  const baseConfig = MODAL_CONFIG[typeLower] || { title: type.toUpperCase(), desc: 'Action Form', btn: 'Confirm' };
   const config = { ...baseConfig };
 
   if (data) {
     const dataId = data.id || data.treeId || data.title || '';
-    if (type.toLowerCase() === 'employee') {
+    if (typeLower === 'employee') {
       config.title = `Edit Employee Profile: ${data.name || ''}`;
       config.desc = 'Update roles, phone, or specific skillset';
       config.btn = 'Save Changes';
-    } else if (type.toLowerCase() === 'delete_employee') {
+    } else if (typeLower === 'delete_employee') {
       config.title = `Delete Employee: ${data.name || ''}`;
       config.desc = 'Are you sure you want to permanently delete this profile?';
       config.btn = 'Yes, Delete Employee';
-    } else if (type.toLowerCase() === 'delete_job') {
+    } else if (typeLower === 'delete_job') {
       config.title = `Delete Project: ${data.title || ''}`;
       config.desc = 'Are you sure you want to permanently delete this project?';
       config.btn = 'Yes, Delete Project';
-    } else if (type.toLowerCase() === 'delete_freight') {
+    } else if (typeLower === 'delete_freight') {
       config.title = `Delete Freight: ${data.loadNumber || data.title || ''}`;
       config.desc = 'Are you sure you want to permanently delete this freight load?';
       config.btn = 'Yes, Delete Freight';
-    } else if (type.toLowerCase() === 'delete_tree') {
+    } else if (typeLower === 'delete_tree') {
       config.title = `Delete Tree: ${data.treeId || ''}`;
       config.desc = 'Are you sure you want to permanently delete this tree inventory record?';
       config.btn = 'Yes, Delete Tree';
-    } else if (type.toLowerCase() === 'delete_equipment') {
+    } else if (typeLower === 'delete_equipment') {
       config.title = `Delete Equipment: ${data.name || ''}`;
       config.desc = 'Are you sure you want to permanently delete this equipment record?';
       config.btn = 'Yes, Delete Equipment';
-    } else if (type.toLowerCase() === 'delete_client') {
+    } else if (typeLower === 'delete_client') {
       config.title = `Delete Client: ${data.name || ''}`;
       config.desc = 'Are you sure you want to permanently delete this client profile?';
       config.btn = 'Yes, Delete Client';
-    } else if (type.toLowerCase() === 'client') {
+    } else if (typeLower === 'client') {
       config.title = `Edit Client Profile: ${data.name || ''}`;
       config.desc = 'Update client account and contact details';
       config.btn = 'Save Changes';
-    } else if (type.toLowerCase() === 'contact') {
+    } else if (typeLower === 'contact') {
       config.title = `Edit Contact: ${data.name || ''}`;
       config.desc = 'Update representative details';
       config.btn = 'Save Changes';
-    } else if (type.toLowerCase() === 'tree' || type.toLowerCase() === 'edit_tree') {
+    } else if (typeLower === 'tree' || typeLower === 'edit_tree') {
       config.title = `Edit Tree Profile: ${data.treeId || dataId || ''}`;
       config.desc = 'Update species, zone, or status details';
       config.btn = 'Save Changes';
-    } else if (type.toLowerCase() === 'edit_equipment' || type.toLowerCase() === 'equipment') {
+    } else if (typeLower === 'edit_equipment' || typeLower === 'equipment') {
       config.title = `Edit Equipment Profile: ${data.name || ''}`;
       config.desc = 'Update hours, status, or asset assignments';
       config.btn = 'Save Changes';
-    } else if (type.toLowerCase() === 'edit_freight' || type.toLowerCase() === 'load') {
+    } else if (typeLower === 'edit_freight' || typeLower === 'load') {
       config.title = `Edit Freight Load: ${data.loadNumber || data.title || ''}`;
       config.desc = 'Update stops, dispatch state, and details';
       config.btn = 'Save Changes';
-    } else if (type.toLowerCase() === 'edit_project' || type.toLowerCase() === 'job') {
+    } else if (typeLower === 'edit_project' || typeLower === 'job') {
       config.title = `Edit Project Details: ${data.title || ''}`;
       config.desc = 'Update client, schedule window, or PM';
       config.btn = 'Save Changes';
     }
   }
 
-  if (type.toLowerCase() === 'clear_clients') {
-    config.title = 'Clear All Clients';
-    config.desc = 'Are you sure you want to permanently delete ALL client profiles?';
-    config.btn = 'Yes, Clear Clients';
-  } else if (type.toLowerCase() === 'clear_jobs') {
-    config.title = 'Clear All Jobs';
-    config.desc = 'Are you sure you want to permanently delete ALL projects?';
-    config.btn = 'Yes, Clear Jobs';
-  } else if (type.toLowerCase() === 'clear_all') {
-    config.title = 'Factory Reset Workspace';
-    config.desc = 'Are you sure you want to permanently delete ALL data across the entire workspace?';
-    config.btn = 'Yes, Wipe Everything';
+  if (typeLower.startsWith('clear_')) {
+    const clearKey = typeLower.replace('clear_', '');
+    const clearLabels: Record<string, string> = {
+      all: 'Everything',
+      clients: 'Clients',
+      jobs: 'Projects',
+      projects: 'Projects',
+      crews: 'Crews',
+      employees: 'Crews',
+      equipment: 'Equipment',
+      freight: 'Freight Loads',
+      loads: 'Freight Loads',
+      trees: 'Tree Records',
+      ranch_oaks: 'Tree Records',
+      alerts: 'Alerts',
+    };
+    const label = clearLabels[clearKey] || clearKey.replace(/_/g, ' ');
+    config.title = clearKey === 'all' ? 'Factory Reset Workspace' : `Clear ${label}`;
+    config.desc = clearKey === 'all'
+      ? 'Are you sure you want to permanently delete ALL data across the entire workspace?'
+      : `Are you sure you want to permanently delete all ${label.toLowerCase()}?`;
+    config.btn = clearKey === 'all' ? 'Yes, Wipe Everything' : `Yes, Clear ${label}`;
   }
 
+  const isDestructiveAction = typeLower.startsWith('delete_') || typeLower.startsWith('clear_');
+  const isClearAction = typeLower.startsWith('clear_');
+
   // If the form should manage its own footer buttons (which all stateful EntityForms do)
-  const hasSelfFooter = isEntityForm && type !== 'add_new';
+  const hasSelfFooter = isEntityForm && typeLower !== 'add_new';
 
   return (
     <>
       <div className="fixed inset-0 bg-jdt-primary/60 backdrop-blur-sm z-[60] pointer-events-auto" onClick={onClose} />
       <div className="fixed inset-0 flex items-center justify-center p-4 z-[70] pointer-events-none">
-        <div className={`bg-jdt-panel rounded-xl shadow-2xl w-full ${isEntityForm && type !== 'add_new' ? 'max-w-2xl' : 'max-w-lg'} pointer-events-auto flex flex-col max-h-[90vh] overflow-hidden`}>
+        <div className={`bg-jdt-panel rounded-xl shadow-2xl w-full ${isEntityForm && typeLower !== 'add_new' ? 'max-w-2xl' : 'max-w-lg'} pointer-events-auto flex flex-col max-h-[90vh] overflow-hidden`}>
           <div className="px-6 py-4 border-b border-jdt-border flex items-center justify-between bg-jdt-panel">
              <div>
                <h3 className="text-xl font-black text-jdt-text leading-tight">{config.title}</h3>
@@ -178,14 +192,14 @@ export default function UniversalModal({
           </div>
           
           <div className="p-6 overflow-y-auto bg-jdt-panel flex-1">
-             {type.toLowerCase() === 'qr' ? (
+             {typeLower === 'qr' ? (
                 <div className="flex flex-col items-center py-8">
                    <div className="w-48 h-48 bg-zinc-900 rounded-xl mb-6"></div>
                    <p className="font-black tracking-wide text-zinc-500 uppercase text-xs">JDT-{Math.floor(Math.random()*10000)}</p>
                 </div>
              ) : isEntityForm ? (
                 <EntityForms 
-                  type={type.toLowerCase()} 
+                  type={typeLower} 
                   onClose={onClose} 
                   openModal={openModal} 
                   onSaveRecord={onSaveRecord}
@@ -196,13 +210,13 @@ export default function UniversalModal({
                   crewsList={crewsList}
                   clientsList={clientsList}
                 />
-             ) : type.toLowerCase().startsWith('delete_') || type.toLowerCase().startsWith('clear_') ? (
+             ) : isDestructiveAction ? (
                 <div className="flex flex-col items-center py-6 text-center space-y-4">
                   <div className="h-16 w-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-2">
                     <X className="h-8 w-8" />
                   </div>
                   <div>
-                    <h4 className="text-lg font-black text-jdt-text mb-1">Confirm Deletion</h4>
+                    <h4 className="text-lg font-black text-jdt-text mb-1">{isClearAction ? 'Confirm Reset' : 'Confirm Deletion'}</h4>
                     <p className="text-zinc-500 text-sm font-bold">This action cannot be undone. Are you sure you want to proceed?</p>
                   </div>
                 </div>
@@ -221,11 +235,11 @@ export default function UniversalModal({
              )}
           </div>
           
-          {!hasSelfFooter && type.toLowerCase() !== 'add_new' && (
+          {!hasSelfFooter && typeLower !== 'add_new' && (
             <div className="px-6 py-4 border-t border-jdt-border bg-jdt-panel flex items-center gap-3 justify-end pointer-events-auto">
                <button onClick={onClose} disabled={isSaving} className="px-4 py-2.5 text-xs font-black uppercase rounded-lg border border-jdt-border bg-jdt-panel text-zinc-700 shadow-sm hover:bg-jdt-sand disabled:opacity-50">Cancel</button>
-               <button onClick={handleSave} disabled={isSaving} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 text-xs font-black uppercase rounded-lg text-white shadow-sm transition-colors disabled:opacity-50 font-sans ${type.toLowerCase().startsWith('delete_') ? 'bg-red-600 hover:bg-red-700' : 'bg-jdt-primary hover:bg-jdt-dark'}`}>
-                 {isSaving ? (type.toLowerCase().startsWith('delete_') ? 'Deleting...' : 'Saving...') : type.toLowerCase() === 'qr' ? 'Done' : <><Check className="h-4 w-4" /> {config.btn}</>}
+               <button onClick={handleSave} disabled={isSaving} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 text-xs font-black uppercase rounded-lg text-white shadow-sm transition-colors disabled:opacity-50 font-sans ${isDestructiveAction ? 'bg-red-600 hover:bg-red-700' : 'bg-jdt-primary hover:bg-jdt-dark'}`}>
+                 {isSaving ? (isClearAction ? 'Clearing...' : isDestructiveAction ? 'Deleting...' : 'Saving...') : typeLower === 'qr' ? 'Done' : <><Check className="h-4 w-4" /> {config.btn}</>}
                </button>
             </div>
           )}
