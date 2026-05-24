@@ -334,7 +334,7 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
           <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
             <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5 mb-3"><TreePine className="h-4 w-4 text-emerald-700" /> Tree Pin List</h3>
             <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-              {treeRecords.map(tree => {
+              {treeRecords.length > 0 ? treeRecords.map(tree => {
                 const status = getTreeRelocationStatus(tree);
                 return (
                   <button
@@ -350,7 +350,12 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
                     <p className="text-[11px] font-bold text-zinc-500 mt-1">{tree.farm || 'Farm'} - {tree.zone || 'Zone'} - {tree.ranchOakType || 'Tree'}</p>
                   </button>
                 );
-              })}
+              }) : (
+                <div className="rounded-lg border border-dashed border-jdt-border bg-white p-4 text-center">
+                  <p className="text-xs font-black uppercase text-jdt-text">No tree records yet</p>
+                  <p className="mt-1 text-[11px] font-bold text-zinc-500">Add tree inventory to start placing relocation pins.</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -365,7 +370,7 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
           <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
             <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5 mb-3"><ClipboardList className="h-4 w-4 text-jdt-primary" /> Selected Tree Tasks</h3>
             <div className="space-y-2">
-              {selectedTasks.map(task => (
+              {selectedTasks.length > 0 ? selectedTasks.map(task => (
                 <div key={task.id} className="rounded-lg border border-jdt-border bg-white p-3">
                   <div className="flex justify-between gap-2">
                     <span className="text-xs font-black text-jdt-text">{task.label}</span>
@@ -374,7 +379,12 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
                   <p className="text-[10px] font-black uppercase text-zinc-400 mt-1">Assign: {task.assignedRole}</p>
                   <p className="text-[11px] font-bold text-zinc-500 mt-1">{task.detail}</p>
                 </div>
-              ))}
+              )) : (
+                <div className="rounded-lg border border-dashed border-jdt-border bg-white p-4 text-center">
+                  <p className="text-xs font-black uppercase text-jdt-text">No selected tree</p>
+                  <p className="mt-1 text-[11px] font-bold text-zinc-500">Select or add a tree to see relocation tasks.</p>
+                </div>
+              )}
             </div>
           </div>
         </aside>
