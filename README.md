@@ -29,3 +29,12 @@ The Documents board supports local file upload, browser folder upload, drag/drop
 - `VITE_GOOGLE_DRIVE_UPLOAD_FOLDER_ID` optional destination folder
 
 Enable Google Drive API and Google Picker API in the same Google Cloud project. The app requests `https://www.googleapis.com/auth/drive.file` for upload and Picker-selected file access.
+
+## Google Maps tree relocation
+
+The Maps board supports tree relocation pinning with source and destination locations, assigned task visibility, GPS capture, and a fallback field map when Google Maps is not configured. Configure these Vite environment variables in `.env.local` and in the hosted app environment:
+
+- `VITE_GOOGLE_MAPS_API_KEY`
+- `VITE_GOOGLE_MAPS_MAP_ID` optional Google Cloud map style ID
+
+Enable Maps JavaScript API in the same Google Cloud project. The map feature stores each tree's relocation pins on the existing `ranchOaks` records so the nursery, relocation, and maps workflows stay connected.
