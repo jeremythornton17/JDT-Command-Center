@@ -18,23 +18,3 @@ View your app in AI Studio: https://ai.studio/apps/aaf65ee2-61ca-4360-af29-1c862
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
-
-## Google Drive migration
-
-The Documents board supports local file upload, browser folder upload, drag/drop migration, and Google Drive Picker imports. Configure these Vite environment variables in `.env.local` and in the hosted app environment:
-
-- `VITE_GOOGLE_CLIENT_ID`
-- `VITE_GOOGLE_API_KEY`
-- `VITE_GOOGLE_APP_ID`
-- `VITE_GOOGLE_DRIVE_UPLOAD_FOLDER_ID` optional destination folder
-
-Enable Google Drive API and Google Picker API in the same Google Cloud project. The app requests `https://www.googleapis.com/auth/drive.file` for upload and Picker-selected file access.
-
-## Google Maps tree relocation
-
-The Maps board supports tree relocation pinning with source and destination locations, assigned task visibility, GPS capture, and a fallback field map when Google Maps is not configured. Configure these Vite environment variables in `.env.local` and in the hosted app environment:
-
-- `VITE_GOOGLE_MAPS_API_KEY`
-- `VITE_GOOGLE_MAPS_MAP_ID` optional Google Cloud map style ID
-
-Enable Maps JavaScript API in the same Google Cloud project. The map feature stores each tree's relocation pins on the existing `ranchOaks` records so the nursery, relocation, and maps workflows stay connected.

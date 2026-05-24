@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { User, signInWithPopup, GoogleAuthProvider, signOut } from "firebase/auth";
-import { auth, db } from "./firebase";
-import { doc, getDocFromServer } from "firebase/firestore";
+import { auth } from "./firebase";
 
 interface AuthContextType {
   user: User | null;
@@ -21,18 +20,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
-    // Validate connection
-    const testConnection = async () => {
-      try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
-      } catch (error) {
-        if(error instanceof Error && error.message.includes('the client is offline')) {
-          console.error("Please check your Firebase configuration.");
-        }
-      }
-    };
-    testConnection();
-
     const unsubscribe = auth.onAuthStateChanged((user) => {
       setUser(user);
       if (!user) {
