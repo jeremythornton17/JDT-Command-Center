@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, Shield, Key, Database, FileSpreadsheet, ArrowUpRight } from 'lucide-react';
+import { Settings, Shield, Key, Database, FileSpreadsheet, ArrowUpRight, Trash2 } from 'lucide-react';
 
 type SettingsBoardProps = {
   openModal: (type: string, data?: any) => void;
@@ -11,6 +11,16 @@ export default function SettingsBoard({ openModal }: SettingsBoardProps) {
     { icon: Key, title: 'API Keys', description: 'Add your Google Drive, Picker, and Maps credentials from environment variables.' },
     { icon: Database, title: 'Data', description: 'Start with an empty workspace and add your actual operational records.' },
     { icon: FileSpreadsheet, title: 'Sources', description: 'No tracker sources connected yet.' },
+  ];
+  const clearActions = [
+    { type: 'clear_jobs', label: 'Projects' },
+    { type: 'clear_freight', label: 'Freight' },
+    { type: 'clear_trees', label: 'Trees' },
+    { type: 'clear_crews', label: 'Crews' },
+    { type: 'clear_equipment', label: 'Equipment' },
+    { type: 'clear_clients', label: 'Clients' },
+    { type: 'clear_alerts', label: 'Alerts' },
+    { type: 'clear_all', label: 'Everything' },
   ];
 
   return (
@@ -52,6 +62,28 @@ export default function SettingsBoard({ openModal }: SettingsBoardProps) {
           </button>
         ))}
       </div>
+
+      <section className="rounded-xl border border-red-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-2 border-b border-red-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-black uppercase text-red-900">Data Reset</h3>
+            <p className="mt-1 text-xs font-bold text-red-700">Clear old Firebase records before entering current operating data.</p>
+          </div>
+          <Database className="h-5 w-5 text-red-700" />
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {clearActions.map((action) => (
+            <button
+              key={action.type}
+              type="button"
+              onClick={() => openModal(action.type)}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-black uppercase text-red-800 transition-colors hover:bg-red-100"
+            >
+              <Trash2 className="h-4 w-4" /> Clear {action.label}
+            </button>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
