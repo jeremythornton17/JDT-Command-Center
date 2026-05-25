@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { Settings, Shield, Key, Database, FileSpreadsheet, ArrowUpRight, Trash2 } from 'lucide-react';
 import { collection, deleteDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useAuth } from '../AuthProvider';
 
 type SettingsBoardProps = {
   openModal: (type: string, data?: any) => void;
 };
 
 export default function SettingsBoard({ openModal }: SettingsBoardProps) {
+  const { isAdmin } = useAuth();
   const [clearingType, setClearingType] = useState<string | null>(null);
   const sections = [
     { icon: Shield, title: 'Security', description: 'Review Firebase rules, user access, and app protection settings.' },
@@ -85,27 +87,33 @@ export default function SettingsBoard({ openModal }: SettingsBoardProps) {
         ))}
       </div>
 
-      <section className="rounded-xl border border-red-200 bg-white p-5 shadow-sm">
+      <section className={`rounded-xl border bg-white p-5 shadow-sm ${isAdmin ? 'border-red-200' : 'border-jdt-border'}`}>
         <div className="flex flex-col gap-2 border-b border-red-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-sm font-black uppercase text-red-900">Data Reset</h3>
-            <p className="mt-1 text-xs font-bold text-red-700">Clear old Firebase records before entering current operating data.</p>
+            <h3 className={`text-sm font-black uppercase ${isAdmin ? 'text-red-900' : 'text-jdt-text'}`}>Data Reset</h3>
+            <p className={`mt-1 text-xs font-bold ${isAdmin ? 'text-red-700' : 'text-zinc-500'}`}>
+              {isAdmin
+                ? 'Clear old Firebase records before entering current operating data.'
+                : 'Data reset is limited to Jeremy and jdtnurseries.com admin accounts.'}
+            </p>
           </div>
-          <Database className="h-5 w-5 text-red-700" />
+          <Database className={`h-5 w-5 ${isAdmin ? 'text-red-700' : 'text-zinc-400'}`} />
         </div>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {clearActions.map((action) => (
-            <button
-              key={action.type}
-              type="button"
-              onClick={() => clearCollections(action)}
-              disabled={clearingType !== null}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-black uppercase text-red-800 transition-colors hover:bg-red-100 disabled:cursor-wait disabled:opacity-60"
-            >
-              <Trash2 className="h-4 w-4" /> {clearingType === action.type ? 'Clearing' : 'Clear'} {action.label}
-            </button>
-          ))}
-        </div>
+        {isAdmin && (
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {clearActions.map((action) => (
+              <button
+                key={action.type}
+                type="button"
+                onClick={() => clearCollections(action)}
+                disabled={clearingType !== null}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-black uppercase text-red-800 transition-colors hover:bg-red-100 disabled:cursor-wait disabled:opacity-60"
+              >
+                <Trash2 className="h-4 w-4" /> {clearingType === action.type ? 'Clearing' : 'Clear'} {action.label}
+              </button>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

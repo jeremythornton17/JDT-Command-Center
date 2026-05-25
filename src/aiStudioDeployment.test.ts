@@ -45,4 +45,23 @@ describe("AI Studio deployment source guard", () => {
     assert.equal(existsSync(path.join(repoRoot, "src/commandCenter/seedData.ts")), false);
     assert.doesNotMatch(firestoreHook, /Seed database|initialData\.forEach|initialData\.map|initialData\.length/);
   });
+
+  it("keeps Firebase admins tied to the jdtnurseries.com email domain", () => {
+    const firestoreRules = readProjectFile("firestore.rules");
+
+    assert.match(firestoreRules, /request\.auth\.token\.email/);
+    assert.equal(firestoreRules.includes("jdtnurseries\\\\.com"), true);
+    assert.match(firestoreRules, /jeremy@jdtnurseries\.com/);
+  });
+
+  it("keeps both Firebase email/password and Google sign-in options", () => {
+    const authProvider = readProjectFile("src/AuthProvider.tsx");
+
+    assert.match(authProvider, /signInWithEmailAndPassword/);
+    assert.match(authProvider, /GoogleAuthProvider/);
+    assert.match(authProvider, /signInWithPopup/);
+    assert.match(authProvider, /Sign In With Google/);
+    assert.match(authProvider, /Reset Password/);
+    assert.match(authProvider, /\/jd-thornton-logo\.png/);
+  });
 });
