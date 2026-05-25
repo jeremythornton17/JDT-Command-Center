@@ -9,7 +9,7 @@ service cloud.firestore {
     // Primitive Definition
     function isSignedIn() { return request.auth != null; }
     function hasEmail() { return isSignedIn() && request.auth.token.email is string; }
-    function userEmail() { return request.auth.token.email.trim().lower(); }
+    function userEmail() { return request.auth.token.email.lower(); }
     function isJdtNurseriesEmail() { return hasEmail() && userEmail().matches('^.+@jdtnurseries\\.com$'); }
     function isAdmin() { return hasEmail() && (userEmail() == "jeremy@jdtnurseries.com" || isJdtNurseriesEmail()); }
     function incoming() { return request.resource.data; }
@@ -69,7 +69,7 @@ service cloud.firestore {
 
     match /alerts/{alertId} {
       allow read: if isSignedIn();
-      allow create: if isSigndIn() && isValidId(alertId);
+      allow create: if isSignedIn() && isValidId(alertId);
       allow update: if isSignedIn() && isValidId(alertId);
       allow delete: if isAdmin() && isValidId(alertId);
     }
