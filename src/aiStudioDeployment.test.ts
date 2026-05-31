@@ -64,4 +64,14 @@ describe("AI Studio deployment source guard", () => {
     assert.match(authProvider, /Reset Password/);
     assert.match(authProvider, /\/jd-thornton-logo\.png/);
   });
+
+  it("uses the production named Firestore database instead of the missing default database", () => {
+    const firebaseConfig = JSON.parse(readProjectFile("firebase-applet-config.json"));
+    const firebaseSource = readProjectFile("src/firebase.ts");
+
+    assert.equal(firebaseConfig.projectId, "jdt-command-board");
+    assert.equal(firebaseConfig.firestoreDatabaseId, "ai-studio-aaf65ee2-61ca-4360-af29-1c862096338e");
+    assert.match(firebaseSource, /getFirestore\(app,\s*firebaseConfig\.firestoreDatabaseId\)/);
+    assert.doesNotMatch(firebaseSource, /getFirestore\(app\)/);
+  });
 });
