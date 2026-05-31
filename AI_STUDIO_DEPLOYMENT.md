@@ -1,16 +1,23 @@
-# AI Studio Deployment Source
+# Legacy AI Studio Reference
 
-Use this repository branch for Google AI Studio publishing:
+This app started as a Google AI Studio applet, but the production path is now Codex/GitHub to Google Cloud Run.
 
-- Repository: `jeremythornton17/JDT-Command-Center`
-- Branch: `ai-studio-deploy`
+Do not publish or redeploy this app from Google AI Studio unless the Cloud Run service is intentionally being reset. Publishing from AI Studio can overwrite the current image-backed Cloud Run service and reintroduce stale source-build metadata.
 
-Before publishing from AI Studio, confirm the source includes:
+The AI Studio applet can remain open for reference:
 
-- `server.js`
-- `src/treeRelocationMap.ts`
-- `src/components/MapsBoard.tsx`
-- `package.json` with `"start": "node server.js"`
+- Applet ID: `aaf65ee2-61ca-4360-af29-1c862096338e`
 
-Do not publish or sync an AI Studio draft that deletes `server.js` or `src/treeRelocationMap.ts`.
-Do not publish a draft that asks for Verizon or Michelin fleet provider credentials.
+Production deployment must keep:
+
+- Custom URL: `https://app.jdtcommandcenter.com`
+- Cloud Run default URL disabled
+- Firestore database: `ai-studio-aaf65ee2-61ca-4360-af29-1c862096338e`
+- `firebase-applet-config.json` with `firestoreDatabaseId`
+- `src/firebase.ts` using `getFirestore(app, firebaseConfig.firestoreDatabaseId)`
+
+Before any production deploy, run:
+
+```bash
+npm run verify
+```
