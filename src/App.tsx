@@ -224,7 +224,7 @@ export default function App() {
           </div>
           <h1 className="text-2xl font-black text-jdt-primary">JDT Command Center</h1>
           <p className="mt-2 text-sm font-bold text-zinc-500">Sign in to manage your live operations workspace.</p>
-          <button onClick={signIn} className="mt-6 w-full rounded-lg bg-jdt-primary px-4 py-3 text-sm font-black uppercase text-white hover:bg-jdt-dark transition-colors">
+          <button type="button" onClick={() => { void signIn(); }} className="mt-6 w-full rounded-lg bg-jdt-primary px-4 py-3 text-sm font-black uppercase text-white hover:bg-jdt-dark transition-colors">
             Sign In
           </button>
         </div>
