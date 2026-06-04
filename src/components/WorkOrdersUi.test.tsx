@@ -4,7 +4,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import type { CrewRecord, DocumentRecord, EquipmentRecord, FieldUpdateRecord, JobRecord, LoadRecord, ProjectMaterialItemRecord, TreeRelocationRecord, WorkOrderRecord } from "../commandCenter/records";
 import { TrackerBoard } from "../App";
-import CommandDrawer from "./CommandDrawer";
+import CommandDrawer, { projectModalContextForRecord } from "./CommandDrawer";
 import CrewViewBoard from "./CrewViewBoard";
 import CrewsBoard from "./CrewsBoard";
 import EquipmentBoard from "./EquipmentBoard";
@@ -37,6 +37,67 @@ describe("work order UI wiring", () => {
     implementNames: ["Root Pruner"],
     loadNames: ["Lowboy move"],
   };
+
+  it("shows project-specific site access addresses and pins inside the project overview", () => {
+    const frenchmansJob = {
+      id: "job-frenchmans-driving-range",
+      title: "Frenchman's Driving Range & Practice Facility",
+      clientName: "Frenchman's Creek Country Club",
+      location: "13495 Tournament Dr, Palm Beach Gardens, FL 33410",
+      crewAccessAddress: "Frenchman's Creek north crew gate",
+      truckAccessAddress: "Construction truck access from Hood Road",
+      constructionAccessPin: "26.87775, -80.08895",
+      loadUnloadPin: "Practice facility laydown pin",
+      secondaryLoadUnloadPin: "South range unloading pin",
+      siteAccessNotes: "Use truck gate only. Do not send crews through the clubhouse entrance.",
+    };
+
+    const html = renderToString(
+      <CommandDrawer
+        isOpen
+        onClose={() => undefined}
+        type="job"
+        itemId={frenchmansJob.id}
+        defaultTab="overview"
+        openModal={() => undefined}
+        jobsList={[frenchmansJob]}
+      />,
+    );
+
+    assert.match(html, /Project Site Access/);
+    assert.match(html, /Main Jobsite Address/);
+    assert.match(html, /Crew Access Address/);
+    assert.match(html, /Truck \/ Equipment Access Address/);
+    assert.match(html, /Construction \/ Equipment Access Pin/);
+    assert.match(html, /Load \/ Unload Pin/);
+    assert.match(html, /Additional Load \/ Unload Pin/);
+    assert.match(html, /Frenchman&#x27;s Creek north crew gate/);
+    assert.match(html, /Construction truck access from Hood Road/);
+    assert.match(html, /Do not send crews through the clubhouse entrance/);
+  });
+
+  it("builds project-scoped address options for assignment forms launched from a project profile", () => {
+    const context = projectModalContextForRecord({
+      id: "job-frenchmans-driving-range",
+      title: "Frenchman's Driving Range & Practice Facility",
+      clientName: "Frenchman's Creek Country Club",
+      location: "13495 Tournament Dr, Palm Beach Gardens, FL 33410",
+      crewAccessAddress: "Frenchman's Creek north crew gate",
+      truckAccessAddress: "Construction truck access from Hood Road",
+      constructionAccessPin: "26.87775, -80.08895",
+      loadUnloadPin: "Practice facility laydown pin",
+      secondaryLoadUnloadPin: "South range unloading pin",
+    });
+
+    assert.deepEqual(context.projectSiteAddressOptions, [
+      "13495 Tournament Dr, Palm Beach Gardens, FL 33410",
+      "Frenchman's Creek north crew gate",
+      "Construction truck access from Hood Road",
+      "26.87775, -80.08895",
+      "Practice facility laydown pin",
+      "South range unloading pin",
+    ]);
+  });
 
   it("shows related work orders inside a job drawer", () => {
     const html = renderToString(

@@ -134,6 +134,75 @@ test('project tree asset forms expose editable tree, pruning, aftercare, and pho
   assert.match(photoHtml, /Captured Date/);
 });
 
+test('project forms expose jobsite access addresses and field pin points', () => {
+  const html = renderToString(
+    <EntityForms
+      type="edit_project"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{
+        title: "Frenchman's Driving Range & Practice Facility",
+        location: "13495 Tournament Dr, Palm Beach Gardens, FL 33410",
+        crewAccessAddress: "Frenchman's Creek north crew gate",
+        truckAccessAddress: "Construction truck access from Hood Road",
+        constructionAccessPin: "26.87775, -80.08895",
+        loadUnloadPin: "Practice facility laydown pin",
+        secondaryLoadUnloadPin: "South range unloading pin",
+      }}
+    />,
+  );
+
+  assert.match(html, /Project Site Addresses/);
+  assert.match(html, /Main Jobsite Address/);
+  assert.match(html, /Crew Access Address/);
+  assert.match(html, /Truck \/ Equipment Access Address/);
+  assert.match(html, /Construction \/ Equipment Access Pin/);
+  assert.match(html, /Load \/ Unload Pin/);
+  assert.match(html, /Additional Load \/ Unload Pin/);
+  assert.match(html, /Site Access Notes/);
+  assert.match(html, /Frenchman&#x27;s Creek north crew gate/);
+  assert.match(html, /Construction truck access from Hood Road/);
+});
+
+test('project-scoped assignment forms suggest only the selected project saved addresses', () => {
+  const projectSiteAddressOptions = [
+    "13495 Tournament Dr, Palm Beach Gardens, FL 33410",
+    "Frenchman's Creek north crew gate",
+    "Construction truck access from Hood Road",
+    "Practice facility laydown pin",
+  ];
+  const html = renderToString(
+    <EntityForms
+      type="assign_freight"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{
+        title: "Freight support for Frenchman's",
+        clientName: "Frenchman's Creek Country Club",
+        projectName: "Frenchman's Driving Range & Practice Facility",
+        jobName: "Frenchman's Driving Range & Practice Facility",
+        projectSiteAddressOptions,
+      }}
+      jobsList={[
+        { id: 'job-boca', title: 'Boca West Relocation', location: 'Boca West maintenance gate' },
+      ]}
+      clientsList={[
+        { id: 'client-boca', name: 'Boca West Country Club', billingAddress: '20583 Boca West Dr, Boca Raton, FL' },
+      ]}
+    />,
+  );
+
+  assert.match(html, /13495 Tournament Dr, Palm Beach Gardens, FL 33410/);
+  assert.match(html, /Frenchman&#x27;s Creek north crew gate/);
+  assert.match(html, /Construction truck access from Hood Road/);
+  assert.match(html, /Practice facility laydown pin/);
+  assert.doesNotMatch(html, /Boca West maintenance gate/);
+  assert.doesNotMatch(html, /20583 Boca West Dr/);
+  assert.doesNotMatch(html, /25 Acre Farm/);
+});
+
 test('employee forms expose driver license and CDL medical card compliance fields', () => {
   const html = renderToString(
     <EntityForms

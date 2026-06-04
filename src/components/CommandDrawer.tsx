@@ -55,6 +55,61 @@ function sameKnownField(left: unknown, right: unknown): boolean {
   return Boolean(cleanLeft && cleanRight && cleanLeft === cleanRight);
 }
 
+const projectSiteAccessDisplayFields = [
+  ['location', 'Main Jobsite Address'],
+  ['crewAccessAddress', 'Crew Access Address'],
+  ['truckAccessAddress', 'Truck / Equipment Access Address'],
+  ['constructionAccessPin', 'Construction / Equipment Access Pin'],
+  ['loadUnloadPin', 'Load / Unload Pin'],
+  ['secondaryLoadUnloadPin', 'Additional Load / Unload Pin'],
+  ['siteAccessNotes', 'Site Access Notes'],
+] as const;
+
+const projectSiteAddressOptionKeys = [
+  'location',
+  'crewAccessAddress',
+  'truckAccessAddress',
+  'constructionAccessPin',
+  'loadUnloadPin',
+  'secondaryLoadUnloadPin',
+] as const;
+
+function cleanProjectSiteValue(value: unknown): string {
+  return String(value || '').trim();
+}
+
+function uniqueProjectSiteValues(values: unknown[]): string[] {
+  const seen = new Set<string>();
+  const results: string[] = [];
+  for (const value of values) {
+    const clean = cleanProjectSiteValue(value);
+    const key = clean.toLowerCase();
+    if (!clean || seen.has(key)) continue;
+    seen.add(key);
+    results.push(clean);
+  }
+  return results;
+}
+
+export function projectSiteAddressOptionsForRecord(record: any): string[] {
+  return uniqueProjectSiteValues(projectSiteAddressOptionKeys.map((key) => record?.[key]));
+}
+
+export function projectModalContextForRecord(record: any) {
+  if (!record) return { projectSiteAddressOptions: [] };
+  return {
+    clientId: record.clientId,
+    clientName: record.clientName || record.client,
+    projectId: record.projectId,
+    projectsId: record.projectsId || record.projectId,
+    projectName: record.projectName || record.title,
+    jobId: record.jobId || record.id,
+    jobName: record.jobName || record.title,
+    division: record.division,
+    projectSiteAddressOptions: projectSiteAddressOptionsForRecord(record),
+  };
+}
+
 function pickSummaryFields(record: any) {
   const preferred = ['status', 'client', 'location', 'currentLocationType', 'currentLocationName', 'date', 'pm', 'crew', 'driver', 'truck', 'trailer', 'origin', 'delivery', 'operator', 'assignedCrewName', 'assignedProjectName', 'hours', 'phone', 'email', 'farm', 'zone', 'dbh', 'height', 'spread'];
   const entries = preferred
@@ -267,6 +322,24 @@ function equipmentOnSiteForRecord(type: string, record: any, equipmentList: any[
   });
 }
 
+function ProjectSiteAccessPanel({ record }: { record: any }) {
+  return (
+    <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+      <h3 className="flex items-center gap-2 text-sm font-black uppercase text-jdt-text">
+        <MapPin className="h-4 w-4 text-jdt-olive" /> Project Site Access
+      </h3>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {projectSiteAccessDisplayFields.map(([key, label]) => (
+          <div key={key} className={`rounded-lg border border-jdt-border bg-white p-3 ${key === 'siteAccessNotes' ? 'sm:col-span-2' : ''}`}>
+            <p className="text-[10px] font-black uppercase tracking-wide text-zinc-400">{label}</p>
+            <p className="mt-1 text-sm font-black text-jdt-text break-words">{displayValue(record?.[key])}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function CommandDrawer(props: CommandDrawerProps) {
   const {
     isOpen,
@@ -305,16 +378,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
   const profileTabs = type === 'job'
     ? ['overview', 'work orders', 'trees', 'equipment', 'freight', 'documents', 'field updates', 'financials', 'history']
     : ['overview', 'work orders', 'materials', 'history', 'documents'];
-  const projectContext = record ? {
-    clientId: record.clientId,
-    clientName: record.clientName || record.client,
-    projectId: record.projectId,
-    projectsId: record.projectsId || record.projectId,
-    projectName: record.projectName || record.title,
-    jobId: record.jobId || record.id,
-    jobName: record.jobName || record.title,
-    division: record.division,
-  } : {};
+  const projectContext = projectModalContextForRecord(record);
   const treeIdFor = (tree: TreeRelocationRecord) => String(tree.treeId || tree.id || '').trim();
   const seedTreeAsset = (tree?: TreeRelocationRecord) => ({
     ...projectContext,
@@ -403,6 +467,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                   <p className="text-sm font-semibold text-zinc-700 whitespace-pre-wrap">{record.notes}</p>
                 </div>
               )}
+              {type === 'job' && <ProjectSiteAccessPanel record={record} />}
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -422,13 +487,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                 <button
                   type="button"
                   onClick={() => openModal('assign_work', {
-                    clientId: record.clientId,
-                    clientName: record.clientName || record.client,
-                    projectId: record.projectId,
-                    projectName: record.projectName || record.title,
-                    jobId: record.jobId || record.id,
-                    jobName: record.jobName || record.title,
-                    division: record.division,
+                    ...projectContext,
                     title: `Crew work for ${record.title || record.projectName || 'project'}`,
                     workOrderType: 'general_task',
                     taskType: 'Field work',
@@ -444,13 +503,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                     <button
                       type="button"
                       onClick={() => openModal('assign_equipment', {
-                        clientId: record.clientId,
-                        clientName: record.clientName || record.client,
-                        projectId: record.projectId,
-                        projectName: record.projectName || record.title,
-                        jobId: record.jobId || record.id,
-                        jobName: record.jobName || record.title,
-                        division: record.division,
+                        ...projectContext,
                         title: `Equipment for ${record.title || 'project'}`,
                         workOrderType: 'equipment',
                         taskType: 'Equipment change request',
@@ -464,13 +517,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                     <button
                       type="button"
                       onClick={() => openModal('assign_freight', {
-                        clientId: record.clientId,
-                        clientName: record.clientName || record.client,
-                        projectId: record.projectId,
-                        projectName: record.projectName || record.title,
-                        jobId: record.jobId || record.id,
-                        jobName: record.jobName || record.title,
-                        division: record.division,
+                        ...projectContext,
                         title: `Freight support for ${record.title || 'project'}`,
                         workOrderType: 'freight',
                         taskType: 'Freight support request',

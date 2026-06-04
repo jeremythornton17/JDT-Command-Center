@@ -41,6 +41,12 @@ export type JobRecord = CommandRecord & {
   installItemCount?: string | number;
   relocationTreeCount?: string | number;
   location?: string;
+  crewAccessAddress?: string;
+  truckAccessAddress?: string;
+  constructionAccessPin?: string;
+  loadUnloadPin?: string;
+  secondaryLoadUnloadPin?: string;
+  siteAccessNotes?: string;
   date?: string;
   startDate?: string;
   scheduledDate?: string;
@@ -62,6 +68,12 @@ export type ProjectRecord = CommandRecord & {
   location?: string;
   locationId?: string;
   locationName?: string;
+  crewAccessAddress?: string;
+  truckAccessAddress?: string;
+  constructionAccessPin?: string;
+  loadUnloadPin?: string;
+  secondaryLoadUnloadPin?: string;
+  siteAccessNotes?: string;
   date?: string;
   startDate?: string;
   scheduledDate?: string;

@@ -142,7 +142,13 @@ const fieldSets: Record<string, FieldConfig[]> = {
     { key: 'client', label: 'Client' },
     { key: 'division', label: 'Division', type: 'select', options: divisionOptions },
     { key: 'jobType', label: 'Job Type', type: 'select', options: [...relocationInstallationJobTypes] },
-    { key: 'location', label: 'Location' },
+    { key: 'location', label: 'Main Jobsite Address', section: 'Project Site Addresses', wide: true },
+    { key: 'crewAccessAddress', label: 'Crew Access Address', wide: true },
+    { key: 'truckAccessAddress', label: 'Truck / Equipment Access Address', wide: true },
+    { key: 'constructionAccessPin', label: 'Construction / Equipment Access Pin', placeholder: 'Paste Google Maps pin or coordinates', wide: true },
+    { key: 'loadUnloadPin', label: 'Load / Unload Pin', placeholder: 'Paste Google Maps pin or coordinates', wide: true },
+    { key: 'secondaryLoadUnloadPin', label: 'Additional Load / Unload Pin', placeholder: 'Paste Google Maps pin or coordinates', wide: true },
+    { key: 'siteAccessNotes', label: 'Site Access Notes', type: 'textarea', rows: 3, wide: true },
     { key: 'pm', label: 'Project Manager' },
     { key: 'status', label: 'Status', type: 'select', options: ['Scheduled', 'Active', 'Delayed', 'On Hold', 'Complete'] },
     { key: 'date', label: 'Target Date', type: 'date' },
@@ -534,6 +540,12 @@ function normalizeListFields(formData: Record<string, unknown>, keys: string[]) 
   );
 }
 
+function stripTransientFormData<T extends Record<string, unknown>>(formData: T): T {
+  const cleaned = { ...formData };
+  delete cleaned.projectSiteAddressOptions;
+  return cleaned;
+}
+
 function withAssignmentIntentDefaults(type: string, formData: Record<string, unknown>) {
   const normalized = type.replace(/^edit_/, '');
   const hasValue = (key: string) => String(formData[key] ?? '').trim().length > 0;
@@ -725,13 +737,15 @@ function enrichFieldsWithSuggestions(
   ]);
   const siteContactNames = uniqueTextOptions(valuesFromRecords(siteContacts, ['name', 'contactName']));
   const siteContactPhones = uniqueTextOptions(valuesFromRecords(siteContacts, ['phone', 'mobile', 'cell']));
+  const projectSiteAddressOptions = uniqueTextOptions(Array.isArray(data?.projectSiteAddressOptions) ? data.projectSiteAddressOptions : []);
   const locations = uniqueTextOptions([
     ...defaultFreightLocationOptions,
-    ...valuesFromRecords(jobsList, ['location', 'site', 'address']),
+    ...valuesFromRecords(jobsList, ['location', 'site', 'address', 'crewAccessAddress', 'truckAccessAddress', 'constructionAccessPin', 'loadUnloadPin', 'secondaryLoadUnloadPin']),
     ...valuesFromRecords(clientsList, ['billingAddress', 'address', 'siteAddress']),
     ...valuesFromRecords(equipmentList, ['currentLocationName', 'currentLocation', 'location']),
     ...valuesFromRecords(workOrders, ['origin', 'destination', 'siteArea']),
   ]);
+  const scopedLocations = projectSiteAddressOptions.length > 0 ? projectSiteAddressOptions : locations;
 
   return fields.map((field) => {
     const currentValue = data?.[field.key];
@@ -756,11 +770,26 @@ function enrichFieldsWithSuggestions(
     if (['implementNames', 'compatibleImplementTypes'].includes(field.key)) {
       return { ...field, suggestions: listWithCurrent([...implementNames, ...implementTypeOptions], currentValue) };
     }
-    if (['origin', 'delivery', 'destination', 'location', 'locationName', 'currentLocation', 'currentLocationName'].includes(field.key)) {
-      return { ...field, suggestions: listWithCurrent(locations, currentValue) };
+    if ([
+      'origin',
+      'delivery',
+      'destination',
+      'location',
+      'locationName',
+      'locationAddress',
+      'currentLocation',
+      'currentLocationName',
+      'siteArea',
+      'crewAccessAddress',
+      'truckAccessAddress',
+      'constructionAccessPin',
+      'loadUnloadPin',
+      'secondaryLoadUnloadPin',
+    ].includes(field.key)) {
+      return { ...field, suggestions: listWithCurrent(scopedLocations, currentValue) };
     }
     if (/^stop\d+(Location|Address|MainAddress|ConstructionAccessPin|LoadUnloadPin)$/.test(field.key)) {
-      return { ...field, suggestions: listWithCurrent(locations, currentValue) };
+      return { ...field, suggestions: listWithCurrent(scopedLocations, currentValue) };
     }
     return field;
   });
@@ -831,7 +860,7 @@ export default function EntityForms({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    const normalizedFormData = withAssignmentIntentDefaults(type, {
+    const normalizedFormData = stripTransientFormData(withAssignmentIntentDefaults(type, {
       ...formData,
       ...(resolvedType === 'ranchOak' ? {
         imageUrls: ['imageUrl2', 'imageUrl3', 'imageUrl4', 'imageUrl5']
@@ -860,7 +889,7 @@ export default function EntityForms({
         'attachedImplementIds',
         'trailerMaintenanceCategories',
       ]),
-    });
+    }));
     onSaveRecord(type, normalizedFormData);
     onClose();
   };
