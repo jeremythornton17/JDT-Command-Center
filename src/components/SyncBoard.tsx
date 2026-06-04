@@ -9,11 +9,13 @@ import {
 } from '../commandCenter/syncDraft';
 import {
   buildImportPreview,
+  isProjectWorkbookTemplateId,
   pasteHeadersForTemplate,
   previewDetailsForRecord,
   previewSummary,
   sheetImportTemplates,
   type ImportPreview,
+  type ProjectImportContext,
   type SheetImportTemplateId,
 } from '../commandCenter/sheetImport';
 
@@ -26,6 +28,7 @@ type SyncBoardProps = {
   onImportPreview?: (preview: ImportPreview) => void | Promise<void>;
   onRollbackImport?: (batchId: string) => void;
   canImport?: boolean;
+  projectImportContext?: ProjectImportContext | null;
 };
 
 function readInitialDataSyncDraft(): DataSyncDraft | null {
@@ -42,24 +45,37 @@ function previewFromDraft(draft: DataSyncDraft | null): ImportPreview | null {
   if (!draft?.pastedRows.trim()) return null;
 
   try {
-    return buildImportPreview(draft.templateId, draft.pastedRows);
+    return buildImportPreview(draft.templateId, draft.pastedRows, { projectContext: draft.projectContext });
   } catch {
     return null;
   }
 }
 
-export default function SyncBoard({ sources, mappings, importBatches = [], openModal, onImportPreview, onRollbackImport, canImport = true }: SyncBoardProps) {
+export default function SyncBoard({ sources, mappings, importBatches = [], openModal, onImportPreview, onRollbackImport, canImport = true, projectImportContext = null }: SyncBoardProps) {
   const [initialDraft] = useState(readInitialDataSyncDraft);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<SheetImportTemplateId>(initialDraft?.templateId || 'inventory');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<SheetImportTemplateId>(
+    initialDraft?.templateId || (projectImportContext ? 'jdt_project_flow_tree_assets' : 'inventory'),
+  );
   const [pastedRows, setPastedRows] = useState(initialDraft?.pastedRows || '');
   const [preview, setPreview] = useState<ImportPreview | null>(() => previewFromDraft(initialDraft));
+  const [activeProjectContext, setActiveProjectContext] = useState<ProjectImportContext | null>(projectImportContext || initialDraft?.projectContext || null);
   const [error, setError] = useState('');
   const [draftRestored, setDraftRestored] = useState(Boolean(initialDraft?.pastedRows.trim()));
   const [isSavingImport, setIsSavingImport] = useState(false);
   const selectedTemplate = useMemo(() => sheetImportTemplates.find((template) => template.id === selectedTemplateId) || sheetImportTemplates[0], [selectedTemplateId]);
   const selectedPasteHeaders = useMemo(() => pasteHeadersForTemplate(selectedTemplate), [selectedTemplate]);
+  const selectedProjectContext = isProjectWorkbookTemplateId(selectedTemplateId) ? activeProjectContext : null;
   const previewWarnings = useMemo(() => preview ? Array.from(new Set([...preview.warnings, ...preview.targets.flatMap((target) => target.warnings)])) : [], [preview]);
   const previewRecordCount = preview?.targets.reduce((sum, target) => sum + target.records.length, 0) || 0;
+
+  useEffect(() => {
+    if (projectImportContext) {
+      setActiveProjectContext(projectImportContext);
+      setSelectedTemplateId((current) => isProjectWorkbookTemplateId(current) ? current : 'jdt_project_flow_tree_assets');
+      setPreview(null);
+      setError('');
+    }
+  }, [projectImportContext]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -72,8 +88,9 @@ export default function SyncBoard({ sources, mappings, importBatches = [], openM
       templateId: selectedTemplateId,
       pastedRows,
       savedAtIso: new Date().toISOString(),
+      projectContext: selectedProjectContext || undefined,
     }));
-  }, [pastedRows, selectedTemplateId]);
+  }, [pastedRows, selectedTemplateId, selectedProjectContext]);
 
   const handlePreview = () => {
     setError('');
@@ -84,7 +101,7 @@ export default function SyncBoard({ sources, mappings, importBatches = [], openM
     }
 
     try {
-      setPreview(buildImportPreview(selectedTemplateId, pastedRows));
+      setPreview(buildImportPreview(selectedTemplateId, pastedRows, { projectContext: selectedProjectContext }));
     } catch (err) {
       setPreview(null);
       setError(err instanceof Error ? err.message : 'Unable to build import preview.');
@@ -129,7 +146,7 @@ export default function SyncBoard({ sources, mappings, importBatches = [], openM
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-jdt-border pb-5">
         <div>
           <h2 className="text-2xl font-black text-jdt-primary">Data Sync</h2>
-          <p className="text-sm font-bold text-zinc-500 mt-1">Connect real trackers, spreadsheets, and Drive sources when you are ready</p>
+          <p className="text-sm font-bold text-zinc-500 mt-1">Use the JDT Command Center workbook as the single spreadsheet source of truth.</p>
         </div>
         <button
           type="button"
@@ -175,6 +192,9 @@ export default function SyncBoard({ sources, mappings, importBatches = [], openM
           <h3 className="text-sm font-black uppercase text-jdt-text flex items-center gap-2">
             <Upload className="h-4 w-4 text-jdt-olive" /> Master List Import Staging
           </h3>
+          <p className="text-[10px] font-black uppercase tracking-wide text-zinc-500">
+            Source workbook: JDT Command Center / Setup tab: App Import Setup
+          </p>
           <div className="flex items-center gap-2">
             <select
               value={selectedTemplateId}
@@ -183,6 +203,7 @@ export default function SyncBoard({ sources, mappings, importBatches = [], openM
                 setPreview(null);
                 setError('');
                 setDraftRestored(false);
+                if (!isProjectWorkbookTemplateId(event.target.value as SheetImportTemplateId)) setActiveProjectContext(null);
               }}
               className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-black uppercase text-jdt-text outline-none focus:border-jdt-olive"
             >
@@ -210,6 +231,14 @@ export default function SyncBoard({ sources, mappings, importBatches = [], openM
 
         <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
           <div className="space-y-3">
+            {selectedProjectContext ? (
+              <div className="rounded-lg border border-jdt-border bg-jdt-sand px-3 py-2">
+                <p className="text-[10px] font-black uppercase tracking-wide text-jdt-primary">Importing To Project</p>
+                <p className="mt-1 text-sm font-black text-jdt-text">
+                  {[selectedProjectContext.clientName, selectedProjectContext.projectName || selectedProjectContext.projectId, selectedProjectContext.jobName || selectedProjectContext.jobId].filter(Boolean).join(' > ')}
+                </p>
+              </div>
+            ) : null}
             <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-wide text-zinc-500">
               <span className="rounded bg-jdt-sand px-2 py-1">{selectedTemplate.sourceSheet}</span>
               <span className="rounded bg-jdt-sand px-2 py-1">{selectedTemplate.targetCollections.join(', ')}</span>

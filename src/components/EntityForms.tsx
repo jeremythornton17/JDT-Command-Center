@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Briefcase, Building2, Check, FilePlus, Leaf, MapPin, Plus, Truck, User, Wrench } from 'lucide-react';
+import { AlertTriangle, Briefcase, Building2, Check, FilePlus, Leaf, MapPin, Plus, Truck, User, Wrench } from 'lucide-react';
 import {
   equipmentCategory,
   equipmentCategoryOptions,
@@ -77,6 +77,7 @@ const divisionOptions = [relocationInstallationDivisionLabel, 'Nursery', 'Freigh
 const workOrderStatusOptions = ['Draft', 'Ready', 'Scheduled', 'Active', 'Blocked', 'Complete', 'Cancelled'];
 const workOrderPriorityOptions = ['Low', 'Normal', 'High', 'Urgent', 'Critical'];
 const crewAssignmentTypeOptions = ['general_task', 'tree_pruning', 'treatment_aftercare', 'move_readiness', 'daily_field_update', 'change_order', 'billing_milestone'];
+const projectTreeFormTypes = new Set(['project_tree_asset', 'project_tree_pruning', 'project_tree_aftercare', 'project_tree_photo']);
 
 function usesRentalEquipment(formData: Record<string, unknown>) {
   const source = String(formData.equipmentSource || '').toLowerCase();
@@ -595,6 +596,39 @@ function initialFormData(data: any, fields: FieldConfig[]) {
   return base;
 }
 
+function hasProjectContext(data: Record<string, unknown>) {
+  return Boolean(String(data.projectId || data.projectsId || data.projectName || '').trim());
+}
+
+function ProjectContextPanel({ formData }: { formData: Record<string, unknown> }) {
+  if (!hasProjectContext(formData)) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+          <div>
+            <p className="text-xs font-black uppercase tracking-wide">Project context required</p>
+            <p className="mt-1 text-xs font-bold">Open this form from a Project Profile so the tree is saved to the correct client, project, and job.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const contextLine = [
+    formData.clientName,
+    formData.projectName || formData.projectId || formData.projectsId,
+    formData.jobName || formData.jobId,
+  ].map((value) => String(value || '').trim()).filter(Boolean).join(' > ');
+
+  return (
+    <div className="rounded-xl border border-jdt-border bg-jdt-sand p-4">
+      <p className="text-[10px] font-black uppercase tracking-wide text-jdt-primary">Saving To Project</p>
+      <p className="mt-1 text-sm font-black text-jdt-text">{contextLine}</p>
+    </div>
+  );
+}
+
 function initialStopCount(data: any) {
   if (Array.isArray(data?.stops) && data.stops.length > 0) return data.stops.length;
   const stopNumbers = Object.keys(data || {})
@@ -853,13 +887,21 @@ export default function EntityForms({
     [resolvedType, stopCount, formSeed, jobsList, equipmentList, crewsList, clientsList, workOrders, projectMaterialItems],
   );
   const [formData, setFormData] = useState<any>(() => initialFormData(formSeed, fields));
+  const [formError, setFormError] = useState('');
+  const requiresProjectContext = projectTreeFormTypes.has(resolvedType);
+  const missingProjectContext = requiresProjectContext && !hasProjectContext(formData);
 
   const handleChange = (key: string, value: any) => {
+    setFormError('');
     setFormData((prev: any) => ({ ...prev, [key]: value }));
   };
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
+    if (missingProjectContext) {
+      setFormError('Project context required before saving this tree record.');
+      return;
+    }
     const normalizedFormData = stripTransientFormData(withAssignmentIntentDefaults(type, {
       ...formData,
       ...(resolvedType === 'ranchOak' ? {
@@ -924,6 +966,8 @@ export default function EntityForms({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      {requiresProjectContext ? <ProjectContextPanel formData={formData} /> : null}
+      {formError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-800">{formError}</p> : null}
       <div className="grid gap-4 sm:grid-cols-2">
         {fields.filter((field) => !field.showWhen || field.showWhen(formData)).map((field, index, visibleFields) => {
           const showSection = Boolean(field.section && field.section !== visibleFields[index - 1]?.section);
@@ -1000,7 +1044,7 @@ export default function EntityForms({
         <button type="button" onClick={onClose} className="rounded-lg border border-jdt-border bg-white px-4 py-2.5 text-xs font-black uppercase text-zinc-700 hover:border-jdt-olive">
           Cancel
         </button>
-        <button type="submit" className="inline-flex items-center gap-2 rounded-lg bg-jdt-primary px-5 py-2.5 text-xs font-black uppercase text-white hover:bg-jdt-dark">
+        <button type="submit" disabled={missingProjectContext} className="inline-flex items-center gap-2 rounded-lg bg-jdt-primary px-5 py-2.5 text-xs font-black uppercase text-white hover:bg-jdt-dark disabled:cursor-not-allowed disabled:opacity-50">
           <Check className="h-4 w-4" /> {submitLabel}
         </button>
       </div>

@@ -83,9 +83,9 @@ import type {
 import { defaultJdtPersonnelRoster, mergePersonnelRecords } from './commandCenter/personnel';
 import { buildDashboardSummary, type DashboardCommandAlert, type DashboardWorkItem, type FeaturedOperation } from './commandCenter/dashboard';
 import { filterSeedRecords } from './commandCenter/operatingIntelligence';
-import { pasteHeadersForTemplate, sheetImportTemplates, type ImportPreview, type SheetImportTemplateId } from './commandCenter/sheetImport';
+import { normalizeProjectImportContext, pasteHeadersForTemplate, sheetImportTemplates, type ImportPreview, type ProjectImportContext, type SheetImportTemplateId } from './commandCenter/sheetImport';
 import { dataSyncDraftStorageKey, serializeDataSyncDraft } from './commandCenter/syncDraft';
-import { normalizeProjectRelationship, normalizeWorkOrderRelationship } from './commandCenter/relationships';
+import { normalizeProjectRelationship, normalizeWorkOrderRelationship, sameProjectTreeAsset } from './commandCenter/relationships';
 import { sourceRefFromWorkbookRow, workbookTabForWorkOrderType } from './commandCenter/workbookProjectFlow';
 import {
   classifyRelocationInstallationJob,
@@ -435,6 +435,7 @@ export default function App() {
   const [modalConfig, setModalConfig] = useState<ModalConfig>({ isOpen: false, type: '' });
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [projectImportContext, setProjectImportContext] = useState<ProjectImportContext | null>(null);
 
   const [jobs, setJobs] = useFirestoreSyncState<JobRecord>('jobs', [], !!user);
   const [projects, setProjects] = useFirestoreSyncState<ProjectRecord>('projects', [], !!user);
@@ -499,13 +500,16 @@ export default function App() {
     setDrawerConfig({ isOpen: true, type, itemId, defaultTab });
   };
 
-  const openImportTemplate = (templateId: SheetImportTemplateId) => {
+  const openImportTemplate = (templateId: SheetImportTemplateId, context?: ProjectImportContext) => {
     const template = sheetImportTemplates.find((item) => item.id === templateId);
+    const normalizedContext = normalizeProjectImportContext(context);
+    setProjectImportContext(normalizedContext || null);
     if (template && typeof window !== 'undefined') {
       window.localStorage.setItem(dataSyncDraftStorageKey, serializeDataSyncDraft({
         templateId,
         pastedRows: `${pasteHeadersForTemplate(template).join('\t')}\n`,
         savedAtIso: new Date().toISOString(),
+        projectContext: normalizedContext,
       }));
     }
     setDrawerConfig((current) => ({ ...current, isOpen: false }));
@@ -762,7 +766,7 @@ export default function App() {
             'tree',
             user?.email,
             normalizedType,
-            (item) => item.id === enrichedRecord.id || item.treeId === enrichedRecord.treeId,
+            (item) => sameProjectTreeAsset(item, enrichedRecord),
           ));
         }
         break;
@@ -1059,7 +1063,7 @@ export default function App() {
       case 'documents':
         return <DocumentsBoard documents={documents} openModal={openModal} />;
       case 'sheets':
-        return <SyncBoard sources={syncSources} mappings={syncMappings} importBatches={importBatches} openModal={openModal} openDrawer={openDrawer} onImportPreview={handleImportPreview} onRollbackImport={handleRollbackImport} canImport={permissions.canImport} />;
+        return <SyncBoard sources={syncSources} mappings={syncMappings} importBatches={importBatches} openModal={openModal} openDrawer={openDrawer} onImportPreview={handleImportPreview} onRollbackImport={handleRollbackImport} canImport={permissions.canImport} projectImportContext={projectImportContext} />;
       case 'settings':
         return <SettingsBoard openModal={openModal} onClearSeedData={handleClearSeedData} />;
       default:

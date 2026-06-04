@@ -54,6 +54,21 @@ export type ImportPreview = {
   sourceSheet: string;
   targets: ImportTarget[];
   warnings: string[];
+  projectContext?: ProjectImportContext;
+};
+
+export type ProjectImportContext = {
+  clientId?: string;
+  clientName?: string;
+  projectId?: string;
+  projectsId?: string;
+  projectName?: string;
+  jobId?: string;
+  jobName?: string;
+};
+
+export type BuildImportPreviewOptions = {
+  projectContext?: ProjectImportContext | null;
 };
 
 type RowObject = Record<string, string>;
@@ -257,17 +272,20 @@ function hasDelimitedQuoteClose(text: string, startIndex: number, delimiter: str
   return false;
 }
 
-export function buildImportPreview(templateId: SheetImportTemplateId, input: string | string[][]): ImportPreview {
+export function buildImportPreview(templateId: SheetImportTemplateId, input: string | string[][], options: BuildImportPreviewOptions = {}): ImportPreview {
   const template = findTemplate(templateId);
   const rows = typeof input === 'string' ? parseDelimitedRows(input) : input;
-  const mapped = mapTemplate(template, rows);
+  const projectContext = isProjectWorkbookTemplateId(templateId) ? normalizeProjectImportContext(options.projectContext) : undefined;
+  const mapped = mapTemplate(template, rows, { projectContext });
+  const contextualTarget = projectContext ? applyProjectContextToTarget(mapped, projectContext) : mapped;
 
   return {
     templateId,
     label: template.label,
     sourceSheet: template.sourceSheet,
-    targets: [mapped],
-    warnings: mapped.warnings,
+    targets: [contextualTarget],
+    warnings: contextualTarget.warnings,
+    ...(projectContext ? { projectContext } : {}),
   };
 }
 
@@ -291,7 +309,48 @@ export function previewDetailsForRecord(template: SheetImportTemplate, record: C
     .filter((field) => field.value.length > 0);
 }
 
-function mapTemplate(template: SheetImportTemplate, rows: string[][]): ImportTarget {
+export function normalizeProjectImportContext(context?: ProjectImportContext | null): ProjectImportContext | undefined {
+  if (!context) return undefined;
+  const projectId = cleanText(context.projectId || context.projectsId || '');
+  const normalized: ProjectImportContext = {
+    clientId: cleanText(context.clientId || ''),
+    clientName: cleanText(context.clientName || ''),
+    projectId,
+    projectsId: cleanText(context.projectsId || projectId),
+    projectName: cleanText(context.projectName || ''),
+    jobId: cleanText(context.jobId || ''),
+    jobName: cleanText(context.jobName || ''),
+  };
+  const compact = Object.fromEntries(Object.entries(normalized).filter(([, value]) => Boolean(value))) as ProjectImportContext;
+  return Object.keys(compact).length ? compact : undefined;
+}
+
+function applyProjectContextToTarget(target: ImportTarget, context: ProjectImportContext): ImportTarget {
+  return {
+    ...target,
+    records: target.records.map((record) => applyProjectContextToRecord(record, context)),
+  };
+}
+
+function applyProjectContextToRecord(record: CommandRecord, context: ProjectImportContext): CommandRecord {
+  const projectId = context.projectId || context.projectsId || record.projectId;
+  return {
+    ...record,
+    clientId: context.clientId || record.clientId,
+    clientName: context.clientName || record.clientName,
+    projectId,
+    projectsId: context.projectsId || projectId || record.projectsId,
+    projectName: context.projectName || record.projectName,
+    jobId: context.jobId || record.jobId,
+    jobName: context.jobName || record.jobName,
+  };
+}
+
+export function isProjectWorkbookTemplateId(templateId: SheetImportTemplateId): boolean {
+  return templateId.startsWith('jdt_project_flow_');
+}
+
+function mapTemplate(template: SheetImportTemplate, rows: string[][], options: BuildImportPreviewOptions = {}): ImportTarget {
   switch (template.id) {
     case 'inventory':
       return mapInventory(template, rows);
@@ -310,7 +369,7 @@ function mapTemplate(template: SheetImportTemplate, rows: string[][]): ImportTar
     case 'relocation':
       return mapRelocation(template, rows);
     case 'jdt_project_flow_tree_assets':
-      return mapJdtProjectFlowTreeAssets(template, rows);
+      return mapJdtProjectFlowTreeAssets(template, rows, options.projectContext);
     case 'jdt_project_flow_tree_pruning':
       return mapJdtProjectFlowTreePruning(template, rows);
     case 'jdt_project_flow_treatment_aftercare':
@@ -318,7 +377,7 @@ function mapTemplate(template: SheetImportTemplate, rows: string[][]): ImportTar
     case 'jdt_project_flow_tree_photos':
       return mapJdtProjectFlowTreePhotos(template, rows);
     case 'jdt_project_flow_project_material_items':
-      return mapJdtProjectFlowProjectMaterialItems(template, rows);
+      return mapJdtProjectFlowProjectMaterialItems(template, rows, options.projectContext);
     default:
       return makeTarget(template, [], [`Unsupported import template: ${template.id}`]);
   }
@@ -721,12 +780,14 @@ function mapRelocation(template: SheetImportTemplate, rows: string[][]): ImportT
   return makeTarget(template, relocation, warnings, 'treeRelocationRecords');
 }
 
-function mapJdtProjectFlowTreeAssets(template: SheetImportTemplate, rows: string[][]): ImportTarget {
+function mapJdtProjectFlowTreeAssets(template: SheetImportTemplate, rows: string[][], projectContext?: ProjectImportContext | null): ImportTarget {
   const { records, warnings } = objectRows(rows, template.requiredHeaders);
+  const normalizedContext = normalizeProjectImportContext(projectContext);
+  const contextProjectId = normalizedContext?.projectId || normalizedContext?.projectsId || '';
   const treeAssets = records
     .map(({ row, index }) => {
       const treeAssetId = value(row, 'Tree_Assets_ID');
-      const projectsId = value(row, 'Projects_ID');
+      const projectsId = value(row, 'Projects_ID') || contextProjectId;
       const type = value(row, 'Tree Type');
       const existingLocationDescription = firstValue(row, 'Existing Location Description', 'LOCATION', 'Location');
       const sourcePin = coordinatePointFromText(existingLocationDescription, 'Imported source pin');
@@ -737,7 +798,7 @@ function mapJdtProjectFlowTreeAssets(template: SheetImportTemplate, rows: string
       }
 
       if (!treeAssetId || !projectsId || !type) {
-        warnings.push(`Row ${index} skipped: tree asset rows need Tree_Assets_ID, Projects_ID, and Tree Type`);
+        warnings.push(`Row ${index} skipped: tree asset rows need Tree_Assets_ID, Projects_ID or selected project context, and Tree Type`);
         return null;
       }
 
@@ -748,7 +809,7 @@ function mapJdtProjectFlowTreeAssets(template: SheetImportTemplate, rows: string
         title: [type, treeAssetId].filter(Boolean).join(' '),
         projectId: projectsId,
         projectsId,
-        projectName: value(row, 'Project Name'),
+        projectName: value(row, 'Project Name') || normalizedContext?.projectName,
         type,
         ranchOakType: type,
         treeType: type,
@@ -929,12 +990,14 @@ function mapJdtProjectFlowTreePhotos(template: SheetImportTemplate, rows: string
   return makeTarget(template, documents, warnings, 'documents');
 }
 
-function mapJdtProjectFlowProjectMaterialItems(template: SheetImportTemplate, rows: string[][]): ImportTarget {
+function mapJdtProjectFlowProjectMaterialItems(template: SheetImportTemplate, rows: string[][], projectContext?: ProjectImportContext | null): ImportTarget {
   const { records, warnings } = objectRows(rows, template.requiredHeaders);
+  const normalizedContext = normalizeProjectImportContext(projectContext);
+  const contextProjectId = normalizedContext?.projectId || normalizedContext?.projectsId || '';
   const materialItems = records
     .map(({ row, index }) => {
       const materialItemId = value(row, 'Project_Material_Items_ID');
-      const projectsId = value(row, 'Projects_ID');
+      const projectsId = value(row, 'Projects_ID') || contextProjectId;
       const materialType = value(row, 'Material Type');
 
       if (!materialItemId && !projectsId && !materialType) {
@@ -943,7 +1006,7 @@ function mapJdtProjectFlowProjectMaterialItems(template: SheetImportTemplate, ro
       }
 
       if (!projectsId || !materialType) {
-        warnings.push(`Row ${index} skipped: material rows need Projects_ID and Material Type`);
+        warnings.push(`Row ${index} skipped: material rows need Projects_ID or selected project context, and Material Type`);
         return null;
       }
 
@@ -954,7 +1017,7 @@ function mapJdtProjectFlowProjectMaterialItems(template: SheetImportTemplate, ro
         projectMaterialItemsId: materialItemId,
         projectsId,
         projectId: projectsId,
-        projectName: value(row, 'Project Name'),
+        projectName: value(row, 'Project Name') || normalizedContext?.projectName,
         holeNumberOrArea: value(row, 'Hole Number / Area'),
         source: value(row, 'Source'),
         materialType,

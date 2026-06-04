@@ -7,6 +7,7 @@ import {
   normalizeProjectRelationship,
   projectIdFromName,
   sameClient,
+  sameProjectTreeAsset,
   workOrderIdFromName,
 } from "./relationships";
 
@@ -35,6 +36,23 @@ describe("client project job relationships", () => {
     assert.equal(sameClient(client, { clientId: "client-mcarthur-golf-club", clientName: "Edited Name" }), true);
     assert.equal(sameClient(client, { clientName: "McArthur Golf Club" }), true);
     assert.equal(sameClient(client, { clientName: "Other Club" }), false);
+  });
+
+  it("matches project tree assets inside the selected project instead of globally by tree id", () => {
+    assert.equal(
+      sameProjectTreeAsset(
+        { projectId: "project-waterford", treeId: "1001" },
+        { projectId: "project-waterford", treeId: "1001" },
+      ),
+      true,
+    );
+    assert.equal(
+      sameProjectTreeAsset(
+        { projectId: "project-waterford", treeId: "1001" },
+        { projectId: "project-boca-west", treeId: "1001" },
+      ),
+      false,
+    );
   });
 
   it("builds stable work order ids under a job", () => {

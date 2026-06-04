@@ -21,6 +21,32 @@ describe("data sync draft persistence", () => {
     });
   });
 
+  it("preserves project import context when Data Sync is opened from a project", () => {
+    const serialized = serializeDataSyncDraft({
+      templateId: "jdt_project_flow_tree_assets",
+      pastedRows: "Tree_Assets_ID\tProjects_ID\tTree Type\n1001\t\tLive Oak",
+      projectContext: {
+        clientId: "cli-waterford",
+        clientName: "Waterford",
+        projectId: "project-waterford",
+        projectName: "Waterford Relocation",
+        jobId: "job-waterford-relocation",
+        jobName: "Tree relocation",
+      },
+      savedAtIso: "2026-06-04T12:00:00.000Z",
+    });
+
+    assert.deepEqual(parseDataSyncDraft(serialized)?.projectContext, {
+      clientId: "cli-waterford",
+      clientName: "Waterford",
+      projectId: "project-waterford",
+      projectsId: "project-waterford",
+      projectName: "Waterford Relocation",
+      jobId: "job-waterford-relocation",
+      jobName: "Tree relocation",
+    });
+  });
+
   it("rejects stale draft payloads with an unknown import template", () => {
     const serialized = JSON.stringify({
       templateId: "old-inventory-template",

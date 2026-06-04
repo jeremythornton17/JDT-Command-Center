@@ -13,6 +13,8 @@ export type RelationshipInput = {
   jobName?: unknown;
   task?: unknown;
   jobScheduleId?: unknown;
+  projectsId?: unknown;
+  treeId?: unknown;
 };
 
 export type RelationshipFields = {
@@ -114,6 +116,22 @@ export function sameProject(project: RelationshipInput, record: RelationshipInpu
   const projectName = normalizeName(project.projectName || project.name || project.title);
   const recordProjectName = normalizeName(record.projectName || record.project || record.jobScheduleId || record.title);
   return Boolean(projectName && recordProjectName && projectName === recordProjectName);
+}
+
+export function sameProjectTreeAsset(left: RelationshipInput, right: RelationshipInput): boolean {
+  const leftTreeId = cleanString(left.treeId) || cleanString(left.id);
+  const rightTreeId = cleanString(right.treeId) || cleanString(right.id);
+  if (!leftTreeId || !rightTreeId || leftTreeId !== rightTreeId) return false;
+
+  const leftProjectId = cleanString(left.projectId) || cleanString(left.projectsId);
+  const rightProjectId = cleanString(right.projectId) || cleanString(right.projectsId);
+  if (leftProjectId || rightProjectId) return Boolean(leftProjectId && rightProjectId && leftProjectId === rightProjectId);
+
+  const leftJobId = cleanString(left.jobId);
+  const rightJobId = cleanString(right.jobId);
+  if (leftJobId || rightJobId) return Boolean(leftJobId && rightJobId && leftJobId === rightJobId);
+
+  return cleanString(left.id) === cleanString(right.id);
 }
 
 function cleanString(value: unknown): string {

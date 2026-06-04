@@ -352,6 +352,34 @@ describe("sheet import mapping", () => {
     });
   });
 
+  it("stamps project tree asset imports with the selected project context", () => {
+    const preview = buildImportPreview("jdt_project_flow_tree_assets", [
+      ["Tree_Assets_ID", "Projects_ID", "Tree Type", "DBH (IN)", "Existing Location Description", "Current Status"],
+      ["1001", "", "Live Oak", "28", "26.387315,-80.1712583", "Ready for Relocation"],
+    ], {
+      projectContext: {
+        clientId: "cli-waterford",
+        clientName: "Waterford",
+        projectId: "project-waterford",
+        projectName: "Waterford Relocation",
+        jobId: "job-waterford-relocation",
+        jobName: "Tree relocation",
+      },
+    });
+    const trees = preview.targets.find((target) => target.collectionName === "treeRelocationRecords")?.records as any[];
+
+    assert.equal(trees?.length, 1);
+    assert.equal(trees[0].treeId, "1001");
+    assert.equal(trees[0].clientId, "cli-waterford");
+    assert.equal(trees[0].clientName, "Waterford");
+    assert.equal(trees[0].projectId, "project-waterford");
+    assert.equal(trees[0].projectsId, "project-waterford");
+    assert.equal(trees[0].projectName, "Waterford Relocation");
+    assert.equal(trees[0].jobId, "job-waterford-relocation");
+    assert.equal(trees[0].jobName, "Tree relocation");
+    assert.equal(preview.warnings.some((warning) => warning.includes("Projects_ID")), false);
+  });
+
   it("maps JDT project flow treatment or aftercare rows into tree-linked work orders", () => {
     const preview = buildImportPreview("jdt_project_flow_treatment_aftercare", [
       ["Treatment_Aftercare Logs_ID", "Tree Assets_ID", "Treatments", "Treatments Type", "Date Of Last Treatment", "Treatment Action", "Completed By", "Condition Observed", "Watering Status", "Irrigation Status", "Stress Level", "Follow-up Needed", "Next Follow-up Date", "Notes"],

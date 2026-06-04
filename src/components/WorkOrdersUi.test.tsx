@@ -9,6 +9,7 @@ import CrewViewBoard from "./CrewViewBoard";
 import CrewsBoard from "./CrewsBoard";
 import EquipmentBoard from "./EquipmentBoard";
 import FreightBoard from "./FreightBoard";
+import SyncBoard from "./SyncBoard";
 
 describe("work order UI wiring", () => {
   const bocaJob: JobRecord = {
@@ -74,6 +75,49 @@ describe("work order UI wiring", () => {
     assert.match(html, /Frenchman&#x27;s Creek north crew gate/);
     assert.match(html, /Construction truck access from Hood Road/);
     assert.match(html, /Do not send crews through the clubhouse entrance/);
+  });
+
+  it("builds project modal context from project records that only have a project id", () => {
+    assert.deepEqual(projectModalContextForRecord({
+      id: "project-waterford",
+      title: "Waterford Relocation",
+      clientId: "cli-waterford",
+      clientName: "Waterford",
+    }), {
+      clientId: "cli-waterford",
+      clientName: "Waterford",
+      projectId: "project-waterford",
+      projectsId: "project-waterford",
+      projectName: "Waterford Relocation",
+      jobId: "project-waterford",
+      jobName: "Waterford Relocation",
+      division: undefined,
+      projectSiteAddressOptions: [],
+    });
+  });
+
+  it("shows the selected project context in Data Sync when importing project trees", () => {
+    const html = renderToString(
+      <SyncBoard
+        sources={[]}
+        mappings={[]}
+        openModal={() => undefined}
+        projectImportContext={{
+          clientName: "Waterford",
+          projectId: "project-waterford",
+          projectName: "Waterford Relocation",
+          jobId: "job-waterford-relocation",
+          jobName: "Tree relocation",
+        }}
+      />,
+    );
+
+    assert.match(html, /Importing To Project/);
+    assert.match(html, /JDT Command Center/);
+    assert.match(html, /App Import Setup/);
+    assert.match(html, /Waterford/);
+    assert.match(html, /Waterford Relocation/);
+    assert.match(html, /Tree relocation/);
   });
 
   it("builds project-scoped address options for assignment forms launched from a project profile", () => {

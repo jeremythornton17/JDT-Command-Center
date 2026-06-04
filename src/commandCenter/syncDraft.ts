@@ -1,9 +1,10 @@
-import { sheetImportTemplates, type SheetImportTemplateId } from './sheetImport';
+import { normalizeProjectImportContext, sheetImportTemplates, type ProjectImportContext, type SheetImportTemplateId } from './sheetImport';
 
 export type DataSyncDraft = {
   templateId: SheetImportTemplateId;
   pastedRows: string;
   savedAtIso?: string;
+  projectContext?: ProjectImportContext;
 };
 
 export const dataSyncDraftStorageKey = 'jdt-command-center:data-sync-draft:v1';
@@ -15,6 +16,7 @@ export function serializeDataSyncDraft(draft: DataSyncDraft): string {
     templateId: draft.templateId,
     pastedRows: draft.pastedRows,
     savedAtIso: draft.savedAtIso,
+    projectContext: normalizeProjectImportContext(draft.projectContext as ProjectImportContext | undefined),
   });
 }
 
@@ -34,6 +36,7 @@ function normalizeDataSyncDraft(value: unknown): DataSyncDraft | null {
   const templateId = draft.templateId;
   const pastedRows = draft.pastedRows;
   const savedAtIso = draft.savedAtIso;
+  const projectContext = normalizeProjectImportContext(draft.projectContext as ProjectImportContext | undefined);
 
   if (typeof templateId !== 'string' || !validTemplateIds.has(templateId as SheetImportTemplateId)) return null;
   if (typeof pastedRows !== 'string') return null;
@@ -43,5 +46,6 @@ function normalizeDataSyncDraft(value: unknown): DataSyncDraft | null {
     templateId: templateId as SheetImportTemplateId,
     pastedRows,
     savedAtIso,
+    ...(projectContext ? { projectContext } : {}),
   };
 }

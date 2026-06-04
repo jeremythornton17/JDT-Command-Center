@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, MapPin, User, Truck, Wrench, Leaf, Clock, History, Edit2, FileText, Upload } from 'lucide-react';
 import type { DocumentRecord, FieldUpdateRecord, LoadRecord, ProjectMaterialItemRecord, TreeRelocationRecord, WorkOrderRecord } from '../commandCenter/records';
-import type { SheetImportTemplateId } from '../commandCenter/sheetImport';
+import type { ProjectImportContext, SheetImportTemplateId } from '../commandCenter/sheetImport';
 import { sameClient, sameProject } from '../commandCenter/relationships';
 import { equipmentCategory, equipmentDisplayName } from '../commandCenter/equipmentFreight';
 
@@ -25,7 +25,7 @@ type CommandDrawerProps = {
   treeRelocationRecordsList?: TreeRelocationRecord[];
   documentsList?: DocumentRecord[];
   fieldUpdatesList?: FieldUpdateRecord[];
-  openImportTemplate?: (templateId: SheetImportTemplateId) => void;
+  openImportTemplate?: (templateId: SheetImportTemplateId, projectContext?: ProjectImportContext) => void;
 };
 
 const drawerConfig: Record<string, { title: string; icon: any; editType: string; collection: keyof CommandDrawerProps }> = {
@@ -111,13 +111,14 @@ export function projectSiteMapUrl(value: unknown): string {
 
 export function projectModalContextForRecord(record: any) {
   if (!record) return { projectSiteAddressOptions: [] };
+  const projectId = record.projectId || record.projectsId || record.id;
   return {
     clientId: record.clientId,
     clientName: record.clientName || record.client,
-    projectId: record.projectId,
-    projectsId: record.projectsId || record.projectId,
+    projectId,
+    projectsId: record.projectsId || projectId,
     projectName: record.projectName || record.title,
-    jobId: record.jobId || record.id,
+    jobId: record.jobId || record.id || projectId,
     jobName: record.jobName || record.title,
     division: record.division,
     projectSiteAddressOptions: projectSiteAddressOptionsForRecord(record),
@@ -1090,7 +1091,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                       <Leaf className="h-3.5 w-3.5" /> Add Tree
                     </button>
                     {props.openImportTemplate && [
-                        ['Tree Assets', 'jdt_project_flow_tree_assets'],
+                        ['Import Trees to This Project', 'jdt_project_flow_tree_assets'],
                         ['Root Pruning', 'jdt_project_flow_tree_pruning'],
                         ['Nutrient Care', 'jdt_project_flow_treatment_aftercare'],
                         ['Photos', 'jdt_project_flow_tree_photos'],
@@ -1098,7 +1099,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                         <button
                           key={templateId}
                           type="button"
-                          onClick={() => props.openImportTemplate?.(templateId as SheetImportTemplateId)}
+                          onClick={() => props.openImportTemplate?.(templateId as SheetImportTemplateId, projectContext)}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
                         >
                           <Upload className="h-3.5 w-3.5" /> {label}

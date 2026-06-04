@@ -134,6 +134,42 @@ test('project tree asset forms expose editable tree, pruning, aftercare, and pho
   assert.match(photoHtml, /Captured Date/);
 });
 
+test('project tree asset forms show and require the selected project context', () => {
+  const withContextHtml = renderToString(
+    <EntityForms
+      type="project_tree_asset"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{
+        treeId: '1001',
+        type: 'Live Oak',
+        clientName: 'Waterford',
+        projectId: 'project-waterford',
+        projectName: 'Waterford Relocation',
+        jobId: 'job-waterford-relocation',
+        jobName: 'Tree relocation',
+      }}
+    />,
+  );
+  const missingContextHtml = renderToString(
+    <EntityForms
+      type="project_tree_asset"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{ treeId: '1001', type: 'Live Oak' }}
+    />,
+  );
+
+  assert.match(withContextHtml, /Saving To Project/);
+  assert.match(withContextHtml, /Waterford/);
+  assert.match(withContextHtml, /Waterford Relocation/);
+  assert.match(withContextHtml, /Tree relocation/);
+  assert.match(missingContextHtml, /Project context required/);
+  assert.match(missingContextHtml, /disabled/);
+});
+
 test('project forms expose jobsite access addresses and field pin points', () => {
   const html = renderToString(
     <EntityForms
