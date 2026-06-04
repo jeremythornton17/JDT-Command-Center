@@ -161,6 +161,9 @@ test('project forms expose jobsite access addresses and field pin points', () =>
   assert.match(html, /Load \/ Unload Pin/);
   assert.match(html, /Additional Load \/ Unload Pin/);
   assert.match(html, /Site Access Notes/);
+  assert.match(html, /Paste street address or Google Maps link/);
+  assert.match(html, /Paste access address, Google Maps link, or lat,long pin/);
+  assert.match(html, /Paste Google Maps URL or lat,long coordinates/);
   assert.match(html, /Frenchman&#x27;s Creek north crew gate/);
   assert.match(html, /Construction truck access from Hood Road/);
 });

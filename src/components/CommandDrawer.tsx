@@ -95,6 +95,13 @@ export function projectSiteAddressOptionsForRecord(record: any): string[] {
   return uniqueProjectSiteValues(projectSiteAddressOptionKeys.map((key) => record?.[key]));
 }
 
+export function projectSiteMapUrl(value: unknown): string {
+  const clean = cleanProjectSiteValue(value);
+  if (!clean) return '';
+  if (/^https?:\/\/(www\.)?(google\.com\/maps|maps\.app\.goo\.gl)\//i.test(clean)) return clean;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(clean)}`;
+}
+
 export function projectModalContextForRecord(record: any) {
   if (!record) return { projectSiteAddressOptions: [] };
   return {
@@ -330,13 +337,32 @@ function ProjectSiteAccessPanel({ record }: { record: any }) {
       </h3>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         {projectSiteAccessDisplayFields.map(([key, label]) => (
-          <div key={key} className={`rounded-lg border border-jdt-border bg-white p-3 ${key === 'siteAccessNotes' ? 'sm:col-span-2' : ''}`}>
-            <p className="text-[10px] font-black uppercase tracking-wide text-zinc-400">{label}</p>
-            <p className="mt-1 text-sm font-black text-jdt-text break-words">{displayValue(record?.[key])}</p>
-          </div>
+          <ProjectSiteAccessValue key={key} fieldKey={key} label={label} value={record?.[key]} />
         ))}
       </div>
     </section>
+  );
+}
+
+function ProjectSiteAccessValue({ fieldKey, label, value }: { fieldKey: string; label: string; value: unknown }) {
+  const display = displayValue(value);
+  const mapUrl = fieldKey === 'siteAccessNotes' ? '' : projectSiteMapUrl(value);
+
+  return (
+    <div className={`rounded-lg border border-jdt-border bg-white p-3 ${fieldKey === 'siteAccessNotes' ? 'sm:col-span-2' : ''}`}>
+      <p className="text-[10px] font-black uppercase tracking-wide text-zinc-400">{label}</p>
+      <p className="mt-1 text-sm font-black text-jdt-text break-words">{display}</p>
+      {mapUrl ? (
+        <a
+          href={mapUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 inline-flex items-center gap-1 text-[10px] font-black uppercase text-jdt-primary hover:text-jdt-dark"
+        >
+          <MapPin className="h-3 w-3" /> Open Map
+        </a>
+      ) : null}
+    </div>
   );
 }
 

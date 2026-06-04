@@ -4,7 +4,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import type { CrewRecord, DocumentRecord, EquipmentRecord, FieldUpdateRecord, JobRecord, LoadRecord, ProjectMaterialItemRecord, TreeRelocationRecord, WorkOrderRecord } from "../commandCenter/records";
 import { TrackerBoard } from "../App";
-import CommandDrawer, { projectModalContextForRecord } from "./CommandDrawer";
+import CommandDrawer, { projectModalContextForRecord, projectSiteMapUrl } from "./CommandDrawer";
 import CrewViewBoard from "./CrewViewBoard";
 import CrewsBoard from "./CrewsBoard";
 import EquipmentBoard from "./EquipmentBoard";
@@ -97,6 +97,41 @@ describe("work order UI wiring", () => {
       "Practice facility laydown pin",
       "South range unloading pin",
     ]);
+  });
+
+  it("turns pasted project addresses and Google Maps pins into open-map links", () => {
+    const googleMapsUrl = "https://www.google.com/maps/@26.387315,-80.1712583,260m/data=!3m1!1e3!4m3!11m2!2s9hIPxsbmI8gHyk_b09HUxQ!3e3?authuser=0&entry=ttu";
+    assert.equal(projectSiteMapUrl(googleMapsUrl), googleMapsUrl);
+    assert.equal(
+      projectSiteMapUrl("26.387315, -80.1712583"),
+      "https://www.google.com/maps/search/?api=1&query=26.387315%2C%20-80.1712583",
+    );
+    assert.equal(
+      projectSiteMapUrl("13495 Tournament Dr, Palm Beach Gardens, FL 33410"),
+      "https://www.google.com/maps/search/?api=1&query=13495%20Tournament%20Dr%2C%20Palm%20Beach%20Gardens%2C%20FL%2033410",
+    );
+
+    const html = renderToString(
+      <CommandDrawer
+        isOpen
+        onClose={() => undefined}
+        type="job"
+        itemId="job-boca"
+        defaultTab="overview"
+        openModal={() => undefined}
+        jobsList={[{
+          id: "job-boca",
+          title: "Boca West Relocation",
+          location: "Boca Raton",
+          truckAccessAddress: googleMapsUrl,
+          loadUnloadPin: "26.387315, -80.1712583",
+        }]}
+      />,
+    );
+
+    assert.match(html, /Open Map/);
+    assert.match(html, /https:\/\/www\.google\.com\/maps\/@26\.387315,-80\.1712583/);
+    assert.match(html, /query=26.387315%2C%20-80.1712583/);
   });
 
   it("shows related work orders inside a job drawer", () => {
