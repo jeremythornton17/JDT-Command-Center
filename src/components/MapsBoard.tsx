@@ -3,6 +3,9 @@ import {
   ClipboardList,
   Compass,
   Crosshair,
+  Download,
+  ExternalLink,
+  Globe2,
   LocateFixed,
   Route,
   Target,
@@ -11,6 +14,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import {
+  buildProjectGoogleEarthMapPackage,
   buildRelocationJobOptions,
   buildTreeRelocationTasks,
   filterTreesForRelocationJob,
@@ -92,6 +96,12 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
   const selectedTasks = selectedTree ? buildTreeRelocationTasks(selectedTree) : [];
   const allTreeTasks = filteredTreeRecords.flatMap(tree => buildTreeRelocationTasks(tree).map(task => ({ ...task, tree })));
   const readyTasks = allTreeTasks.filter(task => task.status === 'Ready').slice(0, 7);
+  const earthMapPackage = useMemo(() => buildProjectGoogleEarthMapPackage({
+    job: selectedJob,
+    name: selectedJob ? undefined : 'All Relocation Jobs',
+    trees: filteredTreeRecords,
+    fallbackCenter: defaultFieldCenter,
+  }), [selectedJob, filteredTreeRecords]);
   const selectedPinPoint = selectedPin
     ? selectedTree?.relocationMap?.[selectedPin.pointType]
     : undefined;
@@ -257,6 +267,29 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
     );
   };
 
+  const downloadProjectKml = () => {
+    if (!earthMapPackage.pinnedTreeCount) {
+      setFieldStatus('Add at least one source or destination pin before exporting this project to Google Earth.');
+      return;
+    }
+
+    const blob = new Blob([earthMapPackage.kml], { type: 'application/vnd.google-earth.kml+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = earthMapPackage.fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setFieldStatus(`Downloaded ${earthMapPackage.fileName} for Google Earth import.`);
+  };
+
+  const openGoogleEarthProjectView = () => {
+    window.open(earthMapPackage.googleEarthUrl, '_blank', 'noopener,noreferrer');
+    setFieldStatus('Opened the selected project area in Google Earth. Download the KML to import project tree pins.');
+  };
+
   const renderFallbackTreePins = () => {
     return filteredTreeRecords.flatMap(tree => {
       const pins: React.ReactNode[] = [];
@@ -380,6 +413,42 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
               <Crosshair className="h-4 w-4 text-jdt-primary" />
               {fieldStatus}
             </div>
+          </div>
+
+          <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-jdt-border bg-white">
+                  <Globe2 className="h-5 w-5 text-jdt-primary" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase text-zinc-400">Google Earth Project Map</p>
+                  <h3 className="text-sm font-black text-jdt-text">{earthMapPackage.documentName}</h3>
+                  <p className="mt-1 text-[11px] font-bold text-zinc-500">
+                    {earthMapPackage.pinnedTreeCount} pinned trees, {earthMapPackage.placemarkCount} pins, {earthMapPackage.pathCount} move paths ready for Earth.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={downloadProjectKml}
+                  className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" /> Download KML
+                </button>
+                <button
+                  type="button"
+                  onClick={openGoogleEarthProjectView}
+                  className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive flex items-center gap-2"
+                >
+                  <ExternalLink className="h-4 w-4" /> Open Google Earth
+                </button>
+              </div>
+            </div>
+            <p className="mt-3 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[11px] font-bold text-zinc-500">
+              Import the downloaded KML into a Google Earth project to view this same project map with tree source pins, destination pins, and move paths.
+            </p>
           </div>
 
           <div className="relative min-h-[560px] bg-zinc-950 rounded-2xl border border-jdt-border shadow-sm overflow-hidden isolate">

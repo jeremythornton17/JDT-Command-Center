@@ -41,6 +41,9 @@ describe("MapsBoard relocation pin editing", () => {
     assert.match(html, /Select a source or destination pin on the map/);
     assert.match(html, /Use Phone GPS/);
     assert.match(html, /GPS accuracy/);
+    assert.match(html, /Google Earth Project Map/);
+    assert.match(html, /Download KML/);
+    assert.match(html, /Open Google Earth/);
   });
 
   it("shows imported relocation tree records as job-scoped map pins", () => {

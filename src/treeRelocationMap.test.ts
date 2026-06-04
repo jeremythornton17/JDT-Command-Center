@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  buildProjectGoogleEarthMapPackage,
   buildRelocationJobOptions,
   buildTreeRelocationTasks,
   filterTreesForRelocationJob,
@@ -135,5 +136,53 @@ describe("tree relocation map helpers", () => {
     assert.equal(formatTreeCoordinate(point), "26.75505, -80.91809");
     assert.equal(point.accuracyMeters, 5);
     assert.equal(point.label, "GPS source pin");
+  });
+
+  it("builds a Google Earth KML package from project tree source and destination pins", () => {
+    const earthPackage = buildProjectGoogleEarthMapPackage({
+      job: {
+        id: "job-boca-course-1",
+        title: "Boca West & Course <1>",
+        clientName: "Boca West Country Club",
+      },
+      trees: [
+        {
+          treeId: "tree-boca-109",
+          type: "Live Oak",
+          status: "Ready for Relocation",
+          relocationMap: {
+            source: { lat: 26.37127, lng: -80.16231, label: "Existing fairway" },
+            destination: { lat: 26.37201, lng: -80.16444, label: "New green" },
+          },
+        },
+      ],
+      generatedAt: "2026-06-03T21:00:00.000Z",
+    });
+
+    assert.equal(earthPackage.fileName, "boca-west-and-course-1-tree-map.kml");
+    assert.equal(earthPackage.placemarkCount, 2);
+    assert.equal(earthPackage.pathCount, 1);
+    assert.equal(earthPackage.pinnedTreeCount, 1);
+    assert.match(earthPackage.kml, /<kml xmlns="http:\/\/www\.opengis\.net\/kml\/2\.2">/);
+    assert.match(earthPackage.kml, /Boca West &amp; Course &lt;1&gt;/);
+    assert.match(earthPackage.kml, /tree-boca-109 Source/);
+    assert.match(earthPackage.kml, /-80\.16231,26\.37127,0/);
+    assert.match(earthPackage.kml, /-80\.16444,26\.37201,0/);
+    assert.match(earthPackage.kml, /<LineString>/);
+    assert.match(earthPackage.googleEarthUrl, /^https:\/\/earth\.google\.com\/web\/@26\.37164,-80\.16338/);
+  });
+
+  it("keeps empty project Earth exports valid while reporting no pinned trees", () => {
+    const earthPackage = buildProjectGoogleEarthMapPackage({
+      name: "Empty Project",
+      trees: [{ treeId: "tree-without-pins" }],
+      fallbackCenter: { lat: 26.75505, lng: -80.91809 },
+    });
+
+    assert.equal(earthPackage.placemarkCount, 0);
+    assert.equal(earthPackage.pathCount, 0);
+    assert.equal(earthPackage.pinnedTreeCount, 0);
+    assert.match(earthPackage.kml, /Empty Project/);
+    assert.match(earthPackage.googleEarthUrl, /^https:\/\/earth\.google\.com\/web\/@26\.75505,-80\.91809/);
   });
 });

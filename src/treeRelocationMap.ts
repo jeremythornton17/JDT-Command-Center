@@ -33,10 +33,18 @@ export interface TreeRelocationTask {
   detail: string;
 }
 
-type RelocationTree = {
+export type RelocationTree = {
   id?: string;
   treeId?: string;
   status?: string;
+  type?: string;
+  treeType?: string;
+  ranchOakType?: string;
+  species?: string;
+  farm?: string;
+  zone?: string;
+  existingLocationDescription?: string;
+  proposedFinalLocationDescription?: string;
   clientId?: string;
   clientName?: string;
   projectId?: string;
@@ -52,7 +60,7 @@ type RelocationTree = {
   lastSprayed?: string;
 };
 
-type RelocationJobLike = {
+export type RelocationJobLike = {
   id?: string;
   title?: string;
   name?: string;
@@ -67,6 +75,26 @@ type RelocationJobLike = {
   jobType?: string;
   workTypes?: string[];
 };
+
+export interface ProjectGoogleEarthMapPackageOptions<T extends RelocationTree = RelocationTree> {
+  name?: string;
+  description?: string;
+  job?: RelocationJobLike | null;
+  trees?: T[];
+  generatedAt?: string;
+  fallbackCenter?: TreeRelocationPoint;
+}
+
+export interface ProjectGoogleEarthMapPackage {
+  documentName: string;
+  fileName: string;
+  kml: string;
+  placemarkCount: number;
+  pathCount: number;
+  pinnedTreeCount: number;
+  center?: TreeRelocationPoint;
+  googleEarthUrl: string;
+}
 
 const defaultMapBounds = {
   north: 26.8,
@@ -189,6 +217,76 @@ export function pointFromDevicePosition(
   };
 }
 
+export function buildProjectGoogleEarthMapPackage<T extends RelocationTree = RelocationTree>(
+  options: ProjectGoogleEarthMapPackageOptions<T>,
+): ProjectGoogleEarthMapPackage {
+  const trees = options.trees ?? [];
+  const documentName = projectEarthDocumentName(options);
+  const generatedAt = options.generatedAt ?? new Date().toISOString();
+  const sourcePlacemarks: string[] = [];
+  const destinationPlacemarks: string[] = [];
+  const pathPlacemarks: string[] = [];
+  const pointsForCenter: TreeRelocationPoint[] = [];
+  let pinnedTreeCount = 0;
+
+  trees.forEach((tree) => {
+    const source = validPoint(tree.relocationMap?.source);
+    const destination = validPoint(tree.relocationMap?.destination);
+    if (!source && !destination) return;
+
+    pinnedTreeCount += 1;
+    const treeName = treeMapName(tree);
+    const treeDescription = treeKmlDescription(tree, options.job);
+
+    if (source) {
+      pointsForCenter.push(source);
+      sourcePlacemarks.push(pointPlacemark(`${treeName} Source`, "sourcePin", source, treeDescription));
+    }
+
+    if (destination) {
+      pointsForCenter.push(destination);
+      destinationPlacemarks.push(pointPlacemark(`${treeName} Destination`, "destinationPin", destination, treeDescription));
+    }
+
+    if (source && destination) {
+      pathPlacemarks.push(pathPlacemark(`${treeName} Move Path`, source, destination, treeDescription));
+    }
+  });
+
+  const center = projectMapCenter(pointsForCenter) ?? options.fallbackCenter;
+  const placemarkCount = sourcePlacemarks.length + destinationPlacemarks.length;
+  const pathCount = pathPlacemarks.length;
+  const description = options.description
+    || `Generated from JDT Command Center on ${generatedAt}. Import this KML into Google Earth to view project tree source and destination locations.`;
+
+  const folders = [
+    kmlFolder("Source Pins", sourcePlacemarks),
+    kmlFolder("Destination Pins", destinationPlacemarks),
+    kmlFolder("Relocation Paths", pathPlacemarks),
+  ].join("\n");
+
+  return {
+    documentName,
+    fileName: `${slugify(documentName)}.kml`,
+    kml: [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<kml xmlns="http://www.opengis.net/kml/2.2">',
+      '<Document>',
+      `<name>${escapeXml(documentName)}</name>`,
+      `<description>${escapeXml(description)}</description>`,
+      kmlStyles(),
+      folders,
+      '</Document>',
+      '</kml>',
+    ].join("\n"),
+    placemarkCount,
+    pathCount,
+    pinnedTreeCount,
+    center,
+    googleEarthUrl: googleEarthUrlForPoint(center),
+  };
+}
+
 export function buildTreeRelocationTasks(tree: RelocationTree): TreeRelocationTask[] {
   const firstRootPruneComplete = Boolean(tree.rootPruneDate1);
   const secondRootPruneComplete = Boolean(tree.rootPruneDate2);
@@ -265,6 +363,11 @@ export function latLngToMapPercent(point: TreeRelocationPoint) {
 export function formatTreeCoordinate(point?: TreeRelocationPoint): string {
   if (!point) return "Not pinned";
   return `${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}`;
+}
+
+export function googleEarthUrlForPoint(point?: TreeRelocationPoint): string {
+  if (!point) return "https://earth.google.com/web/";
+  return `https://earth.google.com/web/@${point.lat.toFixed(5)},${point.lng.toFixed(5)},150a,900d,35y,0h,0t,0r`;
 }
 
 export function getRelocationStatusTone(status: string): string {
@@ -365,4 +468,119 @@ function slugify(value: string): string {
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function projectEarthDocumentName(options: ProjectGoogleEarthMapPackageOptions): string {
+  const job = options.job;
+  const baseName = options.name
+    || job?.title
+    || job?.projectName
+    || job?.jobName
+    || job?.name
+    || "JDT Project";
+  return `${baseName} Tree Map`;
+}
+
+function treeMapName(tree: RelocationTree): string {
+  return String(tree.treeId || tree.id || tree.type || tree.treeType || "Project Tree");
+}
+
+function treeSpeciesName(tree: RelocationTree): string {
+  return String(tree.type || tree.treeType || tree.ranchOakType || tree.species || "Tree asset");
+}
+
+function validPoint(point?: TreeRelocationPoint): TreeRelocationPoint | undefined {
+  if (!point) return undefined;
+  if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return undefined;
+  return point;
+}
+
+function projectMapCenter(points: TreeRelocationPoint[]): TreeRelocationPoint | undefined {
+  if (!points.length) return undefined;
+  const totals = points.reduce((acc, point) => ({
+    lat: acc.lat + point.lat,
+    lng: acc.lng + point.lng,
+  }), { lat: 0, lng: 0 });
+  return {
+    lat: roundCoordinate(totals.lat / points.length),
+    lng: roundCoordinate(totals.lng / points.length),
+    label: "Project map center",
+  };
+}
+
+function pointPlacemark(name: string, styleId: string, point: TreeRelocationPoint, description: string): string {
+  return [
+    '<Placemark>',
+    `<name>${escapeXml(name)}</name>`,
+    `<description>${escapeXml(description)}</description>`,
+    `<styleUrl>#${styleId}</styleUrl>`,
+    '<Point>',
+    `<coordinates>${kmlCoordinate(point)}</coordinates>`,
+    '</Point>',
+    '</Placemark>',
+  ].join("\n");
+}
+
+function pathPlacemark(name: string, source: TreeRelocationPoint, destination: TreeRelocationPoint, description: string): string {
+  return [
+    '<Placemark>',
+    `<name>${escapeXml(name)}</name>`,
+    `<description>${escapeXml(description)}</description>`,
+    '<styleUrl>#movePath</styleUrl>',
+    '<LineString>',
+    '<tessellate>1</tessellate>',
+    `<coordinates>${kmlCoordinate(source)} ${kmlCoordinate(destination)}</coordinates>`,
+    '</LineString>',
+    '</Placemark>',
+  ].join("\n");
+}
+
+function treeKmlDescription(tree: RelocationTree, job?: RelocationJobLike | null): string {
+  const parts = [
+    `Tree: ${treeMapName(tree)}`,
+    `Type: ${treeSpeciesName(tree)}`,
+    tree.status ? `Status: ${tree.status}` : "",
+    tree.farm || tree.zone ? `Location: ${[tree.farm, tree.zone].filter(Boolean).join(" - ")}` : "",
+    tree.existingLocationDescription ? `Existing location: ${tree.existingLocationDescription}` : "",
+    tree.proposedFinalLocationDescription ? `Proposed location: ${tree.proposedFinalLocationDescription}` : "",
+    job?.clientName || job?.client ? `Client: ${job.clientName || job.client}` : "",
+    job?.title || job?.projectName || job?.jobName ? `Project: ${job.title || job.projectName || job.jobName}` : "",
+  ].filter(Boolean);
+  return parts.join("\n");
+}
+
+function kmlCoordinate(point: TreeRelocationPoint): string {
+  return `${point.lng.toFixed(5)},${point.lat.toFixed(5)},0`;
+}
+
+function kmlFolder(name: string, placemarks: string[]): string {
+  return [
+    '<Folder>',
+    `<name>${escapeXml(name)}</name>`,
+    ...placemarks,
+    '</Folder>',
+  ].join("\n");
+}
+
+function kmlStyles(): string {
+  return [
+    '<Style id="sourcePin">',
+    '<IconStyle><color>ff227a22</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/grn-circle.png</href></Icon></IconStyle>',
+    '</Style>',
+    '<Style id="destinationPin">',
+    '<IconStyle><color>ffb36618</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/blu-circle.png</href></Icon></IconStyle>',
+    '</Style>',
+    '<Style id="movePath">',
+    '<LineStyle><color>ff0b6abf</color><width>4</width></LineStyle>',
+    '</Style>',
+  ].join("\n");
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
