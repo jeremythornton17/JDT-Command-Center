@@ -20,6 +20,17 @@ function countLabel(count: number, singular: string): string {
   return `${count} ${singular}${count === 1 ? '' : 's'}`;
 }
 
+function normalizeMatchValue(value: unknown): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function clientMatchesRecord(client: ClientRecord, record: ProjectRecord | JobRecord): boolean {
+  if (sameClient(client, record)) return true;
+  const clientNames = [client.name, client.title, client.clientName].map(normalizeMatchValue).filter(Boolean);
+  const recordNames = [record.clientName, record.client].map(normalizeMatchValue).filter(Boolean);
+  return clientNames.some((name) => recordNames.includes(name));
+}
+
 export default function ClientsBoard({ clients, projects = [], jobs = [], openModal, openDrawer }: ClientsBoardProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -63,13 +74,23 @@ export default function ClientsBoard({ clients, projects = [], jobs = [], openMo
       <div className="grid gap-6 md:grid-cols-2">
         {filteredClients.map(client => {
           const clientJobHistory = jobHistoryLabels(client.history);
-          const linkedProjects = projects.filter((project) => sameClient(client, project));
-          const linkedJobs = jobs.filter((job) => sameClient(client, job));
+          const linkedProjects = projects.filter((project) => clientMatchesRecord(client, project));
+          const linkedJobs = jobs.filter((job) => clientMatchesRecord(client, job));
+          const clientDrawerId = String(client.id || client.name || client.title || '').trim();
 
           return (
           <article 
             key={client.id} 
-            className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm overflow-hidden flex flex-col group hover:border-zinc-400 hover:shadow-md transition-all"
+            role="button"
+            tabIndex={0}
+            onClick={() => clientDrawerId && openDrawer('client', clientDrawerId)}
+            onKeyDown={(event) => {
+              if ((event.key === 'Enter' || event.key === ' ') && clientDrawerId) {
+                event.preventDefault();
+                openDrawer('client', clientDrawerId);
+              }
+            }}
+            className="cursor-pointer rounded-xl border border-jdt-border bg-jdt-panel shadow-sm overflow-hidden flex flex-col group hover:border-zinc-400 hover:shadow-md transition-all"
           >
             <div className="p-4 border-b border-jdt-border bg-jdt-panel/50 flex justify-between items-start">
               <div className="flex items-center gap-3">
@@ -83,14 +104,20 @@ export default function ClientsBoard({ clients, projects = [], jobs = [], openMo
               </div>
               <div className="flex gap-1.5">
                 <button 
-                  onClick={() => openModal('delete_client', client)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openModal('delete_client', client);
+                  }}
                   className="p-1.5 text-xs text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 shadow-sm rounded-md transition-colors font-black uppercase"
                   title="Delete Account"
                 >
                   Delete
                 </button>
                 <button 
-                  onClick={() => openModal('client', client)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openModal('client', client);
+                  }}
                   className="p-1.5 text-xs text-zinc-500 hover:text-jdt-text bg-jdt-panel border border-jdt-border shadow-sm rounded-md transition-colors font-black uppercase"
                   title="Edit Account"
                 >
@@ -177,14 +204,28 @@ export default function ClientsBoard({ clients, projects = [], jobs = [], openMo
               </div>
             )}
 
-            <div className="p-3 border-t border-jdt-border bg-jdt-panel/50 flex items-center justify-between">
+            <div className="p-3 border-t border-jdt-border bg-jdt-panel/50 flex flex-wrap items-center justify-between gap-2">
               <span className="text-[10px] uppercase font-black tracking-wider text-zinc-500">Contact: {client.billingDetails || 'Net 30'} Account</span>
-              <button 
-                onClick={() => openModal('contact', { company: client.name || client.title })}
-                className="px-3 py-1.5 text-[10px] font-black uppercase rounded bg-jdt-primary text-white hover:bg-jdt-dark transition-colors"
-              >
-                Add Contact Point
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button 
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    clientDrawerId && openDrawer('client', clientDrawerId);
+                  }}
+                  className="px-3 py-1.5 text-[10px] font-black uppercase rounded border border-jdt-border bg-white text-jdt-primary hover:border-jdt-olive transition-colors"
+                >
+                  View Full Profile
+                </button>
+                <button 
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openModal('contact', { company: client.name || client.title, clientId: client.id });
+                  }}
+                  className="px-3 py-1.5 text-[10px] font-black uppercase rounded bg-jdt-primary text-white hover:bg-jdt-dark transition-colors"
+                >
+                  Add Contact Point
+                </button>
+              </div>
             </div>
           </article>
           );

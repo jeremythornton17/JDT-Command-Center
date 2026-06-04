@@ -72,5 +72,6 @@ describe("ClientsBoard", () => {
 
     assert.match(html, /1 project/);
     assert.match(html, /1 job/);
+    assert.match(html, /View Full Profile/);
   });
 });

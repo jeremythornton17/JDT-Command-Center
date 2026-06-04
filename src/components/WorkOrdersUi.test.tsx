@@ -134,6 +134,66 @@ describe("work order UI wiring", () => {
     assert.match(html, /query=26.387315%2C%20-80.1712583/);
   });
 
+  it("shows a client relationship profile with contacts and linked operating records", () => {
+    const html = renderToString(
+      <CommandDrawer
+        isOpen
+        onClose={() => undefined}
+        type="client"
+        itemId="cli-2275"
+        defaultTab="overview"
+        openModal={() => undefined}
+        clientsList={[{
+          id: "cli-2275",
+          name: "Boca West Country Club",
+          contactName: "Travis Wehrs",
+          phone: "(239) 340-9223",
+          email: "TWehrs@bocawestcc.org",
+          billingAddress: "20583 Boca West Dr, Boca Raton, FL 33434",
+          billingDetails: "Net 30",
+          members: [{ name: "Net 30 Account", role: "Billing", phone: "561-555-0100", email: "billing@bocawestcc.org" }],
+        }]}
+        projectsList={[
+          { id: "project-boca-course-1", title: "Boca West Course 1 Renovation", clientId: "cli-2275", clientName: "Boca West Country Club", status: "Active" },
+          { id: "project-boca-past", title: "Boca West Past Install", clientId: "cli-2275", status: "Complete" },
+        ]}
+        jobsList={[
+          { id: "job-boca-active", title: "Course 1 Relocation", clientId: "cli-2275", projectId: "project-boca-course-1", status: "Active" },
+          { id: "job-boca-upcoming", title: "North Course Install", clientName: "Boca West Country Club", status: "Scheduled" },
+          { id: "job-boca-complete", title: "Completed Root Prune", clientId: "cli-2275", status: "Complete" },
+        ]}
+        workOrdersList={[
+          { id: "wo-boca-root-prune", title: "Root prune Hole 7", clientId: "cli-2275", status: "Scheduled", assignedCrewNames: ["Carlos Reyes"] },
+        ]}
+        loadsList={[
+          { id: "load-boca-lowboy", title: "Lowboy to Boca West", clientId: "cli-2275", status: "In Transit", driver: "Christian Crespo" },
+        ]}
+        documentsList={[
+          { id: "doc-boca-permit", title: "Boca West permit", clientId: "cli-2275", category: "Permit", url: "https://drive.google.com/boca-permit" },
+        ]}
+        fieldUpdatesList={[
+          { id: "field-boca-delay", title: "Crew delay", clientId: "cli-2275", crewName: "Carlos Reyes", updateType: "Delayed" },
+        ]}
+      />,
+    );
+
+    assert.match(html, /Client Operating Profile/);
+    assert.match(html, /Primary Contact/);
+    assert.match(html, /Additional Contacts/);
+    assert.match(html, /Travis Wehrs/);
+    assert.match(html, /Net 30 Account/);
+    assert.match(html, /Current &amp; Active/);
+    assert.match(html, /Upcoming \/ Unscheduled/);
+    assert.match(html, /Completed \/ Prior/);
+    assert.match(html, /Boca West Course 1 Renovation/);
+    assert.match(html, /North Course Install/);
+    assert.match(html, /Completed Root Prune/);
+    assert.match(html, /Root prune Hole 7/);
+    assert.match(html, /Lowboy to Boca West/);
+    assert.match(html, /Boca West permit/);
+    assert.match(html, /Crew delay/);
+  });
+
   it("shows related work orders inside a job drawer", () => {
     const html = renderToString(
       <CommandDrawer

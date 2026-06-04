@@ -1132,6 +1132,8 @@ export default function App() {
         itemId={drawerConfig.itemId}
         defaultTab={drawerConfig.defaultTab}
         openModal={openModal}
+        openDrawer={openDrawer}
+        projectsList={projects}
         jobsList={jobs}
         loadsList={loads}
         ranchOaksList={nurseryInventory}
@@ -1247,7 +1249,7 @@ const workItemToneMap: Record<DashboardWorkItem['tone'], string> = {
   equipment: 'border-l-[#935231] bg-[#FBF1E7]',
 };
 
-const drawerBackedTypes = new Set(['job', 'freight', 'load', 'tree', 'equipment', 'employee', 'client']);
+const drawerBackedTypes = new Set(['job', 'project', 'freight', 'load', 'tree', 'equipment', 'employee', 'client']);
 
 function Dashboard({ recentRecords, dashboardSummary, openModal, openDrawer, setActiveTab }: any) {
   const openOperation = (operation: FeaturedOperation) => {

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { X, MapPin, User, Truck, Wrench, Leaf, Clock, History, Edit2, FileText, Upload } from 'lucide-react';
 import type { DocumentRecord, FieldUpdateRecord, LoadRecord, ProjectMaterialItemRecord, TreeRelocationRecord, WorkOrderRecord } from '../commandCenter/records';
 import type { SheetImportTemplateId } from '../commandCenter/sheetImport';
-import { sameProject } from '../commandCenter/relationships';
+import { sameClient, sameProject } from '../commandCenter/relationships';
 import { equipmentCategory, equipmentDisplayName } from '../commandCenter/equipmentFreight';
 
 type CommandDrawerProps = {
@@ -12,6 +12,8 @@ type CommandDrawerProps = {
   itemId: string | null;
   defaultTab?: string;
   openModal: (type: string, data?: any) => void;
+  openDrawer?: (type: string, id: string, defaultTab?: string) => void;
+  projectsList?: any[];
   jobsList?: any[];
   loadsList?: any[];
   ranchOaksList?: any[];
@@ -28,6 +30,7 @@ type CommandDrawerProps = {
 
 const drawerConfig: Record<string, { title: string; icon: any; editType: string; collection: keyof CommandDrawerProps }> = {
   job: { title: 'Project', icon: MapPin, editType: 'edit_project', collection: 'jobsList' },
+  project: { title: 'Project', icon: MapPin, editType: 'edit_project', collection: 'projectsList' },
   tree: { title: 'Tree', icon: Leaf, editType: 'edit_tree', collection: 'ranchOaksList' },
   freight: { title: 'Freight', icon: Truck, editType: 'edit_freight', collection: 'loadsList' },
   load: { title: 'Freight', icon: Truck, editType: 'edit_freight', collection: 'loadsList' },
@@ -47,6 +50,10 @@ function displayValue(value: any): string {
   if (Array.isArray(value)) return value.length ? value.join(', ') : '-';
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
+}
+
+function recordTitle(record: any, fallback = 'Untitled record'): string {
+  return displayValue(record?.title || record?.name || record?.projectName || record?.jobName || record?.loadNumber || record?.relatedTitle || fallback);
 }
 
 function sameKnownField(left: unknown, right: unknown): boolean {
@@ -138,7 +145,7 @@ function workOrdersForRecord(type: string, record: any, workOrders: WorkOrderRec
     ));
   }
 
-  if (type === 'job') {
+  if (type === 'job' || type === 'project') {
     return workOrders.filter((workOrder) => (
       sameKnownField(workOrder.jobId, record.id)
       || sameKnownField(workOrder.jobId, record.jobId)
@@ -172,7 +179,7 @@ function workOrdersForRecord(type: string, record: any, workOrders: WorkOrderRec
 }
 
 function materialItemsForRecord(type: string, record: any, materialItems: ProjectMaterialItemRecord[]) {
-  if (!record || type !== 'job') return [];
+  if (!record || !['job', 'project'].includes(type)) return [];
   return materialItems.filter((item) => (
     sameKnownField(item.projectId, record.projectId)
     || sameKnownField(item.projectsId, record.projectsId)
@@ -183,7 +190,7 @@ function materialItemsForRecord(type: string, record: any, materialItems: Projec
 }
 
 function loadsForRecord(type: string, record: any, loads: LoadRecord[]) {
-  if (!record || type !== 'job') return [];
+  if (!record || !['job', 'project'].includes(type)) return [];
   return loads.filter((load) => (
     sameKnownField(load.jobId, record.id)
     || sameKnownField(load.jobId, record.jobId)
@@ -195,7 +202,7 @@ function loadsForRecord(type: string, record: any, loads: LoadRecord[]) {
 }
 
 function treeAssetsForRecord(type: string, record: any, treeAssets: TreeRelocationRecord[]) {
-  if (!record || type !== 'job') return [];
+  if (!record || !['job', 'project'].includes(type)) return [];
   return treeAssets.filter((tree) => (
     sameKnownField(tree.projectId, record.projectId)
     || sameKnownField(tree.projectsId, record.projectsId)
@@ -223,7 +230,7 @@ function fieldUpdatesForRecord(type: string, record: any, fieldUpdates: FieldUpd
     || sameKnownField(update.jobId, record.id)
     || sameKnownField(update.jobId, record.jobId)
     || sameKnownField(update.relatedTitle, record.title)
-    || (type === 'job' && sameProject(record, update))
+    || (['job', 'project'].includes(type) && sameProject(record, update))
   ));
 }
 
@@ -289,8 +296,108 @@ function uniqueValues(values: unknown[]): string[] {
   return results;
 }
 
+function clientContextForRecord(record: any) {
+  return {
+    clientId: record?.id || record?.clientId,
+    clientName: record?.name || record?.title || record?.clientName,
+  };
+}
+
+function recordMatchesClient(client: any, record: any): boolean {
+  if (!client || !record) return false;
+  if (sameClient(client, record)) return true;
+
+  const clientIds = uniqueValues([client.id, client.clientId]);
+  const recordClientIds = uniqueValues([record.clientId, record.companiesId]);
+  const hasSharedId = clientIds.some((id) => recordClientIds.includes(id));
+  if (hasSharedId) return true;
+
+  const clientNames = uniqueValues([client.name, client.title, client.clientName]);
+  const recordClientNames = uniqueValues([record.clientName, record.client, record.company, record.companyName, record.clientCompany]);
+  return clientNames.some((name) => recordClientNames.includes(name));
+}
+
+function recordMatchesLinkedWork(record: any, projects: any[], jobs: any[]) {
+  const projectIds = uniqueValues(projects.flatMap((project) => [project.id, project.projectId, project.projectsId]));
+  const projectNames = uniqueValues(projects.flatMap((project) => [project.title, project.name, project.projectName]));
+  const jobIds = uniqueValues(jobs.flatMap((job) => [job.id, job.jobId]));
+  const jobNames = uniqueValues(jobs.flatMap((job) => [job.title, job.name, job.jobName]));
+
+  return (
+    uniqueValues([record?.projectId, record?.projectsId]).some((value) => projectIds.includes(value))
+    || uniqueValues([record?.projectName, record?.project]).some((value) => projectNames.includes(value))
+    || uniqueValues([record?.jobId]).some((value) => jobIds.includes(value))
+    || uniqueValues([record?.jobName, record?.job]).some((value) => jobNames.includes(value))
+  );
+}
+
+function clientProjectsForRecord(type: string, record: any, projects: any[]) {
+  if (!record || type !== 'client') return [];
+  return projects.filter((project) => recordMatchesClient(record, project));
+}
+
+function clientJobsForRecord(type: string, record: any, jobs: any[]) {
+  if (!record || type !== 'client') return [];
+  return jobs.filter((job) => recordMatchesClient(record, job));
+}
+
+function clientWorkOrdersForRecord(record: any, workOrders: WorkOrderRecord[], projects: any[], jobs: any[]) {
+  if (!record) return [];
+  return workOrders.filter((workOrder) => (
+    recordMatchesClient(record, workOrder)
+    || recordMatchesLinkedWork(workOrder, projects, jobs)
+  ));
+}
+
+function clientLoadsForRecord(record: any, loads: LoadRecord[], projects: any[], jobs: any[]) {
+  if (!record) return [];
+  return loads.filter((load) => (
+    recordMatchesClient(record, load)
+    || recordMatchesLinkedWork(load, projects, jobs)
+  ));
+}
+
+function clientDocumentsForRecord(record: any, documents: DocumentRecord[], projects: any[], jobs: any[]) {
+  if (!record) return [];
+  return documents.filter((doc) => (
+    recordMatchesClient(record, doc)
+    || recordMatchesLinkedWork(doc, projects, jobs)
+  ));
+}
+
+function clientFieldUpdatesForRecord(record: any, fieldUpdates: FieldUpdateRecord[], projects: any[], jobs: any[], workOrders: WorkOrderRecord[], loads: LoadRecord[]) {
+  if (!record) return [];
+  const relatedIds = new Set([
+    ...projects.flatMap((project) => [project.id, project.projectId, project.projectsId]),
+    ...jobs.flatMap((job) => [job.id, job.jobId]),
+    ...workOrders.flatMap((workOrder) => [workOrder.id]),
+    ...loads.flatMap((load) => [load.id, load.loadNumber]),
+  ].filter(Boolean).map(String));
+
+  return fieldUpdates.filter((update) => (
+    recordMatchesClient(record, update)
+    || recordMatchesLinkedWork(update, projects, jobs)
+    || relatedIds.has(String(update.relatedRecordId || ''))
+  ));
+}
+
+function relationshipStage(record: any): 'current' | 'upcoming' | 'completed' {
+  const status = cleanMatchValue(record?.status || record?.projectStatus || record?.jobStatus || record?.fieldStatus);
+  if (/(complete|completed|closed|done|paid|invoiced|cancelled)/.test(status)) return 'completed';
+  if (/(active|current|in progress|in-progress|started|underway|in transit|loaded|on site)/.test(status)) return 'current';
+  return 'upcoming';
+}
+
+function groupedByStage(records: any[]) {
+  return {
+    current: records.filter((record) => relationshipStage(record) === 'current'),
+    upcoming: records.filter((record) => relationshipStage(record) === 'upcoming'),
+    completed: records.filter((record) => relationshipStage(record) === 'completed'),
+  };
+}
+
 function equipmentOnSiteForRecord(type: string, record: any, equipmentList: any[]) {
-  if (!record || type !== 'job') return [];
+  if (!record || !['job', 'project'].includes(type)) return [];
 
   const projectIds = uniqueValues([record.projectId, record.projectsId, record.jobId, record.id]);
   const projectNames = uniqueValues([
@@ -366,6 +473,220 @@ function ProjectSiteAccessValue({ fieldKey, label, value }: { fieldKey: string; 
   );
 }
 
+function ClientContactPanel({ record, openModal }: { record: any; openModal: CommandDrawerProps['openModal'] }) {
+  const contacts = Array.isArray(record?.members) ? record.members : [];
+
+  return (
+    <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 className="flex items-center gap-2 text-sm font-black uppercase text-jdt-text">
+            <User className="h-4 w-4 text-jdt-olive" /> Contacts & Account Details
+          </h3>
+          <p className="mt-1 text-xs font-bold text-zinc-500">Primary contact, additional points of contact, billing terms, and access notes.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => openModal('contact', { company: record.name || record.title, clientId: record.id || record.clientId })}
+          className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark"
+        >
+          Add Contact Point
+        </button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {[
+          ['Primary Contact', record.contactName || 'Unassigned'],
+          ['Primary Phone', record.phone],
+          ['Primary Email', record.email],
+          ['Billing Address', record.billingAddress],
+          ['Terms & Billing Info', record.billingDetails || 'Net 30'],
+          ['Site / Account Notes', record.accessNotes || record.notes],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-lg border border-jdt-border bg-white p-3">
+            <p className="text-[10px] font-black uppercase tracking-wide text-zinc-400">{label}</p>
+            <p className="mt-1 text-sm font-black text-jdt-text break-words">{displayValue(value)}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-lg border border-jdt-border bg-white p-3">
+        <p className="text-[10px] font-black uppercase tracking-wide text-zinc-400">Additional Contacts</p>
+        {contacts.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {contacts.map((contact: any, index: number) => (
+              <div key={`${contact.name || 'contact'}-${index}`} className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
+                <p className="text-sm font-black text-jdt-primary">{displayValue(contact.name || 'Contact')}</p>
+                <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{displayValue(contact.role || 'Point of contact')}</p>
+                <p className="mt-2 text-xs font-bold text-zinc-600">{displayValue([contact.phone, contact.email].filter(Boolean).join(' | '))}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-sm font-bold text-zinc-500">No additional points of contact have been logged yet.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function LinkedRecordCard({ record, type, openDrawer }: { record: any; type?: string; openDrawer?: CommandDrawerProps['openDrawer'] }) {
+  const status = displayValue(record.status || record.projectStatus || record.jobStatus || record.fieldStatus || record.updateType || record.category || 'Open');
+  const detail = [
+    record.projectName,
+    record.jobName,
+    record.location,
+    record.date || record.scheduledDate || record.dueDate || record.eta,
+    record.driver,
+    record.crewLeadName,
+  ].filter(Boolean).join(' - ');
+  const drawerId = String(record.id || record.jobId || record.projectId || record.loadNumber || record.title || '').trim();
+
+  return (
+    <article className="rounded-lg border border-jdt-border bg-white p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-black text-jdt-primary break-words">{recordTitle(record)}</p>
+          {detail && <p className="mt-1 text-[10px] font-bold uppercase text-zinc-400 break-words">{detail}</p>}
+        </div>
+        <span className="shrink-0 rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{status}</span>
+      </div>
+      {(record.notes || record.driverNotes || record.url) && (
+        <p className="mt-2 break-words text-xs font-semibold text-zinc-600">{displayValue(record.notes || record.driverNotes || record.url)}</p>
+      )}
+      {openDrawer && drawerId && type ? (
+        <button
+          type="button"
+          onClick={() => openDrawer(type, drawerId)}
+          className="mt-3 text-[10px] font-black uppercase text-jdt-primary hover:text-jdt-dark"
+        >
+          Open Linked Record
+        </button>
+      ) : null}
+    </article>
+  );
+}
+
+function EmptyLinkedMessage({ label }: { label: string }) {
+  return <p className="rounded-lg border border-dashed border-jdt-border bg-white px-3 py-5 text-sm font-bold text-zinc-500">No {label} linked yet.</p>;
+}
+
+function LinkedRecordList({ records, emptyLabel, type, openDrawer }: { records: any[]; emptyLabel: string; type?: string; openDrawer?: CommandDrawerProps['openDrawer'] }) {
+  if (!records.length) return <EmptyLinkedMessage label={emptyLabel} />;
+  return (
+    <div className="space-y-2">
+      {records.map((record, index) => (
+        <LinkedRecordCard key={record.id || record.title || index} record={record} type={type} openDrawer={openDrawer} />
+      ))}
+    </div>
+  );
+}
+
+function StageGroup({ label, records, type, openDrawer }: { label: string; records: any[]; type: string; openDrawer?: CommandDrawerProps['openDrawer'] }) {
+  return (
+    <div className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <h4 className="text-[10px] font-black uppercase tracking-wide text-jdt-text">{label}</h4>
+        <span className="rounded bg-white px-2 py-1 text-[9px] font-black uppercase text-zinc-500">{records.length}</span>
+      </div>
+      <LinkedRecordList records={records} emptyLabel={`${label.toLowerCase()} records`} type={type} openDrawer={openDrawer} />
+    </div>
+  );
+}
+
+function ClientStageGroups({ title, records, type, openDrawer }: { title: string; records: any[]; type: string; openDrawer?: CommandDrawerProps['openDrawer'] }) {
+  const groups = groupedByStage(records);
+
+  return (
+    <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+      <h3 className="mb-3 text-sm font-black uppercase text-jdt-text">{title}</h3>
+      <div className="grid gap-3">
+        <StageGroup label="Current & Active" records={groups.current} type={type} openDrawer={openDrawer} />
+        <StageGroup label="Upcoming / Unscheduled" records={groups.upcoming} type={type} openDrawer={openDrawer} />
+        <StageGroup label="Completed / Prior" records={groups.completed} type={type} openDrawer={openDrawer} />
+      </div>
+    </section>
+  );
+}
+
+function ClientProfileOverview({
+  record,
+  projects,
+  jobs,
+  workOrders,
+  loads,
+  documents,
+  fieldUpdates,
+  openModal,
+  openDrawer,
+}: {
+  record: any;
+  projects: any[];
+  jobs: any[];
+  workOrders: WorkOrderRecord[];
+  loads: LoadRecord[];
+  documents: DocumentRecord[];
+  fieldUpdates: FieldUpdateRecord[];
+  openModal: CommandDrawerProps['openModal'];
+  openDrawer?: CommandDrawerProps['openDrawer'];
+}) {
+  return (
+    <>
+      <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-sm font-black uppercase text-jdt-text">Client Operating Profile</h3>
+            <p className="mt-1 text-xs font-bold text-zinc-500">Everything currently tied to this account across projects, jobs, crews, freight, documents, and field updates.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => openModal('client', record)}
+            className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark"
+          >
+            Edit Client
+          </button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-4">
+          {[
+            ['Projects', projects.length],
+            ['Jobs', jobs.length],
+            ['Work Orders', workOrders.length],
+            ['Freight Moves', loads.length],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-lg border border-jdt-border bg-white p-3">
+              <p className="text-[10px] font-black uppercase tracking-wide text-zinc-400">{label}</p>
+              <p className="mt-1 text-xl font-black text-jdt-primary">{value}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <ClientContactPanel record={record} openModal={openModal} />
+      <ClientStageGroups title="Project History" records={projects} type="project" openDrawer={openDrawer} />
+      <ClientStageGroups title="Job History" records={jobs} type="job" openDrawer={openDrawer} />
+
+      <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+        <h3 className="mb-3 text-sm font-black uppercase text-jdt-text">Work Orders</h3>
+        <LinkedRecordList records={workOrders} emptyLabel="work orders" type="job" openDrawer={openDrawer} />
+      </section>
+
+      <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+        <h3 className="mb-3 text-sm font-black uppercase text-jdt-text">Freight</h3>
+        <LinkedRecordList records={loads} emptyLabel="freight moves" type="freight" openDrawer={openDrawer} />
+      </section>
+
+      <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+        <h3 className="mb-3 text-sm font-black uppercase text-jdt-text">Documents</h3>
+        <LinkedRecordList records={documents} emptyLabel="documents" />
+      </section>
+
+      <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+        <h3 className="mb-3 text-sm font-black uppercase text-jdt-text">Field Updates</h3>
+        <LinkedRecordList records={fieldUpdates} emptyLabel="field updates" />
+      </section>
+    </>
+  );
+}
+
 export default function CommandDrawer(props: CommandDrawerProps) {
   const {
     isOpen,
@@ -374,6 +695,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
     itemId,
     defaultTab = 'overview',
     openModal,
+    openDrawer,
   } = props;
   const [activeTab, setActiveTab] = useState(defaultTab);
 
@@ -393,18 +715,31 @@ export default function CommandDrawer(props: CommandDrawerProps) {
 
   const heading = record?.title || record?.name || record?.treeId || itemId || config.title;
   const history = Array.isArray(record?.history) ? record.history : [];
-  const relatedWorkOrders = workOrdersForRecord(type, record, props.workOrdersList || []);
+  const relatedClientProjects = clientProjectsForRecord(type, record, props.projectsList || []);
+  const relatedClientJobs = clientJobsForRecord(type, record, props.jobsList || []);
+  const relatedWorkOrders = type === 'client'
+    ? clientWorkOrdersForRecord(record, props.workOrdersList || [], relatedClientProjects, relatedClientJobs)
+    : workOrdersForRecord(type, record, props.workOrdersList || []);
   const relatedMaterialItems = materialItemsForRecord(type, record, props.projectMaterialItemsList || []);
-  const relatedLoads = loadsForRecord(type, record, props.loadsList || []);
+  const relatedLoads = type === 'client'
+    ? clientLoadsForRecord(record, props.loadsList || [], relatedClientProjects, relatedClientJobs)
+    : loadsForRecord(type, record, props.loadsList || []);
   const relatedTreeAssets = treeAssetsForRecord(type, record, props.treeRelocationRecordsList || []);
   const relatedTreeWorkOrders = treeWorkOrdersForRecord(relatedWorkOrders, relatedTreeAssets);
-  const relatedDocuments = documentsForRecord(record, props.documentsList || [], relatedTreeAssets);
+  const relatedDocuments = type === 'client'
+    ? clientDocumentsForRecord(record, props.documentsList || [], relatedClientProjects, relatedClientJobs)
+    : documentsForRecord(record, props.documentsList || [], relatedTreeAssets);
   const relatedEquipmentOnSite = equipmentOnSiteForRecord(type, record, props.equipmentList || []);
-  const relatedFieldUpdates = fieldUpdatesForRecord(type, record, props.fieldUpdatesList || [], relatedWorkOrders, relatedLoads);
-  const profileTabs = type === 'job'
+  const relatedFieldUpdates = type === 'client'
+    ? clientFieldUpdatesForRecord(record, props.fieldUpdatesList || [], relatedClientProjects, relatedClientJobs, relatedWorkOrders, relatedLoads)
+    : fieldUpdatesForRecord(type, record, props.fieldUpdatesList || [], relatedWorkOrders, relatedLoads);
+  const isProjectProfile = type === 'job' || type === 'project';
+  const profileTabs = isProjectProfile
     ? ['overview', 'work orders', 'trees', 'equipment', 'freight', 'documents', 'field updates', 'financials', 'history']
-    : ['overview', 'work orders', 'materials', 'history', 'documents'];
-  const projectContext = projectModalContextForRecord(record);
+    : type === 'client'
+      ? ['overview', 'contacts', 'projects', 'jobs', 'work orders', 'freight', 'documents', 'field updates', 'history']
+      : ['overview', 'work orders', 'materials', 'history', 'documents'];
+  const projectContext = type === 'client' ? clientContextForRecord(record) : projectModalContextForRecord(record);
   const treeIdFor = (tree: TreeRelocationRecord) => String(tree.treeId || tree.id || '').trim();
   const seedTreeAsset = (tree?: TreeRelocationRecord) => ({
     ...projectContext,
@@ -478,7 +813,20 @@ export default function CommandDrawer(props: CommandDrawerProps) {
               <p className="text-xs font-bold text-zinc-500 mt-1">This drawer only shows records that exist in your current workspace.</p>
             </div>
           ) : activeTab === 'overview' ? (
-            <>
+            type === 'client' ? (
+              <ClientProfileOverview
+                record={record}
+                projects={relatedClientProjects}
+                jobs={relatedClientJobs}
+                workOrders={relatedWorkOrders}
+                loads={relatedLoads}
+                documents={relatedDocuments}
+                fieldUpdates={relatedFieldUpdates}
+                openModal={openModal}
+                openDrawer={openDrawer}
+              />
+            ) : (
+              <>
               <div className="grid gap-3 sm:grid-cols-2">
                 {pickSummaryFields(record).map(([key, value]) => (
                   <div key={key} className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
@@ -493,7 +841,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                   <p className="text-sm font-semibold text-zinc-700 whitespace-pre-wrap">{record.notes}</p>
                 </div>
               )}
-              {type === 'job' && <ProjectSiteAccessPanel record={record} />}
+              {isProjectProfile && <ProjectSiteAccessPanel record={record} />}
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -503,7 +851,43 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                   <Edit2 className="h-4 w-4" /> Edit Record
                 </button>
               </div>
-            </>
+              </>
+            )
+          ) : type === 'client' && activeTab === 'contacts' ? (
+            <ClientContactPanel record={record} openModal={openModal} />
+          ) : type === 'client' && activeTab === 'projects' ? (
+            <ClientStageGroups title="Project History" records={relatedClientProjects} type="project" openDrawer={openDrawer} />
+          ) : type === 'client' && activeTab === 'jobs' ? (
+            <ClientStageGroups title="Job History" records={relatedClientJobs} type="job" openDrawer={openDrawer} />
+          ) : type === 'client' && activeTab === 'work orders' ? (
+            <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+              <h3 className="mb-3 text-sm font-black uppercase text-jdt-text">Client Work Orders</h3>
+              <LinkedRecordList records={relatedWorkOrders} emptyLabel="work orders" type="job" openDrawer={openDrawer} />
+            </section>
+          ) : type === 'client' && activeTab === 'freight' ? (
+            <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+              <h3 className="mb-3 text-sm font-black uppercase text-jdt-text">Client Freight Moves</h3>
+              <LinkedRecordList records={relatedLoads} emptyLabel="freight moves" type="freight" openDrawer={openDrawer} />
+            </section>
+          ) : type === 'client' && activeTab === 'documents' ? (
+            <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-black uppercase text-jdt-text">Client Documents</h3>
+                <button
+                  type="button"
+                  onClick={() => openModal('document', clientContextForRecord(record))}
+                  className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark"
+                >
+                  Add Document
+                </button>
+              </div>
+              <LinkedRecordList records={relatedDocuments} emptyLabel="documents" />
+            </section>
+          ) : type === 'client' && activeTab === 'field updates' ? (
+            <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+              <h3 className="mb-3 text-sm font-black uppercase text-jdt-text">Client Field Updates</h3>
+              <LinkedRecordList records={relatedFieldUpdates} emptyLabel="field updates" />
+            </section>
           ) : activeTab === 'work orders' ? (
             <div className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
@@ -524,7 +908,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                 >
                   Add Crew Work
                 </button>
-                {type === 'job' && (
+                {isProjectProfile && (
                   <>
                     <button
                       type="button"
@@ -557,7 +941,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                   </>
                 )}
               </div>
-              {type === 'job' && (
+              {isProjectProfile && (
                 <section className="mb-4 rounded-lg border border-jdt-border bg-white p-3">
                   <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
