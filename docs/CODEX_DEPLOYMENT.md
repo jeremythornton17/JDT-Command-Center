@@ -45,10 +45,11 @@ gcloud beta run deploy jd-thornton-nurseries-command-center \
   --port=3000 \
   --allow-unauthenticated \
   --no-default-url \
-  --update-env-vars=APP_URL=https://app.jdtcommandcenter.com
+  --update-env-vars=APP_URL=https://app.jdtcommandcenter.com,VITE_GOOGLE_MAPS_API_KEY=RESTRICTED_BROWSER_MAPS_KEY,VITE_GOOGLE_MAPS_MAP_ID=OPTIONAL_MAP_ID
 ```
 
 The service should use the buildpack image default command. Do not add a custom `command` or `args` override.
+`/runtime-config.js` exposes only browser-safe runtime values, currently the app URL and Google Maps browser key settings. Do not add server-side secrets such as Gemini keys to that route.
 
 ## Verify Production
 

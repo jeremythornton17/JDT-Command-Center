@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  buildRelocationJobOptions,
   buildTreeRelocationTasks,
+  filterTreesForRelocationJob,
   formatTreeCoordinate,
   getGoogleMapsConfig,
+  relocationContextForJob,
   getTreeRelocationStatus,
   mapPercentToLatLng,
+  pointFromDevicePosition,
   updateTreeRelocationPoint,
 } from "./treeRelocationMap";
 
@@ -15,6 +19,11 @@ describe("tree relocation map helpers", () => {
     assert.deepEqual(getGoogleMapsConfig({ VITE_GOOGLE_MAPS_API_KEY: "maps-key", VITE_GOOGLE_MAPS_MAP_ID: "map-id" }), {
       apiKey: "maps-key",
       mapId: "map-id",
+      isReady: true,
+    });
+    assert.deepEqual(getGoogleMapsConfig({}, { VITE_GOOGLE_MAPS_API_KEY: "runtime-maps-key" }), {
+      apiKey: "runtime-maps-key",
+      mapId: "",
       isReady: true,
     });
   });
@@ -42,10 +51,14 @@ describe("tree relocation map helpers", () => {
       "Buck Thornton",
     );
 
-    assert.equal(tree.relocationMap.source.label, "Field Block A");
-    assert.equal(tree.relocationMap.source.recordedBy, "Buck Thornton");
-    assert.equal(tree.relocationMap.source.accuracyMeters, 8);
-    assert.equal(tree.relocationMap.destination.label, "Final pad");
+    const source = tree.relocationMap.source;
+    const destination = tree.relocationMap.destination;
+    assert.ok(source);
+    assert.ok(destination);
+    assert.equal(source.label, "Field Block A");
+    assert.equal(source.recordedBy, "Buck Thornton");
+    assert.equal(source.accuracyMeters, 8);
+    assert.equal(destination.label, "Final pad");
   });
 
   it("builds task assignments for relocation field work", () => {
@@ -68,5 +81,59 @@ describe("tree relocation map helpers", () => {
     const point = mapPercentToLatLng(50, 50);
 
     assert.equal(formatTreeCoordinate(point), "26.50000, -80.35000");
+  });
+
+  it("builds relocation job options from relocation and install jobs", () => {
+    const options = buildRelocationJobOptions([
+      { id: "job-boca", title: "Boca West Course 1", division: "Relocation & Installation", clientName: "Boca West Country Club" },
+      { id: "job-nursery", title: "Nursery dig queue", division: "Nursery" },
+    ]);
+
+    assert.equal(options.length, 1);
+    assert.equal(options[0].id, "job-boca");
+    assert.match(options[0].label, /Boca West Course 1/);
+    assert.match(options[0].label, /Boca West Country Club/);
+  });
+
+  it("filters relocation tree pins to the selected job relationship", () => {
+    const jobs = [
+      { id: "job-boca", title: "Boca West Course 1", projectId: "project-boca", projectName: "Boca West Course 1" },
+      { id: "job-mcarthur", title: "McArthur install", projectId: "project-mcarthur", projectName: "McArthur install" },
+    ];
+    const trees = [
+      { treeId: "LO-101", jobId: "job-boca", relocationMap: { source: { lat: 26.1, lng: -80.1 } } },
+      { treeId: "LO-202", projectId: "project-mcarthur", relocationMap: { source: { lat: 26.2, lng: -80.2 } } },
+    ];
+
+    assert.deepEqual(filterTreesForRelocationJob(trees, "all", jobs).map(tree => tree.treeId), ["LO-101", "LO-202"]);
+    assert.deepEqual(filterTreesForRelocationJob(trees, "job-boca", jobs).map(tree => tree.treeId), ["LO-101"]);
+    assert.deepEqual(filterTreesForRelocationJob(trees, "job-mcarthur", jobs).map(tree => tree.treeId), ["LO-202"]);
+  });
+
+  it("links saved pins back to the selected relocation job", () => {
+    const context = relocationContextForJob({
+      id: "job-boca",
+      title: "Boca West Course 1",
+      projectId: "project-boca",
+      projectName: "Boca West Course 1",
+      clientId: "client-boca",
+      clientName: "Boca West Country Club",
+    });
+
+    assert.equal(context.jobId, "job-boca");
+    assert.equal(context.projectId, "project-boca");
+    assert.equal(context.clientName, "Boca West Country Club");
+  });
+
+  it("turns a phone geolocation reading into a tree relocation point", () => {
+    const point = pointFromDevicePosition({
+      latitude: 26.75505,
+      longitude: -80.91809,
+      accuracy: 4.6,
+    }, "source");
+
+    assert.equal(formatTreeCoordinate(point), "26.75505, -80.91809");
+    assert.equal(point.accuracyMeters, 5);
+    assert.equal(point.label, "GPS source pin");
   });
 });

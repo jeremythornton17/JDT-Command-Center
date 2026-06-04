@@ -10,9 +10,24 @@ const port = Number(process.env.PORT) || 8080;
 const app = express();
 
 app.disable('x-powered-by');
-app.use(express.static(distDir, { maxAge: '1h' }));
+app.get('/runtime-config.js', (_request, response) => {
+  const runtimeConfig = {
+    APP_URL: process.env.APP_URL || '',
+    VITE_GOOGLE_MAPS_API_KEY: process.env.VITE_GOOGLE_MAPS_API_KEY || '',
+    VITE_GOOGLE_MAPS_MAP_ID: process.env.VITE_GOOGLE_MAPS_MAP_ID || '',
+  };
+
+  response
+    .type('application/javascript')
+    .set('Cache-Control', 'no-store')
+    .send(`window.JDT_RUNTIME_CONFIG = ${JSON.stringify(runtimeConfig)};`);
+});
+
+app.use(express.static(distDir, { index: false, maxAge: '1h' }));
 app.get('*', (_request, response) => {
-  response.sendFile(path.join(distDir, 'index.html'));
+  response
+    .set('Cache-Control', 'no-store')
+    .sendFile(path.join(distDir, 'index.html'));
 });
 
 app.listen(port, '0.0.0.0', () => {

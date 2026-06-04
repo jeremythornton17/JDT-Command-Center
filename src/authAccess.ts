@@ -1,10 +1,19 @@
-const ADMIN_DOMAIN = "jdtnurseries.com";
-const OWNER_EMAIL = `jeremy@${ADMIN_DOMAIN}`;
+import { permissionsForEmail, roleForEmail } from "./commandCenter/dataModel";
+
+export function isAuthorizedEmail(email: string | null | undefined) {
+  return permissionsForEmail(email).canRead;
+}
 
 export function isAdminEmail(email: string | null | undefined) {
-  if (!email) return false;
-  const normalizedEmail = email.trim().toLowerCase();
-  return normalizedEmail === OWNER_EMAIL || normalizedEmail.endsWith(`@${ADMIN_DOMAIN}`);
+  return roleForEmail(email) === "owner_admin";
+}
+
+export function getAppRole(email: string | null | undefined) {
+  return roleForEmail(email);
+}
+
+export function getAppPermissions(email: string | null | undefined) {
+  return permissionsForEmail(email);
 }
 
 export function getFirebaseAuthErrorMessage(error: unknown) {
@@ -32,4 +41,8 @@ export function getFirebaseAuthErrorMessage(error: unknown) {
     default:
       return "Unable to sign in. Check the account in Firebase Authentication and try again.";
   }
+}
+
+export function getUnauthorizedAccountMessage() {
+  return "Use an authorized account to access the command center.";
 }

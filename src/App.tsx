@@ -6,12 +6,14 @@ import {
   Calendar,
   ChevronRight,
   Database,
+  DollarSign,
   Folder,
   LayoutGrid,
   Leaf,
   LogOut,
   MapPin,
   Menu,
+  MessageSquare,
   Plus,
   Settings,
   Truck,
@@ -25,6 +27,7 @@ import FreightBoard from './components/FreightBoard';
 import NurseryBoard from './components/NurseryBoard';
 import EquipmentBoard from './components/EquipmentBoard';
 import CommandDrawer from './components/CommandDrawer';
+import CrewViewBoard from './components/CrewViewBoard';
 import SyncBoard from './components/SyncBoard';
 import UniversalModal from './components/UniversalModal';
 import CrewsBoard from './components/CrewsBoard';
@@ -36,14 +39,71 @@ import ReportsBoard from './components/ReportsBoard';
 import DocumentsBoard from './components/DocumentsBoard';
 import SettingsBoard from './components/SettingsBoard';
 import { useAuth } from './AuthProvider';
+import { auditEventForRecordType, stampRecordForSave } from './commandCenter/audit';
+import { collectionNamesForClear } from './commandCenter/dataModel';
+import { equipmentCategory, equipmentDisplayName, normalizeDelimitedList, withHomeBaseEquipmentDefaults, workOrderResourceNames } from './commandCenter/equipmentFreight';
+import {
+  advanceFreightStop,
+  applyCompletedRouteStepToEquipment,
+  applyVehicleActivity,
+  clientContactFromFreightStop,
+  completeFreightRouteStep,
+  completeFreightWithPod,
+  createEquipmentWorkOrderFromIssue,
+  locationRecordFromFreightStop,
+  normalizeFreightLoadForSave,
+  parseFreightRouteSteps,
+} from './commandCenter/freightWorkflow';
+import { applyImportBatch, rollbackImportBatch, type ImportCollections } from './commandCenter/importWorkflow';
+import type {
+  AlertRecord,
+  ClientRecord,
+  CommandRecord,
+  CrewRecord,
+  DocumentRecord,
+  EquipmentRecord,
+  FieldUpdateRecord,
+  ImportBatchRecord,
+  InventoryItemRecord,
+  JobRecord,
+  LocationRecord,
+  LoadRecord,
+  ProjectMaterialItemRecord,
+  ProjectRecord,
+  RanchOakRecord,
+  ScheduleTaskRecord,
+  SpeciesRecord,
+  StaffRecord,
+  SyncMappingRecord,
+  SyncSourceRecord,
+  TreeRelocationRecord,
+  ToastMessage,
+  WorkOrderRecord,
+} from './commandCenter/records';
+import { defaultJdtPersonnelRoster, mergePersonnelRecords } from './commandCenter/personnel';
+import { buildDashboardSummary, type DashboardCommandAlert, type DashboardWorkItem, type FeaturedOperation } from './commandCenter/dashboard';
+import { filterSeedRecords } from './commandCenter/operatingIntelligence';
+import { pasteHeadersForTemplate, sheetImportTemplates, type ImportPreview, type SheetImportTemplateId } from './commandCenter/sheetImport';
+import { dataSyncDraftStorageKey, serializeDataSyncDraft } from './commandCenter/syncDraft';
+import { normalizeProjectRelationship, normalizeWorkOrderRelationship } from './commandCenter/relationships';
+import { sourceRefFromWorkbookRow, workbookTabForWorkOrderType } from './commandCenter/workbookProjectFlow';
+import {
+  classifyRelocationInstallationJob,
+  isRelocationInstallationJob,
+  relocationInstallationDivisionLabel,
+  relocationInstallationJobFilters,
+  relocationInstallationJobTypeTone,
+  type RelocationInstallationJobFilter,
+} from './commandCenter/relocationInstallation';
 
 const mainNav = [
   { id: 'board', label: 'Command Board', icon: LayoutGrid },
-  { id: 'tracker', label: 'Relocation', icon: MapPin },
+  { id: 'tracker', label: 'Relocation & Installation', icon: MapPin },
   { id: 'freight', label: 'Freight', icon: Truck },
   { id: 'inventory', label: 'Nursery', icon: Leaf },
   { id: 'equipment', label: 'Equipment', icon: Wrench },
   { id: 'crews', label: 'Crews', icon: UserCheck },
+  { id: 'crewView', label: 'Crew View', icon: MessageSquare },
   { id: 'clients', label: 'Clients', icon: User },
 ];
 
@@ -70,56 +130,364 @@ function makeId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}`;
 }
 
-function upsertRecord<T extends { id?: string }>(items: T[], record: T, fallbackPrefix: string, matcher?: (item: T) => boolean) {
-  const id = record.id || makeId(fallbackPrefix);
-  const nextRecord = { ...record, id };
-  const hasMatch = items.some((item) => matcher ? matcher(item) : item.id === id);
+type ModalConfig = {
+  isOpen: boolean;
+  type: string;
+  data?: CommandRecord;
+};
 
-  if (!hasMatch) return [nextRecord, ...items];
+function upsertRecord<T extends CommandRecord>(items: T[], record: Partial<T>, fallbackPrefix: string, matcher?: (item: T) => boolean) {
+  const id = record.id || makeId(fallbackPrefix);
+  const existing = items.find((item) => matcher ? matcher(item) : item.id === id);
+  const nextRecord = { ...record, id } as T;
+
+  if (!existing) return [nextRecord, ...items];
   return items.map((item) => (matcher ? matcher(item) : item.id === id) ? { ...item, ...nextRecord } : item);
 }
 
-function appendHistory(record: any, event: string, notes?: string) {
+function upsertRecordWithAudit<T extends CommandRecord>(
+  items: T[],
+  record: Partial<T>,
+  fallbackPrefix: string,
+  actorEmail: string | null | undefined,
+  recordType: string,
+  matcher?: (item: T) => boolean,
+) {
+  const id = record.id || makeId(fallbackPrefix);
+  const existing = items.find((item) => matcher ? matcher(item) : item.id === id);
+  const stamped = stampRecordForSave({ ...record, id } as T, existing, {
+    actorEmail,
+    event: auditEventForRecordType(recordType, Boolean(existing)),
+  });
+
+  if (!existing) return [stamped, ...items];
+  return items.map((item) => (matcher ? matcher(item) : item.id === id) ? stamped : item);
+}
+
+function appendHistory<T extends CommandRecord>(record: T, event: string, notes?: string): T {
   return {
     ...record,
     history: [
       { date: new Date().toLocaleString(), user: 'Command Center', event, notes: notes || '' },
       ...(record.history || []),
     ],
+  } as T;
+}
+
+function mergeImportedRecords<T extends CommandRecord>(existing: T[], incoming: CommandRecord[]): T[] {
+  const byId = new Map(existing.map((item) => [item.id, item]));
+
+  incoming.forEach((record) => {
+    const current = byId.get(record.id);
+    byId.set(record.id, { ...(current || {}), ...record } as T);
+  });
+
+  return Array.from(byId.values());
+}
+
+function enrichProjectLikeRecord<T extends CommandRecord>(record: T): T {
+  const relationship = normalizeProjectRelationship(record);
+  const source = record as T & { client?: string };
+  const projectName = relationship.projectName || record.title || record.name || 'Untitled project';
+
+  return {
+    ...record,
+    ...relationship,
+    title: record.title || projectName,
+    name: record.name || projectName,
+    client: source.client || relationship.clientName,
+  } as T;
+}
+
+function enrichWorkOrderRecord(record: WorkOrderRecord): WorkOrderRecord {
+  const relationship = normalizeWorkOrderRelationship(record);
+  const workOrderType = record.workOrderType || 'general_task';
+  const listFields = {
+    assignedCrewNames: normalizeDelimitedList(record.assignedCrewNames),
+    assignedCrewIds: normalizeDelimitedList(record.assignedCrewIds),
+    requiredSkills: normalizeDelimitedList(record.requiredSkills),
+    equipmentNames: normalizeDelimitedList(record.equipmentNames),
+    equipmentIds: normalizeDelimitedList(record.equipmentIds),
+    implementNames: normalizeDelimitedList(record.implementNames),
+    implementIds: normalizeDelimitedList(record.implementIds),
+    requiredImplementTypes: normalizeDelimitedList(record.requiredImplementTypes),
+    loadNames: normalizeDelimitedList(record.loadNames),
+    loadIds: normalizeDelimitedList(record.loadIds),
+    truckNames: normalizeDelimitedList(record.truckNames),
+    truckIds: normalizeDelimitedList(record.truckIds),
+    trailerNames: normalizeDelimitedList(record.trailerNames),
+    trailerIds: normalizeDelimitedList(record.trailerIds),
+  };
+
+  return {
+    ...record,
+    ...relationship,
+    ...listFields,
+    workOrderType,
+    sourceSheetName: record.sourceSheetName || workbookTabForWorkOrderType(workOrderType),
   };
 }
 
+function slugifyLocalId(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function enrichProjectMaterialItemRecord(record: ProjectMaterialItemRecord): ProjectMaterialItemRecord {
+  const projectName = String(record.projectName || record.jobName || record.title || '').trim();
+  const projectId = String(record.projectId || record.projectsId || '').trim();
+  const projectMaterialItemsId = String(record.projectMaterialItemsId || record.sourceRowId || record.id || '').trim();
+  const generatedId = [projectId, projectName, record.holeNumberOrArea, record.materialType, record.sizeClass]
+    .map(slugifyLocalId)
+    .filter(Boolean)
+    .join('-');
+
+  return {
+    ...record,
+    id: record.id || projectMaterialItemsId || generatedId,
+    projectId,
+    projectName,
+    projectMaterialItemsId,
+    sourceSheetName: record.sourceSheetName || 'Project_Material_Items',
+    sourceRowId: record.sourceRowId || projectMaterialItemsId,
+    sourceRefs: record.sourceRefs || [sourceRefFromWorkbookRow('Project_Material_Items', {
+      Project_Material_Items_ID: projectMaterialItemsId,
+    })],
+  };
+}
+
+function coordinatePointFromText(text: unknown, label: string) {
+  const match = String(text || '').match(/(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)/);
+  if (!match) return undefined;
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return undefined;
+  return {
+    lat: Number(lat.toFixed(5)),
+    lng: Number(lng.toFixed(5)),
+    label,
+  };
+}
+
+function enrichProjectTreeAssetRecord(record: TreeRelocationRecord): TreeRelocationRecord {
+  const treeId = String(record.treeId || record.id || '').trim();
+  const projectId = String(record.projectId || record.projectsId || '').trim();
+  const type = String(record.type || record.treeType || record.ranchOakType || record.title || '').trim();
+  const currentStatus = String(record.status || record.currentStatus || 'Open');
+  const generatedId = [projectId, treeId, type].map(slugifyLocalId).filter(Boolean).join('-');
+  const sourcePin = coordinatePointFromText(record.existingLocationDescription || record.location, 'Manual source pin');
+  const relocationMap = sourcePin ? { ...(record.relocationMap || {}), source: sourcePin } : record.relocationMap;
+
+  return {
+    ...record,
+    id: record.id || treeId || `tree-${generatedId || Date.now().toString(36)}`,
+    treeId: treeId || record.id,
+    title: record.title || [type, treeId || record.id].filter(Boolean).join(' ') || 'Project tree',
+    name: record.name || record.title || [type, treeId || record.id].filter(Boolean).join(' ') || 'Project tree',
+    type,
+    treeType: String(record.treeType || type),
+    ranchOakType: String(record.ranchOakType || type),
+    status: currentStatus,
+    projectId,
+    projectsId: String(record.projectsId || projectId),
+    sourceSheetName: String(record.sourceSheetName || 'Manual Project Profile'),
+    relocationMap,
+  } as unknown as TreeRelocationRecord;
+}
+
+function firstListValue(value: unknown): string {
+  const list = normalizeDelimitedList(value);
+  return String(list[0] || value || '').trim();
+}
+
+function enrichProjectTreeWorkOrderRecord(record: WorkOrderRecord, workOrderType: WorkOrderRecord['workOrderType']): WorkOrderRecord {
+  const treeId = firstListValue(record.treeIds || record.treeNames);
+  const titlePrefix = workOrderType === 'tree_pruning' ? 'Root Pruning' : 'Nutrient Care';
+  const sourceSheetName = workOrderType === 'tree_pruning' ? 'Tree Pruning' : 'Treatment or Aftercare';
+  const generatedId = [record.projectId, treeId, workOrderType, record.scheduledDate, record.completedDate].map(slugifyLocalId).filter(Boolean).join('-');
+
+  return enrichWorkOrderRecord({
+    ...record,
+    id: record.id || `work-order-${generatedId || Date.now().toString(36)}`,
+    title: record.title || [titlePrefix, treeId].filter(Boolean).join(' '),
+    taskType: record.taskType || titlePrefix,
+    workOrderType,
+    division: record.division || relocationInstallationDivisionLabel,
+    sourceSheetName: record.sourceSheetName || sourceSheetName,
+    sourceRowId: record.sourceRowId || record.id,
+    treeIds: normalizeDelimitedList(record.treeIds || treeId),
+    treeNames: normalizeDelimitedList(record.treeNames || treeId),
+    status: record.status || 'Ready',
+  });
+}
+
+function enrichProjectTreePhotoRecord(record: DocumentRecord): DocumentRecord {
+  const treeId = String(record.treeId || firstListValue(record.treeIds) || '').trim();
+  const generatedId = [record.projectId, treeId, record.name || record.title || record.photoDate].map(slugifyLocalId).filter(Boolean).join('-');
+
+  return {
+    ...record,
+    id: record.id || `document-${generatedId || Date.now().toString(36)}`,
+    name: record.name || record.title || `Tree photo ${treeId}`,
+    title: record.title || record.name || `Tree photo ${treeId}`,
+    category: record.category || 'Tree Photo',
+    treeId,
+    treeIds: normalizeDelimitedList(record.treeIds || treeId),
+    sourceSheetName: record.sourceSheetName || 'Tree Photos',
+  } as DocumentRecord;
+}
+
+function enrichLoadRecord(record: LoadRecord, existingLoads: LoadRecord[] = []): LoadRecord {
+  const normalizedRecord = normalizeFreightLoadForSave(record, existingLoads);
+  const stepPlanText = String(normalizedRecord.stepPlanText || '').trim();
+  const routeSteps = normalizedRecord.routeSteps?.length ? normalizedRecord.routeSteps : parseFreightRouteSteps(stepPlanText);
+  return {
+    ...normalizedRecord,
+    title: normalizedRecord.title || normalizedRecord.name || normalizedRecord.loadNumber || 'Untitled freight dispatch',
+    name: normalizedRecord.name || normalizedRecord.title || normalizedRecord.loadNumber || 'Untitled freight dispatch',
+    routeSteps,
+    stepPlanText: stepPlanText || normalizedRecord.routeSteps?.map((step) => step.label || step.notes || '').filter(Boolean).join('\n') || '',
+  };
+}
+
+function projectRecordFromProjectLike(record: CommandRecord): ProjectRecord {
+  const enriched = enrichProjectLikeRecord(record);
+  const source = enriched as CommandRecord & JobRecord;
+  const projectId = enriched.projectId || enriched.id || makeId('project');
+
+  return {
+    id: projectId,
+    title: enriched.projectName || enriched.title || enriched.name || 'Untitled project',
+    name: enriched.projectName || enriched.title || enriched.name || 'Untitled project',
+    client: source.client || enriched.clientName,
+    clientId: enriched.clientId,
+    clientName: enriched.clientName || source.client,
+    projectId,
+    projectName: enriched.projectName || enriched.title || enriched.name,
+    division: source.division,
+    projectType: source.jobType,
+    location: source.location,
+    status: enriched.status,
+    date: source.date,
+    startDate: source.startDate,
+    scheduledDate: source.scheduledDate,
+    crew: source.crew,
+    pm: source.pm,
+    notes: enriched.notes,
+  };
+}
+
+function upsertClientSiteContact(
+  clients: ClientRecord[],
+  sourceRecord: CommandRecord,
+  contact: NonNullable<ClientRecord['members']>[number],
+  actorEmail?: string | null,
+) {
+  const clientId = String(sourceRecord.clientId || '').trim();
+  const sourceWithClient = sourceRecord as CommandRecord & { client?: string };
+  const clientName = String(sourceRecord.clientName || sourceWithClient.client || '').trim();
+  const generatedClientId = clientId || (clientName ? `client-${slugifyLocalId(clientName)}` : '');
+
+  if (!generatedClientId && !clientName) return clients;
+
+  const matchesClient = (client: ClientRecord) => (
+    Boolean(clientId && client.id === clientId)
+    || Boolean(clientName && (client.name === clientName || client.title === clientName || client.clientName === clientName))
+  );
+  const existing = clients.find(matchesClient);
+
+  if (!existing && clientName) {
+    return upsertRecordWithAudit(clients, {
+      id: generatedClientId,
+      name: clientName,
+      title: clientName,
+      members: [contact],
+    }, 'client', actorEmail, 'site_contact');
+  }
+
+  return clients.map((client) => {
+    if (!matchesClient(client)) return client;
+    const members = client.members || [];
+    const alreadySaved = members.some((member) => (
+      String(member.name || '').toLowerCase() === String(contact.name || '').toLowerCase()
+      && String(member.phone || '') === String(contact.phone || '')
+    ));
+    if (alreadySaved) return client;
+    return stampRecordForSave({
+      ...client,
+      members: [...members, contact],
+    }, client, {
+      actorEmail,
+      event: 'Saved freight site contact',
+      notes: contact.name,
+    });
+  });
+}
+
 export default function App() {
-  const { user, signIn, logOut } = useAuth();
+  const { user, logOut, permissions } = useAuth();
   const [activeTab, setActiveTab] = useState('board');
   const [drawerConfig, setDrawerConfig] = useState<DrawerConfig>({ isOpen: false, type: '', itemId: null, defaultTab: 'overview' });
-  const [modalConfig, setModalConfig] = useState<{ isOpen: boolean; type: string; data?: any }>({ isOpen: false, type: '' });
-  const [toasts, setToasts] = useState<any[]>([]);
+  const [modalConfig, setModalConfig] = useState<ModalConfig>({ isOpen: false, type: '' });
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const [jobs, setJobs] = useFirestoreSyncState<any>('jobs', [], !!user);
-  const [loads, setLoads] = useFirestoreSyncState<any>('loads', [], !!user);
-  const [ranchOaks, setRanchOaks] = useFirestoreSyncState<any>('ranchOaks', [], !!user);
-  const [equipment, setEquipment] = useFirestoreSyncState<any>('equipment', [], !!user);
-  const [crews, setCrews] = useFirestoreSyncState<any>('crews', [], !!user);
-  const [clients, setClients] = useFirestoreSyncState<any>('clients', [], !!user);
-  const [alerts, setAlerts] = useFirestoreSyncState<any>('alerts', [], !!user);
+  const [jobs, setJobs] = useFirestoreSyncState<JobRecord>('jobs', [], !!user);
+  const [projects, setProjects] = useFirestoreSyncState<ProjectRecord>('projects', [], !!user);
+  const [workOrders, setWorkOrders] = useFirestoreSyncState<WorkOrderRecord>('workOrders', [], !!user);
+  const [projectMaterialItems, setProjectMaterialItems] = useFirestoreSyncState<ProjectMaterialItemRecord>('projectMaterialItems', [], !!user);
+  const [loads, setLoads] = useFirestoreSyncState<LoadRecord>('loads', [], !!user);
+  const [ranchOaks, setRanchOaks] = useFirestoreSyncState<RanchOakRecord>('ranchOaks', [], !!user);
+  const [inventoryItems, setInventoryItems] = useFirestoreSyncState<InventoryItemRecord>('inventoryItems', [], !!user);
+  const [equipment, setEquipment] = useFirestoreSyncState<EquipmentRecord>('equipment', [], !!user);
+  const [crews, setCrews] = useFirestoreSyncState<CrewRecord>('crews', [], !!user);
+  const [staffDirectory, setStaffDirectory] = useFirestoreSyncState<StaffRecord>('staff', [], !!user);
+  const [clients, setClients] = useFirestoreSyncState<ClientRecord>('clients', [], !!user);
+  const [locations, setLocations] = useFirestoreSyncState<LocationRecord>('locations', [], !!user);
+  const [species, setSpecies] = useFirestoreSyncState<SpeciesRecord>('species', [], !!user);
+  const [scheduleTasks, setScheduleTasks] = useFirestoreSyncState<ScheduleTaskRecord>('scheduleTasks', [], !!user);
+  const [treeRelocationRecords, setTreeRelocationRecords] = useFirestoreSyncState<TreeRelocationRecord>('treeRelocationRecords', [], !!user);
+  const [fieldUpdates, setFieldUpdates] = useFirestoreSyncState<FieldUpdateRecord>('fieldUpdates', [], !!user);
+  const [alerts, setAlerts] = useFirestoreSyncState<AlertRecord>('alerts', [], !!user);
+  const [documents, setDocuments] = useFirestoreSyncState<DocumentRecord>('documents', [], !!user);
+  const [syncSources, setSyncSources] = useFirestoreSyncState<SyncSourceRecord>('syncSources', [], !!user);
+  const [syncMappings, setSyncMappings] = useFirestoreSyncState<SyncMappingRecord>('syncMappings', [], !!user);
+  const [importBatches, setImportBatches] = useFirestoreSyncState<ImportBatchRecord>('importBatches', [], !!user);
+  const personnel = useMemo(() => mergePersonnelRecords(defaultJdtPersonnelRoster, [...staffDirectory, ...crews]), [staffDirectory, crews]);
+  const nurseryInventory = useMemo<RanchOakRecord[]>(() => [...inventoryItems, ...ranchOaks], [inventoryItems, ranchOaks]);
+  const equipmentWithDefaults = useMemo<EquipmentRecord[]>(() => equipment.map(withHomeBaseEquipmentDefaults), [equipment]);
 
   const activeNav = navItems.find((item) => item.id === activeTab) || navItems[0];
 
-  const metrics = useMemo(() => [
-    { label: 'Projects', value: jobs.length, tone: 'bg-[#384521]', icon: MapPin },
-    { label: 'Freight', value: loads.length, tone: 'bg-[#345B6B]', icon: Truck },
-    { label: 'Trees', value: ranchOaks.length, tone: 'bg-[#82995D]', icon: Leaf },
-    { label: 'Equipment', value: equipment.length, tone: 'bg-[#935231]', icon: Wrench },
-  ], [jobs.length, loads.length, ranchOaks.length, equipment.length]);
+  const dashboardSummary = useMemo(() => buildDashboardSummary({
+    jobs,
+    loads,
+    trees: nurseryInventory,
+    equipment: equipmentWithDefaults,
+    clients,
+    projects,
+    workOrders,
+    scheduleTasks,
+    treeRelocationRecords,
+    documents,
+    alerts,
+    fieldUpdates,
+    importBatches,
+  }), [jobs, loads, nurseryInventory, equipmentWithDefaults, clients, projects, workOrders, scheduleTasks, treeRelocationRecords, documents, alerts, fieldUpdates, importBatches]);
 
   const recentRecords = useMemo(() => [
     ...jobs.map((item) => ({ type: 'job', label: item.title || item.client || 'Untitled project', meta: item.status || item.date || 'Project', id: item.id || item.title })),
     ...loads.map((item) => ({ type: 'freight', label: item.title || item.id || 'Untitled load', meta: item.status || item.eta || 'Freight', id: item.id || item.title })),
-    ...ranchOaks.map((item) => ({ type: 'tree', label: item.treeId || item.name || 'Tree record', meta: item.status || item.farm || 'Tree', id: item.id || item.treeId })),
-    ...equipment.map((item) => ({ type: 'equipment', label: item.name || item.type || 'Equipment record', meta: item.status || item.operator || 'Equipment', id: item.id || item.name })),
-  ].slice(0, 8), [jobs, loads, ranchOaks, equipment]);
+    ...nurseryInventory.map((item) => ({ type: 'tree', label: item.treeId || item.name || 'Tree record', meta: item.status || item.farm || 'Tree', id: item.id || item.treeId })),
+    ...treeRelocationRecords.map((item) => ({ type: 'tree', label: item.title || item.tag || 'Relocation tree', meta: item.status || item.jobId || 'Relocation', id: item.id || item.tag })),
+    ...equipmentWithDefaults.map((item) => ({ type: 'equipment', label: item.name || item.type || 'Equipment record', meta: item.status || item.operator || 'Equipment', id: item.id || item.name })),
+    ...fieldUpdates.map((item) => ({ type: 'fieldUpdate', label: item.relatedTitle || item.title || 'Crew field update', meta: item.fieldStatus || item.updateType || 'Field update', id: item.id || item.title })),
+    ...documents.map((item) => ({ type: 'document', label: item.name || item.title || 'Document', meta: item.category || item.job || 'Document', id: item.id || item.name })),
+  ].slice(0, 8), [jobs, loads, nurseryInventory, treeRelocationRecords, equipmentWithDefaults, fieldUpdates, documents]);
 
   const addToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     const id = `toast-${Date.now()}`;
@@ -131,72 +499,384 @@ export default function App() {
     setDrawerConfig({ isOpen: true, type, itemId, defaultTab });
   };
 
-  const openModal = (type: string, data?: any) => {
+  const openImportTemplate = (templateId: SheetImportTemplateId) => {
+    const template = sheetImportTemplates.find((item) => item.id === templateId);
+    if (template && typeof window !== 'undefined') {
+      window.localStorage.setItem(dataSyncDraftStorageKey, serializeDataSyncDraft({
+        templateId,
+        pastedRows: `${pasteHeadersForTemplate(template).join('\t')}\n`,
+        savedAtIso: new Date().toISOString(),
+      }));
+    }
+    setDrawerConfig((current) => ({ ...current, isOpen: false }));
+    setActiveTab('sheets');
+  };
+
+  const openModal = (type: string, data?: CommandRecord) => {
     setModalConfig({ isOpen: true, type, data });
   };
 
   const onDeleteRecord = (recordType: string, id: string) => {
-    const removeById = (item: any) => item.id !== id && item.title !== id && item.name !== id && item.treeId !== id;
+    const removeById = (item: CommandRecord & { treeId?: string }) => item.id !== id && item.title !== id && item.name !== id && item.treeId !== id;
 
     if (recordType === 'client') setClients((prev) => prev.filter(removeById));
-    else if (recordType === 'employee' || recordType === 'crew') setCrews((prev) => prev.filter(removeById));
+    else if (recordType === 'employee' || recordType === 'crew') {
+      setCrews((prev) => prev.filter(removeById));
+      setStaffDirectory((prev) => prev.filter(removeById));
+    }
     else if (recordType === 'freight' || recordType === 'load') setLoads((prev) => prev.filter(removeById));
     else if (recordType === 'equipment') setEquipment((prev) => prev.filter(removeById));
-    else if (recordType === 'tree') setRanchOaks((prev) => prev.filter(removeById));
+    else if (recordType === 'work_order' || recordType === 'workorder') setWorkOrders((prev) => prev.filter(removeById));
+    else if (recordType === 'tree') {
+      setRanchOaks((prev) => prev.filter(removeById));
+      setInventoryItems((prev) => prev.filter(removeById));
+      setTreeRelocationRecords((prev) => prev.filter(removeById));
+    }
+    else if (recordType === 'document') setDocuments((prev) => prev.filter(removeById));
+    else if (recordType === 'sync_source') setSyncSources((prev) => prev.filter(removeById));
+    else if (recordType === 'sync_mapping') setSyncMappings((prev) => prev.filter(removeById));
     else setJobs((prev) => prev.filter(removeById));
 
     addToast('Record deleted', 'info');
   };
 
-  const onSaveRecord = (recordType: string, recordData: any) => {
-    const normalizedType = recordType.replace(/^edit_/, '');
+  const onSaveRecord = (recordType: string, recordData: CommandRecord) => {
+    const normalizedType = recordType.toLowerCase().replace(/^edit_/, '');
+    const vehicleActionByType: Record<string, string> = {
+      spot_vehicle: 'Spot Location',
+      drop_trailer: 'Drop Trailer',
+      hook_trailer: 'Hook Trailer',
+      mark_vehicle_empty: 'Mark Empty',
+      mark_vehicle_loaded: 'Mark Loaded',
+    };
 
     switch (normalizedType) {
+      case 'spot_vehicle':
+      case 'drop_trailer':
+      case 'hook_trailer':
+      case 'mark_vehicle_empty':
+      case 'mark_vehicle_loaded':
+        {
+          const action = vehicleActionByType[normalizedType];
+          const updatedVehicle = withHomeBaseEquipmentDefaults(applyVehicleActivity(recordData as EquipmentRecord, {
+            ...(recordData as EquipmentRecord),
+            action,
+            actorName: String((recordData as CommandRecord & { actorName?: string }).actorName || user?.email || 'Command Center'),
+          }));
+          setEquipment((prev) => upsertRecordWithAudit(
+            prev,
+            updatedVehicle,
+            'equipment',
+            user?.email,
+            normalizedType,
+            (item) => item.id === updatedVehicle.id || item.assetId === updatedVehicle.assetId || item.name === updatedVehicle.name || item.asset === updatedVehicle.asset,
+          ));
+        }
+        break;
+      case 'advance_freight_stop':
+        {
+          const stopInput = {
+            ...(recordData as LoadRecord),
+            actorName: String((recordData as CommandRecord & { actorName?: string }).actorName || user?.email || 'Command Center'),
+          };
+          const updatedLoad = advanceFreightStop(recordData as LoadRecord, stopInput);
+          setLoads((prev) => upsertRecordWithAudit(
+            prev,
+            updatedLoad,
+            'load',
+            user?.email,
+            normalizedType,
+            (item) => item.id === updatedLoad.id || item.title === updatedLoad.title || item.loadNumber === updatedLoad.loadNumber,
+          ));
+
+          const savedLocation = locationRecordFromFreightStop(recordData as Record<string, unknown>);
+          if (savedLocation) {
+            setLocations((prev) => upsertRecordWithAudit(
+              prev,
+              savedLocation,
+              'location',
+              user?.email,
+              normalizedType,
+              (item) => item.id === savedLocation.id || item.name === savedLocation.name,
+            ));
+          }
+
+          const savedContact = clientContactFromFreightStop(recordData as Record<string, unknown>);
+          if (savedContact) {
+            setClients((prev) => upsertClientSiteContact(prev, recordData, savedContact, user?.email));
+          }
+        }
+        break;
+      case 'complete_freight_pod':
+        {
+          const completedLoad = completeFreightWithPod(recordData as LoadRecord, {
+            ...(recordData as LoadRecord),
+            actorName: String((recordData as CommandRecord & { actorName?: string }).actorName || user?.email || 'Command Center'),
+          });
+          setLoads((prev) => upsertRecordWithAudit(
+            prev,
+            completedLoad,
+            'load',
+            user?.email,
+            normalizedType,
+            (item) => item.id === completedLoad.id || item.title === completedLoad.title || item.loadNumber === completedLoad.loadNumber,
+          ));
+        }
+        break;
+      case 'complete_freight_route_step':
+        {
+          const completedLoad = completeFreightRouteStep(recordData as LoadRecord, {
+            ...(recordData as LoadRecord & { routeStepId?: string; routeStepStatus?: string; actualStart?: string; actualEnd?: string }),
+            actorName: String((recordData as CommandRecord & { actorName?: string }).actorName || user?.email || 'Command Center'),
+          });
+          const routeStepId = String((recordData as LoadRecord & { routeStepId?: string }).routeStepId || '');
+          const completedStep = completedLoad.routeSteps?.find((step) => step.id === routeStepId || String(step.sequence) === routeStepId || step.label === routeStepId);
+          setLoads((prev) => upsertRecordWithAudit(
+            prev,
+            completedLoad,
+            'load',
+            user?.email,
+            normalizedType,
+            (item) => item.id === completedLoad.id || item.title === completedLoad.title || item.loadNumber === completedLoad.loadNumber,
+          ));
+          if (completedStep) {
+            setEquipment((prev) => prev.map((item) => withHomeBaseEquipmentDefaults(applyCompletedRouteStepToEquipment(item, completedLoad, completedStep))));
+          }
+        }
+        break;
+      case 'report_vehicle_issue':
+        {
+          const equipmentRecord = recordData as EquipmentRecord & { severity?: string; description?: string; reportedBy?: string; issue?: string };
+          const assetName = equipmentDisplayName(equipmentRecord);
+          const description = String(equipmentRecord.description || equipmentRecord.issue || equipmentRecord.notes || '').trim();
+          const severity = String(equipmentRecord.severity || (equipmentRecord as EquipmentRecord & { priority?: string }).priority || 'Medium');
+          const reportedBy = String(equipmentRecord.reportedBy || user?.email || 'Command Center');
+          const assetId = String(equipmentRecord.id || equipmentRecord.assetId || slugifyLocalId(assetName));
+          const updatedEquipment = withHomeBaseEquipmentDefaults({
+            ...equipmentRecord,
+            id: assetId,
+            status: severity === 'Critical' ? 'Down' : 'Needs Service',
+            serviceStatus: 'Needs Attention',
+            issue: description,
+          } as EquipmentRecord);
+          const workOrder = createEquipmentWorkOrderFromIssue({
+            assetId,
+            assetName,
+            assetType: equipmentCategory(equipmentRecord),
+            severity,
+            description,
+            reportedBy,
+          });
+
+          setEquipment((prev) => upsertRecordWithAudit(
+            prev,
+            updatedEquipment,
+            'equipment',
+            user?.email,
+            normalizedType,
+            (item) => item.id === updatedEquipment.id || item.assetId === updatedEquipment.assetId || item.name === updatedEquipment.name,
+          ));
+          setWorkOrders((prev) => upsertRecordWithAudit(
+            prev,
+            workOrder,
+            'work-order',
+            user?.email,
+            normalizedType,
+            (item) => item.id === workOrder.id,
+          ));
+          setAlerts((prev) => [{
+            id: makeId('alert'),
+            title: `${assetName} maintenance issue`,
+            body: description || 'Vehicle issue reported from Freight',
+            severity,
+            time: 'Just now',
+          }, ...prev]);
+        }
+        break;
       case 'job':
       case 'project':
-        setJobs((prev) => upsertRecord(prev, recordData, 'job', (item) => item.id === recordData.id || item.title === recordData.title));
+        {
+          const enrichedRecord = enrichProjectLikeRecord(recordData as JobRecord);
+          setJobs((prev) => upsertRecordWithAudit(prev, enrichedRecord, 'job', user?.email, normalizedType, (item) => item.id === enrichedRecord.id || item.title === enrichedRecord.title || item.projectId === enrichedRecord.projectId));
+          setProjects((prev) => upsertRecordWithAudit(prev, projectRecordFromProjectLike(enrichedRecord), 'project', user?.email, normalizedType, (item) => item.id === enrichedRecord.projectId || item.projectId === enrichedRecord.projectId || item.title === enrichedRecord.projectName));
+        }
         break;
       case 'client':
-        setClients((prev) => upsertRecord(prev, recordData, 'client'));
+        setClients((prev) => upsertRecordWithAudit(prev, recordData, 'client', user?.email, normalizedType));
+        break;
+      case 'contact':
+        setClients((prev) => {
+          const company = String(recordData.company || recordData.client || '').trim();
+          const contact = {
+            name: String(recordData.name || recordData.contactName || ''),
+            role: String(recordData.role || 'Contact'),
+            phone: String(recordData.phone || ''),
+            email: String(recordData.email || ''),
+          };
+          const matched = prev.find((client) => client.name === company || client.title === company || client.id === recordData.clientId);
+          if (!matched && company) {
+            return upsertRecordWithAudit(prev, {
+              id: `client-${company.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`,
+              name: company,
+              title: company,
+              contactName: contact.name,
+              phone: contact.phone,
+              email: contact.email,
+              members: [],
+            }, 'client', user?.email, normalizedType);
+          }
+          return prev.map((client) => {
+            if (client !== matched) return client;
+            return stampRecordForSave({
+              ...client,
+              members: [...(client.members || []), contact],
+            }, client, {
+              actorEmail: user?.email,
+              event: 'Added contact point',
+              notes: contact.name,
+            });
+          });
+        });
         break;
       case 'employee':
+        setStaffDirectory((prev) => upsertRecordWithAudit(prev, recordData, 'staff', user?.email, normalizedType));
+        break;
       case 'crew':
-        setCrews((prev) => upsertRecord(prev, recordData, 'crew'));
+        setCrews((prev) => upsertRecordWithAudit(prev, recordData, 'crew', user?.email, normalizedType));
         break;
       case 'tree':
+      case 'ranch_oak':
       case 'add_tree':
       case 'log_prune':
       case 'treatment':
       case 'move_check':
       case 'assign_tree':
-        setRanchOaks((prev) => upsertRecord(prev, recordData, 'tree', (item) => item.id === recordData.id || item.treeId === recordData.treeId));
+        setRanchOaks((prev) => upsertRecordWithAudit(prev, recordData, 'tree', user?.email, normalizedType, (item) => item.id === recordData.id || item.treeId === recordData.treeId));
+        break;
+      case 'project_tree_asset':
+        {
+          const enrichedRecord = enrichProjectTreeAssetRecord(recordData as TreeRelocationRecord);
+          setTreeRelocationRecords((prev) => upsertRecordWithAudit(
+            prev,
+            enrichedRecord,
+            'tree',
+            user?.email,
+            normalizedType,
+            (item) => item.id === enrichedRecord.id || item.treeId === enrichedRecord.treeId,
+          ));
+        }
+        break;
+      case 'project_tree_pruning':
+        {
+          const enrichedRecord = enrichProjectTreeWorkOrderRecord(recordData as WorkOrderRecord, 'tree_pruning');
+          setWorkOrders((prev) => upsertRecordWithAudit(
+            prev,
+            enrichedRecord,
+            'work-order',
+            user?.email,
+            normalizedType,
+            (item) => item.id === enrichedRecord.id || Boolean(item.sourceRowId && item.sourceRowId === enrichedRecord.sourceRowId),
+          ));
+        }
+        break;
+      case 'project_tree_aftercare':
+        {
+          const enrichedRecord = enrichProjectTreeWorkOrderRecord(recordData as WorkOrderRecord, 'treatment_aftercare');
+          setWorkOrders((prev) => upsertRecordWithAudit(
+            prev,
+            enrichedRecord,
+            'work-order',
+            user?.email,
+            normalizedType,
+            (item) => item.id === enrichedRecord.id || Boolean(item.sourceRowId && item.sourceRowId === enrichedRecord.sourceRowId),
+          ));
+        }
+        break;
+      case 'project_tree_photo':
+        {
+          const enrichedRecord = enrichProjectTreePhotoRecord(recordData as DocumentRecord);
+          setDocuments((prev) => upsertRecordWithAudit(prev, enrichedRecord, 'document', user?.email, normalizedType, (item) => item.id === enrichedRecord.id || item.name === enrichedRecord.name));
+        }
         break;
       case 'load':
       case 'freight':
       case 'create_move':
       case 'set_freight_status':
       case 'complete':
-        setLoads((prev) => upsertRecord(prev, recordData, 'load', (item) => item.id === recordData.id || item.title === recordData.title));
+        {
+          setLoads((prev) => {
+            const enrichedLoad = enrichLoadRecord(recordData as LoadRecord, prev);
+            return upsertRecordWithAudit(prev, enrichedLoad, 'load', user?.email, normalizedType, (item) => item.id === enrichedLoad.id || item.title === enrichedLoad.title || item.loadNumber === enrichedLoad.loadNumber);
+          });
+        }
         break;
       case 'equipment':
       case 'maintenance':
-        setEquipment((prev) => upsertRecord(prev, recordData, 'equipment', (item) => item.id === recordData.id || item.name === recordData.name || item.name === recordData.asset));
+      case 'log_issue':
+      case 'set_eq_status':
+        {
+          const equipmentRecord = withHomeBaseEquipmentDefaults(recordData as EquipmentRecord);
+          setEquipment((prev) => upsertRecordWithAudit(prev, equipmentRecord, 'equipment', user?.email, normalizedType, (item) => item.id === equipmentRecord.id || item.name === equipmentRecord.name || item.name === equipmentRecord.asset));
+        }
         if (normalizedType === 'maintenance') {
-          setAlerts((prev) => [{ id: makeId('alert'), title: recordData.asset || 'Maintenance report', body: recordData.notes || '', severity: recordData.severity || 'Info', time: 'Just now' }, ...prev]);
+          setAlerts((prev) => [{ id: makeId('alert'), title: String(recordData.asset || 'Maintenance report'), body: String(recordData.notes || ''), severity: String(recordData.severity || 'Info'), time: 'Just now' }, ...prev]);
         }
         break;
       case 'change_order':
       case 'delay':
-      case 'assign_crew':
         if (drawerConfig.itemId) {
           setJobs((prev) => prev.map((job) => {
             const matches = job.id === drawerConfig.itemId || job.title === drawerConfig.itemId;
-            return matches ? appendHistory({ ...job, ...recordData }, normalizedType.replace('_', ' '), recordData.notes || recordData.reason || recordData.description) : job;
+            return matches ? appendHistory({ ...job, ...recordData }, normalizedType.replace('_', ' '), String(recordData.notes || recordData.reason || recordData.description || '')) : job;
           }));
         }
         break;
+      case 'work_order':
+      case 'workorder':
+      case 'assign_work':
+      case 'assign_crew':
+      case 'assign_equipment':
+      case 'assign_freight':
+        {
+          const enrichedRecord = enrichWorkOrderRecord(recordData as WorkOrderRecord);
+          setWorkOrders((prev) => upsertRecordWithAudit(
+            prev,
+            enrichedRecord,
+            'work-order',
+            user?.email,
+            normalizedType,
+            (item) => item.id === enrichedRecord.id || Boolean(item.sourceRowId && item.sourceRowId === enrichedRecord.sourceRowId),
+          ));
+        }
+        break;
+      case 'project_material_item':
+      case 'projectmaterialitem':
+      case 'material_item':
+        {
+          const enrichedRecord = enrichProjectMaterialItemRecord(recordData as ProjectMaterialItemRecord);
+          setProjectMaterialItems((prev) => upsertRecordWithAudit(
+            prev,
+            enrichedRecord,
+            'project-material-item',
+            user?.email,
+            normalizedType,
+            (item) => item.id === enrichedRecord.id || Boolean(item.sourceRowId && item.sourceRowId === enrichedRecord.sourceRowId),
+          ));
+        }
+        break;
+      case 'document':
+        setDocuments((prev) => upsertRecordWithAudit(prev, recordData, 'document', user?.email, normalizedType, (item) => item.id === recordData.id || item.name === recordData.name));
+        break;
+      case 'sync_source':
+      case 'syncsource':
+        setSyncSources((prev) => upsertRecordWithAudit(prev, recordData, 'sync-source', user?.email, normalizedType, (item) => item.id === recordData.id || item.name === recordData.name));
+        break;
+      case 'sync_mapping':
+      case 'syncmapping':
+        setSyncMappings((prev) => upsertRecordWithAudit(prev, recordData, 'sync-mapping', user?.email, normalizedType));
+        break;
       default:
-        setJobs((prev) => upsertRecord(prev, recordData, 'record'));
+        setJobs((prev) => upsertRecordWithAudit(prev, recordData, 'record', user?.email, normalizedType));
         break;
     }
 
@@ -204,64 +884,186 @@ export default function App() {
     addToast('Record saved', 'success');
   };
 
-  const handleClearData = () => {
-    setJobs([]);
-    setLoads([]);
-    setRanchOaks([]);
-    setEquipment([]);
-    setCrews([]);
-    setClients([]);
-    setAlerts([]);
-    addToast('Workspace cleared', 'info');
+  const handleClearData = (clearType = 'all') => {
+    const collections = new Set(collectionNamesForClear(clearType));
+    if (collections.has('jobs')) setJobs([]);
+    if (collections.has('projects')) setProjects([]);
+    if (collections.has('workOrders')) setWorkOrders([]);
+    if (collections.has('projectMaterialItems')) setProjectMaterialItems([]);
+    if (collections.has('loads')) setLoads([]);
+    if (collections.has('ranchOaks')) setRanchOaks([]);
+    if (collections.has('inventoryItems')) setInventoryItems([]);
+    if (collections.has('equipment')) setEquipment([]);
+    if (collections.has('crews')) setCrews([]);
+    if (collections.has('staff')) setStaffDirectory([]);
+    if (collections.has('clients')) setClients([]);
+    if (collections.has('locations')) setLocations([]);
+    if (collections.has('species')) setSpecies([]);
+    if (collections.has('scheduleTasks')) setScheduleTasks([]);
+    if (collections.has('treeRelocationRecords')) setTreeRelocationRecords([]);
+    if (collections.has('fieldUpdates')) setFieldUpdates([]);
+    if (collections.has('alerts')) setAlerts([]);
+    if (collections.has('documents')) setDocuments([]);
+    if (collections.has('syncSources')) setSyncSources([]);
+    if (collections.has('syncMappings')) setSyncMappings([]);
+    if (collections.has('importBatches')) setImportBatches([]);
+    addToast(clearType === 'all' ? 'Workspace cleared' : 'Records cleared', 'info');
   };
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-jdt-bg flex items-center justify-center p-6">
-        <div className="w-full max-w-md rounded-2xl border border-jdt-border bg-jdt-panel p-8 shadow-xl text-center">
-          <div className="mx-auto mb-5 h-14 w-14 rounded-xl bg-jdt-primary text-white flex items-center justify-center">
-            <Leaf className="h-7 w-7" />
-          </div>
-          <h1 className="text-2xl font-black text-jdt-primary">JDT Command Center</h1>
-          <p className="mt-2 text-sm font-bold text-zinc-500">Sign in to manage your live operations workspace.</p>
-          <button type="button" onClick={() => { void signIn(); }} className="mt-6 w-full rounded-lg bg-jdt-primary px-4 py-3 text-sm font-black uppercase text-white hover:bg-jdt-dark transition-colors">
-            Sign In
-          </button>
-        </div>
-      </div>
+  const handleClearSeedData = (seedBatchId?: string) => {
+    const batchId = seedBatchId?.trim();
+    setJobs((prev) => filterSeedRecords(prev, batchId));
+    setProjects((prev) => filterSeedRecords(prev, batchId));
+    setWorkOrders((prev) => filterSeedRecords(prev, batchId));
+    setProjectMaterialItems((prev) => filterSeedRecords(prev, batchId));
+    setLoads((prev) => filterSeedRecords(prev, batchId));
+    setRanchOaks((prev) => filterSeedRecords(prev, batchId));
+    setInventoryItems((prev) => filterSeedRecords(prev, batchId));
+    setEquipment((prev) => filterSeedRecords(prev, batchId));
+    setCrews((prev) => filterSeedRecords(prev, batchId));
+    setStaffDirectory((prev) => filterSeedRecords(prev, batchId));
+    setClients((prev) => filterSeedRecords(prev, batchId));
+    setLocations((prev) => filterSeedRecords(prev, batchId));
+    setSpecies((prev) => filterSeedRecords(prev, batchId));
+    setScheduleTasks((prev) => filterSeedRecords(prev, batchId));
+    setTreeRelocationRecords((prev) => filterSeedRecords(prev, batchId));
+    setFieldUpdates((prev) => filterSeedRecords(prev, batchId));
+    setAlerts((prev) => filterSeedRecords(prev, batchId));
+    setDocuments((prev) => filterSeedRecords(prev, batchId));
+    setSyncSources((prev) => filterSeedRecords(prev, batchId));
+    setSyncMappings((prev) => filterSeedRecords(prev, batchId));
+    setImportBatches((prev) => filterSeedRecords(prev, batchId));
+    addToast(batchId ? `Seed batch ${batchId} cleared` : 'All seed data cleared', 'info');
+  };
+
+  const handleImportPreview = async (preview: ImportPreview) => {
+    const result = applyImportBatch(preview, currentImportCollections(), { actorEmail: user?.email });
+    await applyImportedCollections(result.collections);
+    const importHistorySaved = await setImportBatches((prev) => [result.batch, ...prev].slice(0, 30));
+    if (!importHistorySaved) {
+      throw new Error('Import records saved, but the import history could not be saved to Firestore.');
+    }
+    addToast(`${result.batch.recordCount} ${preview.label} records saved`, result.batch.recordCount ? 'success' : 'info');
+  };
+
+  const currentImportCollections = (): ImportCollections => ({
+    projects,
+    workOrders,
+    projectMaterialItems,
+    inventoryItems,
+    clients,
+    equipment: equipmentWithDefaults,
+    locations,
+    staff: staffDirectory,
+    species,
+    scheduleTasks,
+    treeRelocationRecords,
+    documents,
+  });
+
+  const applyImportedCollections = async (collections: ImportCollections) => {
+    const writes: Promise<boolean>[] = [];
+
+    if (collections.projects) writes.push(setProjects(collections.projects as ProjectRecord[]));
+    if (collections.workOrders) writes.push(setWorkOrders(collections.workOrders as WorkOrderRecord[]));
+    if (collections.projectMaterialItems) writes.push(setProjectMaterialItems(collections.projectMaterialItems as ProjectMaterialItemRecord[]));
+    if (collections.inventoryItems) writes.push(setInventoryItems(collections.inventoryItems as InventoryItemRecord[]));
+    if (collections.clients) writes.push(setClients(collections.clients as ClientRecord[]));
+    if (collections.equipment) writes.push(setEquipment((collections.equipment as EquipmentRecord[]).map(withHomeBaseEquipmentDefaults)));
+    if (collections.locations) writes.push(setLocations(collections.locations as LocationRecord[]));
+    if (collections.staff) writes.push(setStaffDirectory(collections.staff as StaffRecord[]));
+    if (collections.species) writes.push(setSpecies(collections.species as SpeciesRecord[]));
+    if (collections.scheduleTasks) writes.push(setScheduleTasks(collections.scheduleTasks as ScheduleTaskRecord[]));
+    if (collections.treeRelocationRecords) writes.push(setTreeRelocationRecords(collections.treeRelocationRecords as TreeRelocationRecord[]));
+    if (collections.documents) writes.push(setDocuments(collections.documents as DocumentRecord[]));
+
+    const results = await Promise.all(writes);
+    if (results.some((saved) => !saved)) {
+      throw new Error('Some import records could not be saved to Firestore.');
+    }
+  };
+
+  const handleRollbackImport = async (batchId: string) => {
+    const batch = importBatches.find((item) => item.id === batchId);
+    if (!batch) return;
+    const rolledBack = rollbackImportBatch(currentImportCollections(), batch);
+    await applyImportedCollections(rolledBack);
+    await setImportBatches((prev) => prev.map((item) => item.id === batchId ? { ...item, status: 'Rolled Back' } : item));
+    addToast(`${batch.name || 'Import'} rolled back`, 'info');
+  };
+
+  const handleUpdateTreeLocation = (treeId: string, relocationMap: unknown, relocationContext: Partial<RanchOakRecord> = {}) => {
+    const updateRecord = (item: RanchOakRecord) => (
+      item.id === treeId || item.treeId === treeId ? { ...item, ...relocationContext, relocationMap } : item
     );
-  }
+    setRanchOaks((prev) => prev.map(updateRecord));
+    setInventoryItems((prev) => prev.map(updateRecord));
+    setTreeRelocationRecords((prev) => prev.map((item) => (
+      item.id === treeId || item.treeId === treeId ? { ...item, ...relocationContext, relocationMap } : item
+    )));
+  };
+
+  const handleSaveFieldUpdate = async (update: Partial<FieldUpdateRecord>) => {
+    const saved = await setFieldUpdates((prev) => upsertRecordWithAudit(
+      prev,
+      {
+        ...update,
+        createdAtIso: update.createdAtIso || new Date().toISOString(),
+        createdBy: update.createdBy || user?.email || update.userEmail,
+      },
+      'field-update',
+      user?.email,
+      'field_update',
+      (item) => Boolean(update.id) && item.id === update.id,
+    ));
+    addToast(saved ? 'Crew update submitted' : 'Crew update could not be saved', saved ? 'success' : 'error');
+  };
 
   const renderActiveBoard = () => {
     switch (activeTab) {
       case 'tracker':
-        return <TrackerBoard jobs={jobs} openDrawer={openDrawer} openModal={openModal} />;
+        return <TrackerBoard jobs={jobs} workOrders={workOrders} projectMaterialItems={projectMaterialItems} openDrawer={openDrawer} openModal={openModal} />;
       case 'freight':
-        return <FreightBoard loads={loads} openDrawer={openDrawer} openModal={openModal} />;
+        return <FreightBoard loads={loads} equipment={equipmentWithDefaults} workOrders={workOrders} openDrawer={openDrawer} openModal={openModal} />;
       case 'inventory':
-        return <NurseryBoard starterRanchOaks={ranchOaks} openDrawer={openDrawer} openModal={openModal} />;
+        return <NurseryBoard starterRanchOaks={nurseryInventory} inventoryItems={inventoryItems} ranchOaks={ranchOaks} openDrawer={openDrawer} openModal={openModal} />;
       case 'equipment':
-        return <EquipmentBoard starterEquipment={equipment} openDrawer={openDrawer} openModal={openModal} />;
+        return <EquipmentBoard starterEquipment={equipmentWithDefaults} openDrawer={openDrawer} openModal={openModal} />;
       case 'crews':
-        return <CrewsBoard crews={crews} openModal={openModal} openDrawer={openDrawer} />;
+        return <CrewsBoard crews={[...staffDirectory, ...crews]} workOrders={workOrders} openModal={openModal} openDrawer={openDrawer} />;
+      case 'crewView':
+        return (
+          <CrewViewBoard
+            crews={personnel}
+            loads={loads}
+            workOrders={workOrders}
+            jobs={jobs}
+            equipment={equipmentWithDefaults}
+            fieldUpdates={fieldUpdates}
+            currentUserEmail={user?.email}
+            canSubmitFieldUpdates={permissions.canSubmitFieldUpdates}
+            onSaveFieldUpdate={handleSaveFieldUpdate}
+            openDrawer={openDrawer}
+          />
+        );
       case 'clients':
-        return <ClientsBoard clients={clients} openModal={openModal} openDrawer={openDrawer} />;
+        return <ClientsBoard clients={clients} projects={projects} jobs={jobs} openModal={openModal} openDrawer={openDrawer} />;
       case 'alerts':
         return <AlertsBoard alerts={alerts} setAlerts={setAlerts} openModal={openModal} />;
       case 'calendar':
-        return <CalendarBoard jobs={jobs} loads={loads} openDrawer={openDrawer} />;
+        return <CalendarBoard jobs={jobs} loads={loads} scheduleTasks={scheduleTasks} openDrawer={openDrawer} />;
       case 'maps':
-        return <MapsBoard jobs={jobs} loads={loads} openDrawer={openDrawer} />;
+        return <MapsBoard jobs={jobs} ranchOaks={nurseryInventory} treeRelocationRecords={treeRelocationRecords} onUpdateTreeLocation={handleUpdateTreeLocation} openDrawer={openDrawer} />;
       case 'reports':
-        return <ReportsBoard />;
+        return <ReportsBoard jobs={jobs} projects={projects} workOrders={workOrders} loads={loads} ranchOaks={nurseryInventory} equipment={equipmentWithDefaults} alerts={alerts} clients={clients} fieldUpdates={fieldUpdates} scheduleTasks={scheduleTasks} treeRelocationRecords={treeRelocationRecords} documents={documents} importBatches={importBatches} />;
       case 'documents':
-        return <DocumentsBoard openModal={openModal} />;
+        return <DocumentsBoard documents={documents} openModal={openModal} />;
       case 'sheets':
-        return <SyncBoard openModal={openModal} openDrawer={openDrawer} />;
+        return <SyncBoard sources={syncSources} mappings={syncMappings} importBatches={importBatches} openModal={openModal} openDrawer={openDrawer} onImportPreview={handleImportPreview} onRollbackImport={handleRollbackImport} canImport={permissions.canImport} />;
       case 'settings':
-        return <SettingsBoard openModal={openModal} />;
+        return <SettingsBoard openModal={openModal} onClearSeedData={handleClearSeedData} />;
       default:
-        return <Dashboard metrics={metrics} recentRecords={recentRecords} openModal={openModal} openDrawer={openDrawer} setActiveTab={setActiveTab} />;
+        return <Dashboard recentRecords={recentRecords} dashboardSummary={dashboardSummary} workOrders={workOrders} openModal={openModal} openDrawer={openDrawer} setActiveTab={setActiveTab} />;
     }
   };
 
@@ -332,10 +1134,16 @@ export default function App() {
         openModal={openModal}
         jobsList={jobs}
         loadsList={loads}
-        ranchOaksList={ranchOaks}
-        equipmentList={equipment}
-        crewsList={crews}
+        ranchOaksList={nurseryInventory}
+        equipmentList={equipmentWithDefaults}
+        crewsList={personnel}
         clientsList={clients}
+        workOrdersList={workOrders}
+        projectMaterialItemsList={projectMaterialItems}
+        treeRelocationRecordsList={treeRelocationRecords}
+        documentsList={documents}
+        fieldUpdatesList={fieldUpdates}
+        openImportTemplate={openImportTemplate}
       />
 
       <UniversalModal
@@ -349,10 +1157,12 @@ export default function App() {
         onClearData={handleClearData}
         jobsList={jobs}
         loadsList={loads}
-        ranchOaksList={ranchOaks}
-        equipmentList={equipment}
-        crewsList={crews}
+        ranchOaksList={nurseryInventory}
+        equipmentList={equipmentWithDefaults}
+        crewsList={personnel}
         clientsList={clients}
+        workOrders={workOrders}
+        projectMaterialItems={projectMaterialItems}
       />
     </div>
   );
@@ -383,23 +1193,332 @@ function NavGroup({ label, items, activeTab, setActiveTab, closeMenu }: any) {
   );
 }
 
-function Dashboard({ metrics, recentRecords, openModal, openDrawer, setActiveTab }: any) {
+const operationIconMap: Record<FeaturedOperation['id'], typeof MapPin> = {
+  relocation: MapPin,
+  freight: Truck,
+  nursery: Leaf,
+  equipment: Wrench,
+};
+
+const operationToneMap: Record<FeaturedOperation['id'], string> = {
+  relocation: 'bg-jdt-dark',
+  freight: 'bg-jdt-olive',
+  nursery: 'bg-[#6B7C4B]',
+  equipment: 'bg-[#935231]',
+};
+
+function statusDotClass(status: string) {
+  const normalized = status.toLowerCase();
+  if (normalized.includes('urgent') || normalized.includes('down') || normalized.includes('service')) return 'bg-[#935231]';
+  if (normalized.includes('idle')) return 'bg-zinc-400';
+  if (normalized.includes('complete') || normalized.includes('ready')) return 'bg-[#82995D]';
+  return 'bg-[#384521]';
+}
+
+function riskLevelClass(level: string) {
+  const normalized = String(level || '').toLowerCase();
+  if (normalized === 'critical') return 'bg-[#F5E7DD] text-[#7A331F]';
+  if (normalized === 'high') return 'bg-[#F7E9D6] text-[#7A4A12]';
+  if (normalized === 'watch') return 'bg-[#FFF6CC] text-[#705B00]';
+  return 'bg-[#EAF1E2] text-[#384521]';
+}
+
+const commandAlertIconMap: Record<DashboardCommandAlert['id'], typeof MapPin> = {
+  today: Calendar,
+  blocked: AlertTriangle,
+  approved: DollarSign,
+  crew: UserCheck,
+  freight: Truck,
+  equipment: Wrench,
+};
+
+const commandAlertToneMap: Record<DashboardCommandAlert['tone'], string> = {
+  context: 'border-jdt-primary bg-jdt-primary text-white',
+  bad: 'border-l-4 border-l-[#935231] bg-white text-jdt-text',
+  ready: 'border-l-4 border-l-[#82995D] bg-white text-jdt-text',
+  warn: 'border-l-4 border-l-[#B98138] bg-white text-jdt-text',
+  blue: 'border-l-4 border-l-[#345B6B] bg-white text-jdt-text',
+};
+
+const workItemToneMap: Record<DashboardWorkItem['tone'], string> = {
+  relocation: 'border-l-[#384521] bg-[#F7F3EA]',
+  freight: 'border-l-[#345B6B] bg-[#F2F7F8]',
+  task: 'border-l-[#82995D] bg-[#F7F3EA]',
+  equipment: 'border-l-[#935231] bg-[#FBF1E7]',
+};
+
+const drawerBackedTypes = new Set(['job', 'freight', 'load', 'tree', 'equipment', 'employee', 'client']);
+
+function Dashboard({ recentRecords, dashboardSummary, openModal, openDrawer, setActiveTab }: any) {
+  const openOperation = (operation: FeaturedOperation) => {
+    if (operation.recordId) {
+      openDrawer(operation.drawerType, operation.recordId);
+      return;
+    }
+    setActiveTab(operation.targetTab);
+  };
+
+  const openWorkItem = (item: DashboardWorkItem) => {
+    if (item.recordId && drawerBackedTypes.has(item.drawerType)) {
+      openDrawer(item.drawerType, item.recordId);
+      return;
+    }
+    setActiveTab(item.targetTab);
+  };
+
+  const dailyBrief = dashboardSummary.dailyBrief;
+  const topRisks = dashboardSummary.projectRisks.slice(0, 3);
+  const openBriefItem = (item: any) => {
+    if (item.recordId && drawerBackedTypes.has(item.drawerType)) {
+      openDrawer(item.drawerType, item.recordId);
+      return;
+    }
+    setActiveTab(item.targetTab);
+  };
+
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {metrics.map((metric: any) => {
-          const Icon = metric.icon;
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase text-jdt-olive">Live Operations</p>
+          <h2 className="mt-1 text-2xl font-black text-jdt-primary sm:text-3xl">Today's Command Board</h2>
+          <p className="mt-1 text-sm font-bold text-zinc-500">Daily dispatch, tomorrow planning, owner decisions, and operating focus in one working view.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => openModal('job')} className="inline-flex items-center justify-center gap-2 rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white shadow-sm hover:bg-jdt-dark">
+            <Plus className="h-4 w-4" /> Add Record
+          </button>
+          <button onClick={() => setActiveTab('calendar')} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-jdt-panel px-4 py-2.5 text-xs font-black uppercase text-jdt-text shadow-sm hover:bg-jdt-sand">
+            <Calendar className="h-4 w-4" /> Calendar
+          </button>
+        </div>
+      </div>
+
+      <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[1.35fr_repeat(5,minmax(0,1fr))]">
+        {dashboardSummary.commandAlerts.map((alert: DashboardCommandAlert) => {
+          const Icon = commandAlertIconMap[alert.id];
           return (
-            <div key={metric.label} className={`rounded-xl p-5 text-white shadow-sm ${metric.tone}`}>
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[11px] font-black uppercase tracking-wide text-white/75">{metric.label}</p>
-                <Icon className="h-5 w-5 text-white/75" />
+            <button key={alert.id} type="button" onClick={() => setActiveTab(alert.targetTab)} className={`min-h-[78px] rounded-lg border p-3 text-left shadow-sm transition-colors hover:border-jdt-olive ${commandAlertToneMap[alert.tone]}`}>
+              <div className="flex items-start justify-between gap-2">
+                <p className={`text-[10px] font-black uppercase ${alert.tone === 'context' ? 'text-white/70' : 'text-zinc-500'}`}>{alert.label}</p>
+                <Icon className={`h-4 w-4 ${alert.tone === 'context' ? 'text-jdt-sand' : 'text-jdt-olive'}`} />
               </div>
-              <p className="mt-3 text-4xl font-black">{metric.value}</p>
-            </div>
+              <p className="mt-2 text-2xl font-black leading-none">{alert.value}</p>
+              <p className={`mt-1 text-[10px] font-bold ${alert.tone === 'context' ? 'text-white/70' : 'text-zinc-500'}`}>{alert.detail}</p>
+            </button>
           );
         })}
-      </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-sm font-black uppercase text-jdt-text">Daily Command Brief</h3>
+              <p className="mt-1 text-xs font-bold text-zinc-500">{dailyBrief.summary}</p>
+            </div>
+            <button onClick={() => setActiveTab('reports')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
+              Open Reports
+            </button>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            {[
+              { title: 'Today', date: dailyBrief.todayIso, items: dailyBrief.today, empty: 'No work dated today' },
+              { title: 'Tomorrow', date: dailyBrief.tomorrowIso, items: dailyBrief.tomorrow, empty: 'No tomorrow prep staged' },
+              { title: 'Owner Decisions', date: 'Review', items: dailyBrief.decisions, empty: 'No owner decisions flagged' },
+            ].map((section) => (
+              <div key={section.title} className="rounded-lg border border-jdt-border bg-white p-4">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-black uppercase text-zinc-500">{section.title}</p>
+                  <span className="rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{section.date}</span>
+                </div>
+                {section.items.length > 0 ? (
+                  <div className="space-y-2">
+                    {section.items.slice(0, 3).map((item: any) => (
+                      <button key={`${section.title}-${item.id}`} type="button" onClick={() => openBriefItem(item)} className="w-full rounded border border-jdt-border bg-jdt-panel px-3 py-2 text-left hover:border-jdt-olive">
+                        <p className="truncate text-xs font-black text-jdt-text">{item.title}</p>
+                        <p className="mt-1 line-clamp-2 text-[10px] font-bold text-zinc-500">{item.detail}</p>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded border border-dashed border-jdt-border bg-jdt-panel px-3 py-6 text-center text-xs font-bold text-zinc-500">{section.empty}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-black uppercase text-jdt-text">At Risk Projects</h3>
+              <p className="mt-1 text-xs font-bold text-zinc-500">Client, project, job, and assignment issues</p>
+            </div>
+            <AlertTriangle className="h-5 w-5 text-jdt-olive" />
+          </div>
+          {topRisks.length > 0 ? (
+            <div className="space-y-3">
+              {topRisks.map((risk: any) => (
+                <button key={risk.id} type="button" onClick={() => openDrawer(risk.drawerType, risk.recordId)} className="w-full rounded-lg border border-jdt-border bg-white p-4 text-left transition-colors hover:border-jdt-olive">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black uppercase text-jdt-text">{risk.title}</p>
+                      <p className="mt-1 text-[10px] font-black uppercase text-zinc-500">{risk.clientName || 'No client linked'}</p>
+                    </div>
+                    <span className={`shrink-0 rounded px-2 py-1 text-[9px] font-black uppercase ${riskLevelClass(risk.level)}`}>{risk.level} {risk.score}</span>
+                  </div>
+                  <ul className="mt-3 space-y-1">
+                    {risk.reasons.slice(0, 3).map((reason: string) => (
+                      <li key={reason} className="text-[11px] font-bold text-zinc-600">- {reason}</li>
+                    ))}
+                  </ul>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-jdt-border bg-white p-6 text-center">
+              <p className="text-sm font-black text-jdt-text">No project risk detected</p>
+              <p className="mx-auto mt-1 max-w-sm text-xs font-bold text-zinc-500">Missing crew, freight gaps, equipment holds, field issues, and proof gaps will show here.</p>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
+          <div className="flex items-center justify-between gap-3 border-b border-jdt-border px-5 py-4">
+            <div>
+              <h3 className="text-sm font-black uppercase text-jdt-text">Today Schedule</h3>
+              <p className="mt-1 text-xs font-bold text-zinc-500">Jobs, freight, and scheduled tasks that need field attention</p>
+            </div>
+            <button onClick={() => setActiveTab('calendar')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
+              Open Calendar
+            </button>
+          </div>
+          {dashboardSummary.todaySchedule.length > 0 ? (
+            <div className="grid gap-3 p-4 md:grid-cols-2 2xl:grid-cols-3">
+              {dashboardSummary.todaySchedule.map((item: DashboardWorkItem) => (
+                <button key={`${item.drawerType}-${item.id}`} type="button" onClick={() => openWorkItem(item)} className={`min-h-[130px] rounded-lg border border-jdt-border border-l-4 p-4 text-left shadow-sm transition-colors hover:border-jdt-olive ${workItemToneMap[item.tone]}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-[10px] font-black uppercase text-zinc-500">{item.assignee}</p>
+                    <span className="rounded bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-text shadow-sm">{item.status}</span>
+                  </div>
+                  <p className="mt-3 line-clamp-2 text-sm font-black uppercase text-jdt-text">{item.title}</p>
+                  <p className="mt-2 line-clamp-2 text-[11px] font-bold text-zinc-500">{item.detail}</p>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="p-6">
+              <div className="rounded-xl border border-dashed border-jdt-border bg-white p-8 text-center">
+                <Calendar className="mx-auto mb-3 h-9 w-9 text-zinc-300" />
+                <p className="text-sm font-black text-jdt-text">No scheduled field work on the board yet</p>
+                <p className="mx-auto mt-1 max-w-md text-xs font-bold text-zinc-500">Approved jobs, scheduled tasks, and active freight loads will appear here once they are entered.</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
+          <div className="flex items-center justify-between gap-3 border-b border-jdt-border px-5 py-4">
+            <div>
+              <h3 className="text-sm font-black uppercase text-jdt-text">Tomorrow Builder</h3>
+              <p className="mt-1 text-xs font-bold text-zinc-500">Approved work that is ready to schedule</p>
+            </div>
+            <button onClick={() => setActiveTab('tracker')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
+              View Jobs
+            </button>
+          </div>
+          <WorkItemStack items={dashboardSummary.tomorrowQueue} emptyTitle="Nothing ready for tomorrow yet" emptyDetail="Approved unscheduled work will show here for office planning." onOpen={openWorkItem} />
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-black uppercase text-jdt-text">Compact Command Board</h3>
+            <p className="mt-1 text-xs font-bold text-zinc-500">Pipeline and operating focus stays visible without stealing the top of the page</p>
+          </div>
+          <button onClick={() => setActiveTab('tracker')} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
+            <LayoutGrid className="h-4 w-4" /> All Jobs
+          </button>
+        </div>
+
+        <div className="rounded-xl border border-jdt-border bg-white p-4">
+          <div className="mb-4 flex items-center gap-2">
+            <DollarSign className="h-4 w-4 text-jdt-primary" />
+            <h4 className="text-xs font-black uppercase text-jdt-text">Quote-to-Job Sales Pipeline</h4>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
+            {dashboardSummary.pipeline.map((stage: any) => (
+              <div key={stage.id} className="rounded-lg border border-jdt-border bg-jdt-sand/30 p-3 text-center">
+                <p className="text-[10px] font-black uppercase text-zinc-500">{stage.label}</p>
+                <p className="mt-2 text-3xl font-black text-jdt-text">{stage.value}</p>
+                <p className="mt-1 text-[10px] font-bold text-jdt-olive">{stage.detail}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
+          {dashboardSummary.operationList.map((operation: FeaturedOperation) => {
+            const Icon = operationIconMap[operation.id];
+            return (
+              <article key={operation.id} className="flex min-h-[240px] flex-col overflow-hidden rounded-xl border border-jdt-border bg-white shadow-sm">
+                <button type="button" onClick={() => setActiveTab(operation.targetTab)} className={`flex items-center justify-between gap-3 px-4 py-3 text-left text-white transition-colors ${operationToneMap[operation.id]}`}>
+                  <span className="inline-flex items-center gap-2 text-sm font-black uppercase">
+                    <Icon className="h-4 w-4 text-jdt-sand" />
+                    {operation.label}
+                  </span>
+                  <ChevronRight className="h-4 w-4 opacity-75" />
+                </button>
+
+                <div className="flex flex-1 flex-col p-4">
+                  <div className="flex gap-4">
+                    <div className="flex h-16 w-20 shrink-0 items-center justify-center rounded-lg border border-jdt-border bg-jdt-sand">
+                      <Icon className="h-7 w-7 text-jdt-olive" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <button type="button" onClick={() => openOperation(operation)} className="block w-full truncate text-left text-base font-black uppercase text-jdt-text hover:underline">
+                        {operation.title}
+                      </button>
+                      <p className="mt-1 line-clamp-2 text-xs font-bold text-zinc-500">{operation.subtitle}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-3 gap-2 border-y border-jdt-border py-3">
+                    {operation.stats.map((stat) => (
+                      <div key={stat.label} className="min-w-0">
+                        <p className="text-[9px] font-black uppercase text-zinc-400">{stat.label}</p>
+                        <p className="mt-0.5 truncate text-xs font-black text-jdt-text">{stat.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 flex-1">
+                    <p className="text-[10px] font-black uppercase text-zinc-400">Operating Count</p>
+                    <div className="mt-2 flex items-end gap-2">
+                      <p className="text-3xl font-black text-jdt-text">{operation.value}</p>
+                      <p className="pb-1 text-[10px] font-bold uppercase text-zinc-500">{operation.valueLabel}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex items-center justify-between gap-3 border-t border-jdt-border pt-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusDotClass(operation.status)}`} />
+                      <p className="truncate text-[10px] font-black uppercase text-zinc-600">{operation.status}</p>
+                    </div>
+                    <button onClick={() => openOperation(operation)} className="rounded border border-jdt-border bg-jdt-sand px-3 py-1.5 text-[10px] font-black uppercase text-jdt-text transition-colors hover:bg-white">
+                      {operation.actionLabel}
+                    </button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
         <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
@@ -435,62 +1554,254 @@ function Dashboard({ metrics, recentRecords, openModal, openDrawer, setActiveTab
         </section>
 
         <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-          <h3 className="text-sm font-black uppercase text-jdt-text">Quick Actions</h3>
-          <div className="mt-4 grid gap-2">
-            <button onClick={() => openModal('job')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Create project</button>
-            <button onClick={() => openModal('tree')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Add tree</button>
-            <button onClick={() => openModal('load')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Add freight load</button>
-            <button onClick={() => setActiveTab('maps')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Open tree map</button>
+          <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
+            <div>
+              <h3 className="text-sm font-black uppercase text-jdt-text">Owner Review Queue</h3>
+              <p className="mt-1 text-xs font-bold text-zinc-500">Blocked, urgent, or decision-ready items</p>
+            </div>
           </div>
+          <WorkItemStack items={dashboardSummary.ownerReviewQueue} emptyTitle="No owner review items" emptyDetail="Blocked jobs, freight issues, service holds, and active alerts will collect here." onOpen={openWorkItem} />
         </section>
       </div>
+
+      <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
+        <h3 className="text-sm font-black uppercase text-jdt-text">Quick Actions</h3>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <button onClick={() => openModal('job')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Create project</button>
+          <button onClick={() => openModal('tree')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Add tree</button>
+          <button onClick={() => openModal('load')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Add freight load</button>
+          <button onClick={() => setActiveTab('maps')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Open tree map</button>
+        </div>
+      </section>
     </div>
   );
 }
 
-function TrackerBoard({ jobs, openDrawer, openModal }: any) {
-  const relocationJobs = jobs.filter((job: any) => job.division === 'relocation' || job.division === 'nursery' || !job.division);
+function WorkItemStack({ items, emptyTitle, emptyDetail, onOpen }: { items: DashboardWorkItem[]; emptyTitle: string; emptyDetail: string; onOpen: (item: DashboardWorkItem) => void }) {
+  if (items.length === 0) {
+    return (
+      <div className="p-4">
+        <div className="rounded-xl border border-dashed border-jdt-border bg-white p-6 text-center">
+          <p className="text-sm font-black text-jdt-text">{emptyTitle}</p>
+          <p className="mx-auto mt-1 max-w-sm text-xs font-bold text-zinc-500">{emptyDetail}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y divide-jdt-border">
+      {items.map((item) => (
+        <button key={`${item.drawerType}-${item.id}`} type="button" onClick={() => onOpen(item)} className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-jdt-sand/50">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-black text-jdt-text">{item.title}</p>
+            <p className="mt-1 line-clamp-2 text-xs font-bold text-zinc-500">{item.detail}</p>
+            <p className="mt-2 text-[10px] font-black uppercase text-jdt-olive">{item.assignee}</p>
+          </div>
+          <span className="shrink-0 rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{item.status}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function TrackerBoard({ jobs, workOrders = [], projectMaterialItems = [], openDrawer, openModal }: any) {
+  const [jobFilter, setJobFilter] = useState<RelocationInstallationJobFilter>('All');
+  const relocationInstallationJobs = jobs.filter(isRelocationInstallationJob);
+  const filteredJobs = relocationInstallationJobs.filter((job: any) => (
+    jobFilter === 'All' || classifyRelocationInstallationJob(job) === jobFilter
+  ));
+  const filterCounts = relocationInstallationJobFilters.reduce<Record<string, number>>((counts, filter) => {
+    counts[filter] = filter === 'All'
+      ? relocationInstallationJobs.length
+      : relocationInstallationJobs.filter((job: any) => classifyRelocationInstallationJob(job) === filter).length;
+    return counts;
+  }, {});
+  const workOrdersForJob = (job: any) => workOrders.filter((workOrder: WorkOrderRecord) => (
+    workOrder.jobId === job.jobId
+    || workOrder.jobName === job.jobName
+    || workOrder.projectId === job.projectId
+    || workOrder.projectName === job.projectName
+    || workOrder.projectName === job.title
+  ));
+  const materialItemsForJob = (job: any) => projectMaterialItems.filter((item: ProjectMaterialItemRecord) => (
+    item.projectId === job.projectId
+    || item.projectsId === job.projectsId
+    || item.projectName === job.projectName
+    || item.projectName === job.title
+  ));
+  const projectPayloadForJob = (job: any) => ({
+    clientId: job.clientId,
+    clientName: job.clientName || job.client,
+    projectId: job.projectId,
+    projectName: job.projectName || job.title,
+    jobId: job.jobId || job.id,
+    jobName: job.jobName || job.title,
+    division: relocationInstallationDivisionLabel,
+  });
 
   return (
     <div className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-jdt-border bg-jdt-sand/50 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-black text-jdt-primary">Relocation Project Tracking</h2>
-          <p className="text-sm font-bold text-zinc-500">Live tree relocation and planting project records</p>
+          <h2 className="text-xl font-black text-jdt-primary">{relocationInstallationDivisionLabel}</h2>
+          <p className="text-sm font-bold text-zinc-500">Track relocation jobs, installation jobs, and mixed project work from one operating board</p>
         </div>
-        <button onClick={() => openModal('job')} className="rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white hover:bg-jdt-dark">Create Job</button>
+        <button
+          onClick={() => openModal('job', { division: relocationInstallationDivisionLabel })}
+          className="rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white hover:bg-jdt-dark"
+        >
+          Create Job
+        </button>
       </div>
 
-      {relocationJobs.length > 0 ? (
-        <div className="overflow-x-auto text-sm">
-          <table className="w-full text-left whitespace-nowrap">
-            <thead className="bg-jdt-sand text-zinc-500 border-b border-jdt-border">
-              <tr>
-                <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Project Name</th>
-                <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Client</th>
-                <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Status</th>
-                <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Target Date</th>
-                <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Crew</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-jdt-border">
-              {relocationJobs.map((job: any) => (
-                <tr key={job.id || job.title} className="cursor-pointer hover:bg-jdt-sand transition-colors" onClick={() => openDrawer('job', job.id || job.title)}>
-                  <td className="px-5 py-4 font-extrabold text-[#384521]">{job.title || 'Untitled project'}</td>
-                  <td className="px-5 py-4 font-bold text-zinc-600">{job.client || '-'}</td>
-                  <td className="px-5 py-4 font-bold text-zinc-600">{job.status || '-'}</td>
-                  <td className="px-5 py-4 font-bold text-zinc-500">{job.date || 'TBD'}</td>
-                  <td className="px-5 py-4 font-bold text-zinc-600">{job.crew || 'Unassigned'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {relocationInstallationJobs.length > 0 ? (
+        <div>
+          <div className="flex flex-wrap gap-2 border-b border-jdt-border bg-white px-4 py-3">
+            {relocationInstallationJobFilters.map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => setJobFilter(filter)}
+                className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase transition-colors ${jobFilter === filter ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-jdt-panel text-zinc-600 hover:border-jdt-olive'}`}
+              >
+                {filter} <span className={jobFilter === filter ? 'text-white/80' : 'text-zinc-400'}>{filterCounts[filter] || 0}</span>
+              </button>
+            ))}
+          </div>
+
+          {filteredJobs.length > 0 ? (
+            <div className="overflow-x-auto text-sm">
+              <table className="w-full text-left whitespace-nowrap">
+                <thead className="bg-jdt-sand text-zinc-500 border-b border-jdt-border">
+                  <tr>
+                    <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Project Name</th>
+                    <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Job Type</th>
+                    <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Client</th>
+                    <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Status</th>
+                    <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Target Date</th>
+                    <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Crew</th>
+                    <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Next Work</th>
+                    <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Needs</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-jdt-border">
+                  {filteredJobs.map((job: any) => {
+                    const jobType = classifyRelocationInstallationJob(job);
+                    const linkedWorkOrders = workOrdersForJob(job);
+                    const nextWorkOrder = linkedWorkOrders.find((workOrder: WorkOrderRecord) => !['Complete', 'Cancelled'].includes(String(workOrder.status || ''))) || linkedWorkOrders[0];
+                    const linkedEquipmentNames = workOrderResourceNames(linkedWorkOrders, 'equipmentNames');
+                    const linkedImplementNames = workOrderResourceNames(linkedWorkOrders, 'implementNames');
+                    const linkedLoadNames = workOrderResourceNames(linkedWorkOrders, 'loadNames');
+                    const assignmentBase = projectPayloadForJob(job);
+                    const linkedMaterialItems = materialItemsForJob(job);
+                    const requiredMaterialCount = linkedMaterialItems.reduce((sum: number, item: ProjectMaterialItemRecord) => sum + Number(item.quantityRequired || 0), 0);
+                    const installedMaterialCount = linkedMaterialItems.reduce((sum: number, item: ProjectMaterialItemRecord) => sum + Number(item.quantityInstalled || 0), 0);
+                    return (
+                      <tr key={job.id || job.title} className="cursor-pointer hover:bg-jdt-sand transition-colors" onClick={() => openDrawer('job', job.id || job.title)}>
+                        <td className="px-5 py-4">
+                          <p className="font-extrabold text-[#384521]">{job.title || 'Untitled project'}</p>
+                          <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{job.location || job.division || relocationInstallationDivisionLabel}</p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openModal('assign_work', {
+                                  ...assignmentBase,
+                                  title: `Crew work for ${job.title || 'project'}`,
+                                  workOrderType: 'general_task',
+                                  taskType: 'Field work',
+                                  status: 'Draft',
+                                  priority: 'Normal',
+                                });
+                              }}
+                              className="rounded bg-jdt-primary px-2 py-1 text-[9px] font-black uppercase text-white"
+                            >
+                              Create Crew Work
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openModal('assign_equipment', {
+                                  ...assignmentBase,
+                                  title: `Equipment for ${job.title || 'project'}`,
+                                  workOrderType: 'equipment',
+                                  taskType: 'Equipment change request',
+                                  status: 'Draft',
+                                  priority: 'Normal',
+                                });
+                              }}
+                              className="rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                            >
+                              Request Equipment
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openModal('assign_freight', {
+                                  ...assignmentBase,
+                                  title: `Freight support for ${job.title || 'project'}`,
+                                  workOrderType: 'freight',
+                                  taskType: 'Freight support request',
+                                  status: 'Draft',
+                                  priority: 'Normal',
+                                  origin: job.location,
+                                  destination: job.location,
+                                });
+                              }}
+                              className="rounded border border-blue-100 bg-blue-50 px-2 py-1 text-[9px] font-black uppercase text-blue-800 hover:border-blue-300"
+                            >
+                              Request Freight
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className={`inline-flex rounded-md border px-2 py-1 text-[10px] font-black uppercase ${relocationInstallationJobTypeTone(jobType)}`}>
+                            {jobType}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 font-bold text-zinc-600">{job.client || '-'}</td>
+                        <td className="px-5 py-4 font-bold text-zinc-600">{job.status || '-'}</td>
+                        <td className="px-5 py-4 font-bold text-zinc-500">{job.date || job.scheduledDate || job.startDate || 'TBD'}</td>
+                        <td className="px-5 py-4 font-bold text-zinc-600">{job.crew || 'Unassigned'}</td>
+                        <td className="px-5 py-4 font-bold text-zinc-600">
+                          <p>{nextWorkOrder?.title || 'No work order'}</p>
+                          <div className="mt-2 flex max-w-xs flex-wrap gap-1">
+                            {linkedEquipmentNames.slice(0, 2).map((name) => <span key={name} className="rounded bg-zinc-100 px-2 py-1 text-[9px] font-black uppercase text-zinc-700">{name}</span>)}
+                            {linkedImplementNames.slice(0, 2).map((name) => <span key={name} className="rounded bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-800">{name}</span>)}
+                            {linkedLoadNames.slice(0, 2).map((name) => <span key={name} className="rounded bg-blue-50 px-2 py-1 text-[9px] font-black uppercase text-blue-800">{name}</span>)}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="flex flex-wrap gap-1">
+                            {!nextWorkOrder?.assignedCrewNames?.length && <span className="rounded bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-800">Needs crew</span>}
+                            {!linkedEquipmentNames.length && <span className="rounded bg-zinc-100 px-2 py-1 text-[9px] font-black uppercase text-zinc-600">Equipment</span>}
+                            {!linkedLoadNames.length && <span className="rounded bg-blue-50 px-2 py-1 text-[9px] font-black uppercase text-blue-700">Freight</span>}
+                            {requiredMaterialCount > installedMaterialCount && <span className="rounded bg-green-50 px-2 py-1 text-[9px] font-black uppercase text-green-700">{installedMaterialCount}/{requiredMaterialCount} material</span>}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="p-10 text-center">
+              <MapPin className="mx-auto mb-3 h-10 w-10 text-zinc-300" />
+              <p className="text-sm font-black text-jdt-text">No {jobFilter.toLowerCase()} records yet</p>
+              <p className="mt-1 text-xs font-bold text-zinc-500">Switch filters or create a new {relocationInstallationDivisionLabel} job.</p>
+            </div>
+          )}
         </div>
       ) : (
         <div className="p-10 text-center">
           <MapPin className="mx-auto mb-3 h-10 w-10 text-zinc-300" />
-          <p className="text-sm font-black text-jdt-text">No relocation projects yet</p>
-          <p className="mt-1 text-xs font-bold text-zinc-500">Create a real project to start tracking active work.</p>
+          <p className="text-sm font-black text-jdt-text">No relocation or installation projects yet</p>
+          <p className="mt-1 text-xs font-bold text-zinc-500">Create a real project to start tracking active relocation, install, or mixed work.</p>
         </div>
       )}
     </div>

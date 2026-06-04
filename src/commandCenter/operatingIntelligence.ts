@@ -1,0 +1,533 @@
+import type {
+  AlertRecord,
+  ClientRecord,
+  CommandRecord,
+  DocumentRecord,
+  EquipmentRecord,
+  FieldUpdateRecord,
+  ImportBatchRecord,
+  JobRecord,
+  LoadRecord,
+  ProjectRecord,
+  ScheduleTaskRecord,
+  TreeRelocationRecord,
+  WorkOrderRecord,
+} from "./records";
+import { sameProject } from "./relationships";
+
+export type RelationshipIssue = {
+  id: string;
+  severity: "High" | "Medium" | "Low";
+  recordType: string;
+  recordId: string;
+  field: string;
+  currentValue: string;
+  expectedValue: string;
+  message: string;
+};
+
+export type ProjectRiskScore = {
+  id: string;
+  jobId: string;
+  projectId: string;
+  title: string;
+  clientName: string;
+  score: number;
+  level: "Critical" | "High" | "Watch" | "Low";
+  reasons: string[];
+  targetTab: "tracker";
+  drawerType: "job";
+  recordId: string;
+};
+
+export type CommandBriefItem = {
+  id: string;
+  title: string;
+  detail: string;
+  owner?: string;
+  targetTab: string;
+  drawerType: string;
+  recordId?: string;
+};
+
+export type DailyCommandBrief = {
+  todayIso: string;
+  tomorrowIso: string;
+  summary: string;
+  today: CommandBriefItem[];
+  tomorrow: CommandBriefItem[];
+  decisions: CommandBriefItem[];
+  equipmentIssues: CommandBriefItem[];
+  freightIssues: CommandBriefItem[];
+  fieldUpdates: CommandBriefItem[];
+};
+
+export type OperatingKpiMetric = {
+  label: string;
+  value: string;
+  detail: string;
+  tone: "ready" | "watch" | "bad" | "context";
+};
+
+export type OperatingKpiGroup = {
+  id: "projectHealth" | "crewCommunication" | "freightReadiness" | "equipmentReadiness" | "treeLifecycle" | "dataQuality";
+  title: string;
+  metrics: OperatingKpiMetric[];
+};
+
+export type OperatingIntelligenceInput = {
+  clients?: ClientRecord[];
+  projects?: ProjectRecord[];
+  jobs?: JobRecord[];
+  workOrders?: WorkOrderRecord[];
+  loads?: LoadRecord[];
+  equipment?: EquipmentRecord[];
+  fieldUpdates?: FieldUpdateRecord[];
+  scheduleTasks?: ScheduleTaskRecord[];
+  treeRelocationRecords?: TreeRelocationRecord[];
+  documents?: DocumentRecord[];
+  alerts?: AlertRecord[];
+  importBatches?: ImportBatchRecord[];
+  todayIso?: string;
+};
+
+const emptyInput: Required<OperatingIntelligenceInput> = {
+  clients: [],
+  projects: [],
+  jobs: [],
+  workOrders: [],
+  loads: [],
+  equipment: [],
+  fieldUpdates: [],
+  scheduleTasks: [],
+  treeRelocationRecords: [],
+  documents: [],
+  alerts: [],
+  importBatches: [],
+  todayIso: "",
+};
+
+function clean(value: unknown): string {
+  return String(value || "").trim();
+}
+
+function sameKnownValue(left: unknown, right: unknown): boolean {
+  const cleanLeft = clean(left);
+  const cleanRight = clean(right);
+  return Boolean(cleanLeft && cleanRight && cleanLeft === cleanRight);
+}
+
+function normalized(value: unknown): string {
+  return clean(value).toLowerCase();
+}
+
+function includesAny(record: Record<string, unknown>, words: string[]) {
+  const text = Object.values(record)
+    .flatMap((value) => Array.isArray(value) ? value : [value])
+    .filter((value) => value !== null && value !== undefined)
+    .map((value) => typeof value === "object" ? "" : String(value))
+    .join(" ")
+    .toLowerCase();
+  return words.some((word) => text.includes(word.toLowerCase()));
+}
+
+function isInactive(record: Record<string, unknown>) {
+  return includesAny(record, ["complete", "completed", "cancelled", "canceled", "closed"]);
+}
+
+function isBlocked(record: Record<string, unknown>) {
+  return !isInactive(record) && includesAny(record, ["blocked", "hold", "down", "repair hold", "permit issue", "issue"]);
+}
+
+function isEquipmentHold(equipment: EquipmentRecord) {
+  return !isInactive(equipment) && includesAny(equipment, ["needs service", "maintenance", "down", "repair", "service due", "hold"]);
+}
+
+function isFreightGap(load: LoadRecord) {
+  return !isInactive(load) && (!clean(load.driver) || !clean(load.truck) || includesAny(load, ["permit", "issue", "hold", "blocked", "delayed", "missing"]));
+}
+
+function needsProof(load: LoadRecord) {
+  return !isInactive(load) && (
+    (load.requiredDocuments || []).some((doc) => !includesAny(doc, ["complete", "filed", "received"]))
+    || (load.stops || []).some((stop) => stop.requiredPhotos || stop.requiredSignature)
+  );
+}
+
+function needsReview(update: FieldUpdateRecord) {
+  return !isInactive(update) && (
+    update.needsAdminReview === true
+    || includesAny(update, ["delayed", "need help", "needs help", "issue", "blocked", "hold", "stuck", "down"])
+  );
+}
+
+function isUnassignedTask(task: ScheduleTaskRecord) {
+  return !isInactive(task) && (!clean(task.assignee) || includesAny(task, ["not dispatched", "unassigned", "pending dispatch", "dispatch gap"]));
+}
+
+function recordTitle(record: CommandRecord, fallback = "Untitled record") {
+  return clean(record.title) || clean(record.name) || fallback;
+}
+
+function dateOnly(value: unknown) {
+  const raw = clean(value);
+  if (!raw) return "";
+  return raw.slice(0, 10);
+}
+
+function addDaysIso(iso: string, days: number) {
+  const date = new Date(`${iso}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function relatedWorkOrders(job: JobRecord, workOrders: WorkOrderRecord[]) {
+  return workOrders.filter((workOrder) => (
+    sameKnownValue(workOrder.jobId, job.id)
+    || sameKnownValue(workOrder.jobId, job.jobId)
+    || sameKnownValue(workOrder.projectId, job.projectId)
+    || sameProject(job, workOrder)
+  ));
+}
+
+function relatedLoads(job: JobRecord, loads: LoadRecord[]) {
+  return loads.filter((load) => (
+    sameKnownValue(load.jobId, job.id)
+    || sameKnownValue(load.jobId, job.jobId)
+    || sameKnownValue(load.projectId, job.projectId)
+    || sameProject(job, load)
+  ));
+}
+
+function relatedScheduleTasks(job: JobRecord, scheduleTasks: ScheduleTaskRecord[]) {
+  return scheduleTasks.filter((task) => (
+    sameKnownValue(task.jobId, job.id)
+    || sameKnownValue(task.jobId, job.jobId)
+    || sameKnownValue(task.projectId, job.projectId)
+    || sameProject(job, task)
+  ));
+}
+
+function relatedFieldUpdates(job: JobRecord, fieldUpdates: FieldUpdateRecord[], workOrders: WorkOrderRecord[], loads: LoadRecord[]) {
+  const relatedIds = new Set<string>([
+    job.id,
+    job.jobId,
+    job.projectId,
+    ...relatedWorkOrders(job, workOrders).map((workOrder) => workOrder.id),
+    ...relatedLoads(job, loads).map((load) => load.id),
+  ].filter(Boolean).map(String));
+
+  return fieldUpdates.filter((update) => relatedIds.has(clean(update.relatedRecordId)));
+}
+
+function issue(id: string, recordType: string, record: CommandRecord, field: string, currentValue: unknown, expectedValue: unknown, message: string, severity: RelationshipIssue["severity"] = "High"): RelationshipIssue {
+  return {
+    id,
+    severity,
+    recordType,
+    recordId: clean(record.id) || recordTitle(record),
+    field,
+    currentValue: clean(currentValue),
+    expectedValue: clean(expectedValue),
+    message,
+  };
+}
+
+export function findRelationshipIssues(input: OperatingIntelligenceInput): RelationshipIssue[] {
+  const { clients, jobs, workOrders, loads, scheduleTasks, treeRelocationRecords, documents } = { ...emptyInput, ...input };
+  const clientsById = new Map<string, ClientRecord>(
+    clients
+      .map((client): [string, ClientRecord] => [clean(client.id), client])
+      .filter(([id]) => Boolean(id)),
+  );
+  const clientsByName = new Map<string, ClientRecord>(
+    clients
+      .map((client): [string, ClientRecord] => [normalized(client.name || client.title || client.clientName), client])
+      .filter(([name]) => Boolean(name)),
+  );
+  const jobCandidates = jobs.filter((job) => clean(job.projectId) || clean(job.projectName) || clean(job.id));
+  const issues: RelationshipIssue[] = [];
+
+  jobs.forEach((job) => {
+    const namedClient = clientsByName.get(normalized(job.clientName || job.client));
+    if (namedClient && clean(job.clientId) !== clean(namedClient.id)) {
+      issues.push(issue(
+        `relationship-job-${job.id}-clientId`,
+        "job",
+        job,
+        "clientId",
+        job.clientId,
+        namedClient.id,
+        `${recordTitle(job)} is linked to ${job.clientId || "no client id"}, but ${job.clientName || job.client} is saved as ${namedClient.id}.`,
+      ));
+    } else if (clean(job.clientId) && !clientsById.has(clean(job.clientId))) {
+      issues.push(issue(
+        `relationship-job-${job.id}-missing-client`,
+        "job",
+        job,
+        "clientId",
+        job.clientId,
+        "",
+        `${recordTitle(job)} points to a client id that is not in the client directory.`,
+        "Medium",
+      ));
+    }
+  });
+
+  const checkProjectJob = (recordType: string, record: CommandRecord) => {
+    const match = jobCandidates.find((job) => (
+      sameKnownValue(record.jobId, job.id)
+      || sameKnownValue(record.jobId, job.jobId)
+      || sameKnownValue(record.projectId, job.projectId)
+      || sameKnownValue(normalized(record.projectName), normalized(job.projectName))
+      || sameKnownValue(normalized(record.jobName), normalized(job.title))
+      || sameProject(job, record)
+    ));
+    if (!match) return;
+
+    if (!clean(record.projectId) && clean(match.projectId)) {
+      issues.push(issue(
+        `relationship-${recordType}-${record.id}-projectId`,
+        recordType,
+        record,
+        "projectId",
+        record.projectId,
+        match.projectId,
+        `${recordTitle(record)} is missing the project id for ${match.projectName || match.title}.`,
+        "Medium",
+      ));
+    }
+    if (!clean(record.jobId) && clean(match.id)) {
+      issues.push(issue(
+        `relationship-${recordType}-${record.id}-jobId`,
+        recordType,
+        record,
+        "jobId",
+        record.jobId,
+        match.id,
+        `${recordTitle(record)} is missing the job id for ${match.title || match.jobName}.`,
+        "Medium",
+      ));
+    }
+  };
+
+  workOrders.forEach((record) => checkProjectJob("workOrder", record));
+  loads.forEach((record) => checkProjectJob("load", record));
+  scheduleTasks.forEach((record) => checkProjectJob("scheduleTask", record));
+  treeRelocationRecords.forEach((record) => checkProjectJob("tree", record));
+  documents.forEach((record) => checkProjectJob("document", record));
+
+  return issues;
+}
+
+export function buildProjectRiskScores(input: OperatingIntelligenceInput): ProjectRiskScore[] {
+  const { jobs, workOrders, loads, equipment, fieldUpdates, scheduleTasks } = { ...emptyInput, ...input };
+  const equipmentHold = equipment.some(isEquipmentHold);
+
+  return jobs
+    .filter((job) => !isInactive(job))
+    .map((job) => {
+      let score = 0;
+      const reasons: string[] = [];
+      const add = (points: number, reason: string) => {
+        if (!reasons.includes(reason)) reasons.push(reason);
+        score += points;
+      };
+      const jobWorkOrders = relatedWorkOrders(job, workOrders);
+      const jobLoads = relatedLoads(job, loads);
+      const jobTasks = relatedScheduleTasks(job, scheduleTasks);
+      const jobUpdates = relatedFieldUpdates(job, fieldUpdates, workOrders, loads);
+
+      if (isBlocked(job)) add(30, "Project status is blocked or on hold");
+      if (
+        jobWorkOrders.some((workOrder) => !(workOrder.assignedCrewNames || []).length && !clean(workOrder.crewLeadName))
+        || jobTasks.some(isUnassignedTask)
+        || ((isBlocked(job) || includesAny(job, ["approved", "ready"])) && !clean(job.crew))
+      ) add(15, "Crew assignment is missing");
+      if (jobLoads.some(isFreightGap)) add(15, "Freight load is missing driver or truck");
+      if (equipmentHold && (jobWorkOrders.length > 0 || jobLoads.length > 0 || isBlocked(job))) add(15, "Equipment is down, on hold, or needs service");
+      if (jobUpdates.some(needsReview)) add(20, "Crew field update needs admin review");
+      if (jobLoads.some(needsProof) || jobWorkOrders.some((workOrder) => !(workOrder.documentIds || []).length && !(workOrder.documentNames || []).length)) add(10, "Required documents or proof are missing");
+      if (jobTasks.some(isUnassignedTask)) add(10, "Schedule task is not dispatched");
+
+      const cappedScore = Math.min(score, 100);
+      const level: ProjectRiskScore["level"] = cappedScore >= 80 ? "Critical" : cappedScore >= 55 ? "High" : cappedScore >= 30 ? "Watch" : "Low";
+      return {
+        id: `risk-${job.id || job.projectId || recordTitle(job)}`,
+        jobId: clean(job.id || job.jobId),
+        projectId: clean(job.projectId),
+        title: recordTitle(job, "Project"),
+        clientName: clean(job.clientName || job.client),
+        score: cappedScore,
+        level,
+        reasons,
+        targetTab: "tracker" as const,
+        drawerType: "job" as const,
+        recordId: clean(job.id || job.jobId || job.projectId),
+      };
+    })
+    .filter((risk) => risk.score > 0)
+    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
+}
+
+function briefItem(record: CommandRecord, overrides: Partial<CommandBriefItem>): CommandBriefItem {
+  return {
+    id: clean(record.id) || recordTitle(record),
+    title: overrides.title || recordTitle(record),
+    detail: overrides.detail || clean(record.notes) || "Open item",
+    owner: overrides.owner,
+    targetTab: overrides.targetTab || "board",
+    drawerType: overrides.drawerType || "job",
+    recordId: overrides.recordId || clean(record.id),
+  };
+}
+
+export function buildDailyCommandBrief(input: OperatingIntelligenceInput): DailyCommandBrief {
+  const merged = { ...emptyInput, ...input };
+  const todayIso = clean(merged.todayIso) || new Date().toISOString().slice(0, 10);
+  const tomorrowIso = addDaysIso(todayIso, 1);
+  const today: CommandBriefItem[] = [
+    ...merged.jobs
+      .filter((job) => !isInactive(job) && [dateOnly(job.date), dateOnly(job.startDate), dateOnly(job.scheduledDate)].includes(todayIso))
+      .map((job) => briefItem(job, { detail: [job.clientName || job.client, job.location, job.crew || job.pm].filter(Boolean).join(" - "), owner: job.crew || job.pm, targetTab: "tracker", drawerType: "job" })),
+    ...merged.loads
+      .filter((load) => !isInactive(load) && [dateOnly(load.date), dateOnly(load.pickupDate), dateOnly(load.deliveryDate)].includes(todayIso))
+      .map((load) => briefItem(load, { detail: [load.driver, load.truck, load.origin, load.delivery || load.destination].filter(Boolean).join(" - "), owner: load.driver, targetTab: "freight", drawerType: "freight" })),
+    ...merged.scheduleTasks
+      .filter((task) => !isInactive(task) && [dateOnly(task.startDate), dateOnly(task.endDate)].includes(todayIso))
+      .map((task) => briefItem(task, { title: recordTitle(task) || clean(task.task), detail: [task.assignee, task.locationName || task.mainAddress].filter(Boolean).join(" - "), owner: task.assignee, targetTab: "calendar", drawerType: "schedule" })),
+  ];
+  const tomorrow = merged.scheduleTasks
+    .filter((task) => !isInactive(task) && [dateOnly(task.startDate), dateOnly(task.endDate)].includes(tomorrowIso))
+    .map((task) => briefItem(task, { title: recordTitle(task) || clean(task.task), detail: [task.assignee, task.locationName || task.mainAddress].filter(Boolean).join(" - "), owner: task.assignee, targetTab: "calendar", drawerType: "schedule" }));
+  const equipmentIssues = merged.equipment
+    .filter(isEquipmentHold)
+    .map((item) => briefItem(item, { title: clean(item.name || item.asset || item.type || item.eqType), detail: [item.status, item.serviceStatus, item.currentLocationName].filter(Boolean).join(" - "), owner: item.operator, targetTab: "equipment", drawerType: "equipment" }));
+  const freightIssues = merged.loads
+    .filter(isFreightGap)
+    .map((load) => briefItem(load, { title: recordTitle(load) || clean(load.loadNumber), detail: [load.status, load.driver || "Missing driver", load.truck || "Missing truck"].filter(Boolean).join(" - "), owner: load.driver, targetTab: "freight", drawerType: "freight" }));
+  const fieldUpdateItems = merged.fieldUpdates
+    .filter(needsReview)
+    .map((update) => briefItem(update, { title: clean(update.relatedTitle || update.title || update.name), detail: [update.fieldStatus || update.updateType, update.locationName].filter(Boolean).join(" - "), owner: update.crewName, targetTab: "crewView", drawerType: "fieldUpdate" }));
+  const riskDecisions = buildProjectRiskScores(merged)
+    .filter((risk) => risk.score >= 55)
+    .map((risk) => ({ id: risk.id, title: risk.title, detail: `${risk.level} risk - ${risk.reasons[0] || "Review project"}`, owner: risk.clientName, targetTab: risk.targetTab, drawerType: risk.drawerType, recordId: risk.recordId }));
+  const decisions = [...riskDecisions, ...freightIssues, ...equipmentIssues, ...fieldUpdateItems].slice(0, 8);
+
+  return {
+    todayIso,
+    tomorrowIso,
+    summary: `${today.length} today, ${tomorrow.length} tomorrow, ${decisions.length} owner decisions`,
+    today,
+    tomorrow,
+    decisions,
+    equipmentIssues,
+    freightIssues,
+    fieldUpdates: fieldUpdateItems,
+  };
+}
+
+function metric(label: string, value: number, detail: string, tone: OperatingKpiMetric["tone"] = "context"): OperatingKpiMetric {
+  return { label, value: String(value), detail, tone };
+}
+
+export function isSeedRecord(record: Record<string, unknown>, seedBatchId?: string): boolean {
+  if (seedBatchId) return clean(record.seedBatchId) === seedBatchId || clean(record.id) === `import-${seedBatchId}`;
+  return record.isSeedData === true || Boolean(clean(record.seedBatchId)) || clean(record.id).startsWith("import-seed-");
+}
+
+export function filterSeedRecords<T extends Record<string, unknown>>(records: T[], seedBatchId?: string): T[] {
+  return records.filter((record) => !isSeedRecord(record, seedBatchId));
+}
+
+export function buildOperatingKpis(input: OperatingIntelligenceInput): OperatingKpiGroup[] {
+  const merged = { ...emptyInput, ...input };
+  const risks = buildProjectRiskScores(merged);
+  const relationshipIssues = findRelationshipIssues(merged);
+  const activeJobs = merged.jobs.filter((job) => !isInactive(job));
+  const blockedJobs = activeJobs.filter(isBlocked);
+  const missingCrew = risks.filter((risk) => risk.reasons.includes("Crew assignment is missing"));
+  const activeLoads = merged.loads.filter((load) => !isInactive(load));
+  const freightGaps = activeLoads.filter(isFreightGap);
+  const proofNeeded = activeLoads.filter(needsProof);
+  const serviceHolds = merged.equipment.filter(isEquipmentHold);
+  const repairEquipment = merged.equipment.filter((item) => !isInactive(item) && includesAny(item, ["down", "repair", "hold"]));
+  const reviewUpdates = merged.fieldUpdates.filter(needsReview);
+  const unassignedTasks = merged.scheduleTasks.filter(isUnassignedTask);
+  const readyTrees = merged.treeRelocationRecords.filter((tree) => includesAny(tree, ["ready for relocation", "ready"]));
+  const rootPruningTrees = merged.treeRelocationRecords.filter((tree) => includesAny(tree, ["root pruning", "root prune"]));
+  const installedTrees = merged.treeRelocationRecords.filter((tree) => includesAny(tree, ["installed", "relocated"]));
+  const seedRecords = [
+    ...merged.clients,
+    ...merged.projects,
+    ...merged.jobs,
+    ...merged.workOrders,
+    ...merged.loads,
+    ...merged.equipment,
+    ...merged.fieldUpdates,
+    ...merged.scheduleTasks,
+    ...merged.treeRelocationRecords,
+    ...merged.documents,
+    ...merged.importBatches,
+  ].filter((record) => isSeedRecord(record));
+  const importWarnings = merged.importBatches.reduce((total, batch) => total + Number(batch.warningCount || 0), 0);
+
+  return [
+    {
+      id: "projectHealth",
+      title: "Project Health",
+      metrics: [
+        metric("Active Projects", activeJobs.length, "Open projects and jobs", "context"),
+        metric("At Risk", risks.filter((risk) => risk.score >= 55).length, "High or critical project risks", risks.some((risk) => risk.score >= 55) ? "bad" : "ready"),
+        metric("Blocked", blockedJobs.length, "Projects on hold or blocked", blockedJobs.length ? "bad" : "ready"),
+        metric("Missing Crew", missingCrew.length, "Projects or work orders without crew", missingCrew.length ? "watch" : "ready"),
+      ],
+    },
+    {
+      id: "crewCommunication",
+      title: "Crew Communication",
+      metrics: [
+        metric("Field Updates", merged.fieldUpdates.length, "Crew-submitted updates", "context"),
+        metric("Needs Review", reviewUpdates.length, "Updates needing admin action", reviewUpdates.length ? "bad" : "ready"),
+        metric("Unassigned Tasks", unassignedTasks.length, "Schedule tasks missing dispatch", unassignedTasks.length ? "watch" : "ready"),
+      ],
+    },
+    {
+      id: "freightReadiness",
+      title: "Freight Readiness",
+      metrics: [
+        metric("Active Loads", activeLoads.length, "Open freight moves", "context"),
+        metric("Dispatch Gaps", freightGaps.length, "Missing driver, truck, or blocked route", freightGaps.length ? "bad" : "ready"),
+        metric("Proof Needed", proofNeeded.length, "Loads needing BOL, photo, or signature", proofNeeded.length ? "watch" : "ready"),
+      ],
+    },
+    {
+      id: "equipmentReadiness",
+      title: "Equipment Readiness",
+      metrics: [
+        metric("Fleet Records", merged.equipment.length, "Equipment, trucks, trailers, and implements", "context"),
+        metric("Service Holds", serviceHolds.length, "Assets needing service attention", serviceHolds.length ? "bad" : "ready"),
+        metric("Down / Repair", repairEquipment.length, "Assets down, held, or in repair", repairEquipment.length ? "bad" : "ready"),
+      ],
+    },
+    {
+      id: "treeLifecycle",
+      title: "Tree Lifecycle",
+      metrics: [
+        metric("Relocation Trees", merged.treeRelocationRecords.length, "Project tree assets", "context"),
+        metric("Ready", readyTrees.length, "Trees ready for relocation", "ready"),
+        metric("Root Pruning", rootPruningTrees.length, "Trees in root pruning", "watch"),
+        metric("Installed", installedTrees.length, "Trees installed or relocated", "ready"),
+      ],
+    },
+    {
+      id: "dataQuality",
+      title: "Data Quality",
+      metrics: [
+        metric("Relationship Issues", relationshipIssues.length, "Broken client/project/job links", relationshipIssues.length ? "bad" : "ready"),
+        metric("Seed Records", seedRecords.length, "Seed/test records still visible", seedRecords.length ? "watch" : "ready"),
+        metric("Import Warnings", importWarnings, "Warnings from saved imports", importWarnings ? "watch" : "ready"),
+      ],
+    },
+  ];
+}

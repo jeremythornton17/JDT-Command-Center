@@ -19,6 +19,14 @@ describe("AI Studio deployment source guard", () => {
     assert.equal(existsSync(path.join(repoRoot, "src/treeRelocationMap.ts")), true);
   });
 
+  it("serves the app shell without stale browser caching after deploys", () => {
+    const serverSource = readProjectFile("server.js");
+
+    assert.match(serverSource, /express\.static\(distDir,\s*\{\s*index:\s*false,\s*maxAge:\s*'1h'\s*\}\)/);
+    assert.match(serverSource, /Cache-Control',\s*'no-store'/);
+    assert.match(serverSource, /sendFile\(path\.join\(distDir,\s*'index\.html'\)\)/);
+  });
+
   it("keeps the maps board on tree relocation instead of removed fleet providers", () => {
     const mapsBoard = readProjectFile("src/components/MapsBoard.tsx");
 
@@ -52,6 +60,11 @@ describe("AI Studio deployment source guard", () => {
     assert.match(firestoreRules, /request\.auth\.token\.email/);
     assert.equal(firestoreRules.includes("jdtnurseries\\\\.com"), true);
     assert.match(firestoreRules, /jeremy@jdtnurseries\.com/);
+    assert.match(firestoreRules, /buck@jdtnurseries\.com/);
+    assert.doesNotMatch(firestoreRules, /jdtn2155@gmail\.com/);
+    assert.match(firestoreRules, /isContactOnlyAuthorized\(\)/);
+    assert.doesNotMatch(firestoreRules, /allow\s+(read|create|update):\s*if\s+isSignedIn\(\)/);
+    assert.match(firestoreRules, /isAuthorizedUser\(\)/);
   });
 
   it("keeps both Firebase email/password and Google sign-in options", () => {
@@ -63,6 +76,8 @@ describe("AI Studio deployment source guard", () => {
     assert.match(authProvider, /Sign In With Google/);
     assert.match(authProvider, /Reset Password/);
     assert.match(authProvider, /\/jd-thornton-logo\.png/);
+    assert.doesNotMatch(authProvider, /mail\.google\.com|auth\/contacts|auth\/spreadsheets|auth\/calendar/);
+    assert.doesNotMatch(authProvider, /provider\.addScope/);
   });
 
   it("uses the production named Firestore database instead of the missing default database", () => {
@@ -73,5 +88,17 @@ describe("AI Studio deployment source guard", () => {
     assert.equal(firebaseConfig.firestoreDatabaseId, "ai-studio-aaf65ee2-61ca-4360-af29-1c862096338e");
     assert.match(firebaseSource, /getFirestore\(app,\s*firebaseConfig\.firestoreDatabaseId\)/);
     assert.doesNotMatch(firebaseSource, /getFirestore\(app\)/);
+  });
+
+  it("keeps the test script and app shell aligned with production hardening", () => {
+    const packageJson = JSON.parse(readProjectFile("package.json"));
+    const appSource = readProjectFile("src/App.tsx");
+    const tsConfig = JSON.parse(readProjectFile("tsconfig.json"));
+
+    assert.match(packageJson.scripts.test, /authAccess\.test\.ts/);
+    assert.match(packageJson.scripts.test, /firestoreSync\.test\.ts/);
+    assert.doesNotMatch(appSource, /if\s*\(!user\)/);
+    assert.equal(tsConfig.compilerOptions.strict, true);
+    assert.equal(tsConfig.compilerOptions.allowJs, false);
   });
 });

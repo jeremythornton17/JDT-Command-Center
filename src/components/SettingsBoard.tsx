@@ -3,14 +3,17 @@ import { Settings, Shield, Key, Database, FileSpreadsheet, ArrowUpRight, Trash2 
 import { collection, deleteDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthProvider';
+import { collectionNamesForClear } from '../commandCenter/dataModel';
 
 type SettingsBoardProps = {
   openModal: (type: string, data?: any) => void;
+  onClearSeedData?: (seedBatchId?: string) => void;
 };
 
-export default function SettingsBoard({ openModal }: SettingsBoardProps) {
-  const { isAdmin } = useAuth();
+export default function SettingsBoard({ openModal, onClearSeedData }: SettingsBoardProps) {
+  const { permissions, role } = useAuth();
   const [clearingType, setClearingType] = useState<string | null>(null);
+  const [seedBatchId, setSeedBatchId] = useState('seed-drive-boca-west-workflow-20260602');
   const sections = [
     { icon: Shield, title: 'Security', description: 'Review Firebase rules, user access, and app protection settings.' },
     { icon: Key, title: 'API Keys', description: 'Add your Google Drive, Picker, and Maps credentials from environment variables.' },
@@ -18,15 +21,19 @@ export default function SettingsBoard({ openModal }: SettingsBoardProps) {
     { icon: FileSpreadsheet, title: 'Sources', description: 'No tracker sources connected yet.' },
   ];
   const clearActions = [
-    { type: 'clear_jobs', label: 'Projects', collections: ['jobs'] },
-    { type: 'clear_freight', label: 'Freight', collections: ['loads'] },
-    { type: 'clear_trees', label: 'Trees', collections: ['ranchOaks'] },
-    { type: 'clear_crews', label: 'Crews', collections: ['crews'] },
-    { type: 'clear_equipment', label: 'Equipment', collections: ['equipment'] },
-    { type: 'clear_clients', label: 'Clients', collections: ['clients'] },
-    { type: 'clear_alerts', label: 'Alerts', collections: ['alerts'] },
-    { type: 'clear_all', label: 'Everything', collections: ['jobs', 'loads', 'ranchOaks', 'equipment', 'crews', 'clients', 'alerts'] },
-  ];
+    { type: 'projects', label: 'Projects' },
+    { type: 'freight', label: 'Freight' },
+    { type: 'trees', label: 'Trees + Inventory' },
+    { type: 'crews', label: 'Crews + Staff' },
+    { type: 'equipment', label: 'Equipment' },
+    { type: 'clients', label: 'Clients' },
+    { type: 'reference', label: 'Reference Lists' },
+    { type: 'schedule', label: 'Schedule Tasks' },
+    { type: 'alerts', label: 'Alerts' },
+    { type: 'documents', label: 'Documents' },
+    { type: 'sources', label: 'Sources + Import Log' },
+    { type: 'all', label: 'Everything' },
+  ].map((action) => ({ ...action, collections: collectionNamesForClear(action.type) }));
 
   const clearCollections = async (action: typeof clearActions[number]) => {
     const confirmed = window.confirm(`Clear ${action.label.toLowerCase()} from Firebase? This cannot be undone.`);
@@ -45,6 +52,17 @@ export default function SettingsBoard({ openModal }: SettingsBoardProps) {
     } finally {
       setClearingType(null);
     }
+  };
+
+  const clearSeedData = () => {
+    if (!onClearSeedData) return;
+    const cleanedBatchId = seedBatchId.trim();
+    const confirmed = window.confirm(cleanedBatchId
+      ? `Clear seed/test records from batch ${cleanedBatchId}? Live records will remain.`
+      : 'Clear every record marked as seed/test data? Live records will remain.'
+    );
+    if (!confirmed) return;
+    onClearSeedData(cleanedBatchId || undefined);
   };
 
   return (
@@ -87,19 +105,54 @@ export default function SettingsBoard({ openModal }: SettingsBoardProps) {
         ))}
       </div>
 
-      <section className={`rounded-xl border bg-white p-5 shadow-sm ${isAdmin ? 'border-red-200' : 'border-jdt-border'}`}>
-        <div className="flex flex-col gap-2 border-b border-red-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+      <section className={`rounded-xl border bg-white p-5 shadow-sm ${permissions.canReset ? 'border-[#D9B85E]' : 'border-jdt-border'}`}>
+        <div className="flex flex-col gap-2 border-b border-jdt-border pb-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className={`text-sm font-black uppercase ${isAdmin ? 'text-red-900' : 'text-jdt-text'}`}>Data Reset</h3>
-            <p className={`mt-1 text-xs font-bold ${isAdmin ? 'text-red-700' : 'text-zinc-500'}`}>
-              {isAdmin
-                ? 'Clear old Firebase records before entering current operating data.'
-                : 'Data reset is limited to Jeremy and jdtnurseries.com admin accounts.'}
+            <h3 className="text-sm font-black uppercase text-jdt-text">Seed Data Cleanup</h3>
+            <p className="mt-1 text-xs font-bold text-zinc-500">
+              {permissions.canReset
+                ? 'Remove mock or seeded test records without clearing live operating data.'
+                : `Seed cleanup is limited to the owner admin account. Current role: ${role.replace(/_/g, ' ')}.`}
             </p>
           </div>
-          <Database className={`h-5 w-5 ${isAdmin ? 'text-red-700' : 'text-zinc-400'}`} />
+          <FileSpreadsheet className={`h-5 w-5 ${permissions.canReset ? 'text-[#B98138]' : 'text-zinc-400'}`} />
         </div>
-        {isAdmin && (
+        {permissions.canReset && (
+          <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+            <label className="block">
+              <span className="text-[10px] font-black uppercase text-zinc-500">Seed Batch ID</span>
+              <input
+                value={seedBatchId}
+                onChange={(event) => setSeedBatchId(event.target.value)}
+                placeholder="Leave blank to clear all seed-marked records"
+                className="mt-1 w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-jdt-olive"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={clearSeedData}
+              disabled={!onClearSeedData}
+              className="inline-flex items-center justify-center gap-2 self-end rounded-lg border border-[#D9B85E] bg-[#FFF8DD] px-3 py-2.5 text-xs font-black uppercase text-[#725B11] transition-colors hover:bg-white disabled:opacity-60"
+            >
+              <Trash2 className="h-4 w-4" /> Clear Seed Records
+            </button>
+          </div>
+        )}
+      </section>
+
+      <section className={`rounded-xl border bg-white p-5 shadow-sm ${permissions.canReset ? 'border-red-200' : 'border-jdt-border'}`}>
+        <div className="flex flex-col gap-2 border-b border-red-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className={`text-sm font-black uppercase ${permissions.canReset ? 'text-red-900' : 'text-jdt-text'}`}>Data Reset</h3>
+            <p className={`mt-1 text-xs font-bold ${permissions.canReset ? 'text-red-700' : 'text-zinc-500'}`}>
+              {permissions.canReset
+                ? 'Clear old Firebase records before entering current operating data.'
+                : `Data reset is limited to the owner admin account. Current role: ${role.replace(/_/g, ' ')}.`}
+            </p>
+          </div>
+          <Database className={`h-5 w-5 ${permissions.canReset ? 'text-red-700' : 'text-zinc-400'}`} />
+        </div>
+        {permissions.canReset && (
           <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {clearActions.map((action) => (
               <button

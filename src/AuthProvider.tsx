@@ -8,13 +8,16 @@ import {
   signOut,
 } from "firebase/auth";
 import { auth } from "./firebase";
-import { getFirebaseAuthErrorMessage, isAdminEmail } from "./authAccess";
+import { getAppPermissions, getAppRole, getFirebaseAuthErrorMessage, getUnauthorizedAccountMessage, isAdminEmail, isAuthorizedEmail } from "./authAccess";
+import type { AppPermissions, AppRole } from "./commandCenter/dataModel";
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  accessToken: string | null;
+  isAuthorized: boolean;
   isAdmin: boolean;
+  role: AppRole;
+  permissions: AppPermissions;
   signIn: (email?: string, password?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -28,20 +31,36 @@ export const useAuth = () => useContext(AuthContext);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [authError, setAuthError] = useState("");
+  const isAuthorized = isAuthorizedEmail(user?.email);
   const isAdmin = isAdminEmail(user?.email);
+  const role = getAppRole(user?.email);
+  const permissions = getAppPermissions(user?.email);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      setUser(user);
-      if (!user) {
-        setAccessToken(null);
+    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+      if (currentUser && !isAuthorizedEmail(currentUser.email)) {
+        setUser(null);
+        setAuthError(getUnauthorizedAccountMessage());
+        void signOut(auth).finally(() => setLoading(false));
+        return;
       }
+
+      setUser(currentUser);
+      if (currentUser) setAuthError("");
       setLoading(false);
     });
 
     return unsubscribe;
   }, []);
+
+  const assertAuthorizedUser = async (currentUser: User | null) => {
+    if (isAuthorizedEmail(currentUser?.email)) return;
+    await signOut(auth);
+    throw new Error(getUnauthorizedAccountMessage());
+  };
+
+  const isUnauthorizedError = (error: unknown) => error instanceof Error && error.message === getUnauthorizedAccountMessage();
 
   const signIn = async (email?: string, password?: string) => {
     if (typeof email !== "string" || !password) {
@@ -50,9 +69,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      await assertAuthorizedUser(result.user);
     } catch (error) {
       console.error("Sign in failed", error);
+      if (isUnauthorizedError(error)) throw error;
       throw new Error(getFirebaseAuthErrorMessage(error));
     }
   };
@@ -68,35 +89,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
-    provider.addScope("https://www.googleapis.com/auth/drive");
-    provider.addScope("https://www.googleapis.com/auth/calendar");
-    provider.addScope("https://www.googleapis.com/auth/spreadsheets");
-    provider.addScope("https://mail.google.com/");
-    provider.addScope("https://www.googleapis.com/auth/contacts");
-    provider.setCustomParameters({ prompt: "select_account consent" });
+    provider.setCustomParameters({ prompt: "select_account" });
 
     try {
       const result = await signInWithPopup(auth, provider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      setAccessToken(credential?.accessToken || null);
+      await assertAuthorizedUser(result.user);
     } catch (error) {
       console.error("Google sign in failed", error);
+      if (isUnauthorizedError(error)) throw error;
       throw new Error(getFirebaseAuthErrorMessage(error));
     }
   };
 
   const logOut = async () => {
     await signOut(auth);
-    setAccessToken(null);
   };
 
-  const contextValue = { user, loading, accessToken, isAdmin, signIn, signInWithGoogle, resetPassword, logOut };
+  const contextValue = { user, loading, isAuthorized, isAdmin, role, permissions, signIn, signInWithGoogle, resetPassword, logOut };
 
   if (loading) return null;
 
   return (
     <AuthContext.Provider value={contextValue}>
-      {user ? children : <FirebaseSignInPanel signIn={signIn} signInWithGoogle={signInWithGoogle} resetPassword={resetPassword} />}
+      {user ? children : <FirebaseSignInPanel signIn={signIn} signInWithGoogle={signInWithGoogle} resetPassword={resetPassword} authError={authError} />}
     </AuthContext.Provider>
   );
 }
@@ -105,18 +120,24 @@ function FirebaseSignInPanel({
   signIn,
   signInWithGoogle,
   resetPassword,
+  authError,
 }: {
   signIn: (email?: string, password?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  authError?: string;
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(authError || "");
   const [notice, setNotice] = useState("");
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+
+  useEffect(() => {
+    setError(authError || "");
+  }, [authError]);
 
   const handleEmailPasswordSignIn = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

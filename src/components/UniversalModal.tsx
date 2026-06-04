@@ -15,7 +15,9 @@ export default function UniversalModal({
   ranchOaksList = [],
   equipmentList = [],
   crewsList = [],
-  clientsList = []
+  clientsList = [],
+  workOrders = [],
+  projectMaterialItems = []
 }: any) {
   const [isSaving, setIsSaving] = React.useState(false);
 
@@ -44,31 +46,53 @@ export default function UniversalModal({
     'client': { title: 'New Client / Company', desc: 'Add a new client to the directory', btn: 'Save Client' },
     'contact': { title: 'New Contact', desc: 'Add a new person connected to a company', btn: 'Save Contact' },
     'tree': { title: 'New Tree / Plant Asset', desc: 'Enter a new tree into inventory', btn: 'Save Tree' },
+    'ranch_oak': { title: 'New Ranch Oak', desc: 'Enter a Ranch Oak into special nursery inventory', btn: 'Save Ranch Oak' },
     'load': { title: 'New Freight Load', desc: 'Dispatch a new load', btn: 'Dispatch Load' },
     'equipment': { title: 'New Equipment Asset', desc: 'Add new equipment to fleet', btn: 'Save Equipment' },
     'maintenance': { title: 'New Maintenance Issue', desc: 'Report equipment issue', btn: 'Submit Ticket' },
     'employee': { title: 'New Employee / Crew Member', desc: 'Add new crew member or driver', btn: 'Save Employee' },
+    'document': { title: 'Document Record', desc: 'Track permits, bills of lading, proofs, and project files', btn: 'Save Document' },
+    'sync_source': { title: 'Tracker Source', desc: 'Connect a spreadsheet, Drive folder, or operating data source', btn: 'Save Source' },
+    'sync_mapping': { title: 'Sync Mapping', desc: 'Map source fields to command center records', btn: 'Save Mapping' },
     'task': { title: 'New Task / Follow-Up', desc: 'Assign a task to a user or crew', btn: 'Save Task' },
     'change_order': { title: 'New Change Order', desc: 'Document field impact', btn: 'Save Change Order' },
+    'assign_work': { title: 'Create Crew Work Order', desc: 'Create project work for the right division, crew, site, equipment, and field instructions', btn: 'Save Crew Work Order' },
+    'assign_equipment': { title: 'Request Equipment Change', desc: 'Request JD Thornton equipment or rental equipment for this project', btn: 'Save Equipment Request' },
+    'assign_freight': { title: 'Request Freight Support', desc: 'Create project freight support work before dispatching the driver route from Freight', btn: 'Save Freight Request' },
+    'work_order': { title: 'Work Order', desc: 'Create or update a field work order', btn: 'Save Work Order' },
+    'project_material_item': { title: 'Project Material Item', desc: 'Add material quantities, source, size, status, and notes for this project', btn: 'Save Material' },
+    'project_tree_asset': { title: 'Project Tree Asset', desc: 'Add or update a tree assigned to this project', btn: 'Save Tree Asset' },
+    'project_tree_pruning': { title: 'Root Pruning', desc: 'Add or update root pruning details for this tree', btn: 'Save Root Pruning' },
+    'project_tree_aftercare': { title: 'Nutrient Care', desc: 'Add or update nutrient care and treatment details for this tree', btn: 'Save Nutrient Care' },
+    'project_tree_photo': { title: 'Tree Photo', desc: 'Add or update a photo linked to this tree', btn: 'Save Photo' },
     
     // Command Drawer specific actions
     'assign_crew': { title: 'Assign Crew', desc: 'Assign a crew to this project', btn: 'Save Assignment' },
     'add_tree': { title: 'Add Tree to Job', desc: 'Link a new tree asset to this project', btn: 'Add Tree' },
-    'create_move': { title: 'Create Freight Move', desc: 'Schedule a new move for this project', btn: 'Create Move' },
+    'create_move': { title: 'Create Dispatch Move', desc: 'Build a driver dispatch route with stops, vehicle actions, and proof requirements', btn: 'Create Dispatch Move' },
     'edit_project': { title: 'Edit Project Details', desc: 'Update main project information', btn: 'Save Changes' },
     
     'log_prune': { title: 'Log Pruning Cut', desc: 'Log a new pruning instance for this tree', btn: 'Save Log' },
     'treatment': { title: 'Add Treatment / Aftercare', desc: 'Log treatments or health checks', btn: 'Save Treatment' },
     'move_check': { title: 'Move Readiness Check', desc: 'Log pre-move checklist details', btn: 'Save Checklist' },
-    'assign_tree': { title: 'Assign Tree', desc: 'Assign this tree to a project or crew', btn: 'Assign Tree' },
+    'assign_tree': { title: 'Reserve / Assign Tree', desc: 'Reserve this inventory tree for a client, project, job, or crew assignment', btn: 'Save Tree Assignment' },
     'edit_tree': { title: 'Edit Tree Profile', desc: 'Update tree information', btn: 'Save Changes' },
     
     'set_freight_status': { title: 'Update Freight Status', desc: 'Change load and stop status', btn: 'Update Status' },
+    'advance_freight_stop': { title: 'Update Stop Progress', desc: 'Log pickup, delivery, arrival, departure, location, and site contact details', btn: 'Save Stop Update' },
+    'complete_freight_route_step': { title: 'Complete Dispatch Step', desc: 'Update a driver run step and asset location state', btn: 'Save Step' },
+    'complete_freight_pod': { title: 'Complete e-POD', desc: 'Capture receiver, signature, BOL/photo link, and completion notes', btn: 'Save Proof' },
     'delay': { title: 'Report Delay', desc: 'Log a delay for this objective', btn: 'Log Delay' },
     'complete': { title: 'Complete Execution (POD)', desc: 'Mark completed and save POD', btn: 'Complete' },
     'edit_freight': { title: 'Edit Freight Load', desc: 'Update dispatch details', btn: 'Save Changes' },
     
     'log_issue': { title: 'Log Equipment Issue', desc: 'Report a new problem or ticket', btn: 'Submit Issue' },
+    'report_vehicle_issue': { title: 'Report Vehicle Issue', desc: 'Create an equipment work order from a truck or trailer card', btn: 'Create Work Order' },
+    'spot_vehicle': { title: 'Spot Location', desc: 'Save where this vehicle or trailer is now', btn: 'Save Spot' },
+    'drop_trailer': { title: 'Drop Trailer', desc: 'Drop this trailer at a farm, job site, or the shop', btn: 'Save Drop' },
+    'hook_trailer': { title: 'Hook Trailer', desc: 'Assign this trailer to a driver, crew, and truck', btn: 'Save Hook' },
+    'mark_vehicle_empty': { title: 'Mark Empty', desc: 'Mark this truck or trailer as empty and available for planning', btn: 'Mark Empty' },
+    'mark_vehicle_loaded': { title: 'Mark Loaded', desc: 'Mark this truck or trailer as loaded or in use', btn: 'Mark Loaded' },
     'set_eq_status': { title: 'Update Equipment Status', desc: 'Mark down, available, etc.', btn: 'Update Status' },
     'print_card': { title: 'Print Service Card', desc: 'Generate printable tag', btn: 'Print' },
     'edit_equipment': { title: 'Edit Equipment Profile', desc: 'Update stats or assignment', btn: 'Save Changes' },
@@ -80,10 +104,12 @@ export default function UniversalModal({
   };
 
   const isEntityForm = [
-    'add_new', 'job', 'client', 'contact', 'tree', 'load', 'equipment', 'maintenance', 'employee', 'task', 'change_order', 
-    'delay', 'assign_crew', 'create_move', 'complete_job', 'complete', 'log_issue', 'set_eq_status', 'schedule_disruption', 
+    'add_new', 'job', 'client', 'contact', 'tree', 'ranch_oak', 'load', 'equipment', 'maintenance', 'employee', 'document', 'sync_source', 'sync_mapping', 'task', 'change_order', 
+    'delay', 'assign_crew', 'assign_work', 'assign_equipment', 'assign_freight', 'work_order', 'project_material_item', 'create_move', 'complete_job', 'complete', 'log_issue', 'set_eq_status', 'schedule_disruption', 
     'move_unfinished', 'edit_project', 'print_packet', 'import_csv', 'export_csv', 'closeout', 'sync_all', 'connect_source', 
-    'add_mapping', 'apply_sync', 'save_profile', 'review_errors', 'set_freight_status', 'edit_freight', 'edit_equipment', 
+    'add_mapping', 'apply_sync', 'save_profile', 'review_errors', 'set_freight_status', 'edit_freight', 'edit_equipment',
+    'project_tree_asset', 'project_tree_pruning', 'project_tree_aftercare', 'project_tree_photo',
+    'advance_freight_stop', 'complete_freight_route_step', 'complete_freight_pod', 'report_vehicle_issue', 'spot_vehicle', 'drop_trailer', 'hook_trailer', 'mark_vehicle_empty', 'mark_vehicle_loaded',
     'assign_tree', 'add_tree', 'log_prune', 'treatment', 'move_check', 'edit_tree'
   ].includes(typeLower);
   const baseConfig = MODAL_CONFIG[typeLower] || { title: type.toUpperCase(), desc: 'Action Form', btn: 'Confirm' };
@@ -123,10 +149,22 @@ export default function UniversalModal({
       config.title = `Edit Client Profile: ${data.name || ''}`;
       config.desc = 'Update client account and contact details';
       config.btn = 'Save Changes';
+    } else if (typeLower === 'document') {
+      config.title = `Edit Document: ${data.name || data.title || ''}`;
+      config.desc = 'Update document status, project link, or source URL';
+      config.btn = 'Save Document';
+    } else if (typeLower === 'sync_source') {
+      config.title = `Edit Source: ${data.name || data.title || ''}`;
+      config.desc = 'Update source type, owner, URL, or status';
+      config.btn = 'Save Source';
     } else if (typeLower === 'contact') {
       config.title = `Edit Contact: ${data.name || ''}`;
       config.desc = 'Update representative details';
       config.btn = 'Save Changes';
+    } else if (typeLower === 'ranch_oak') {
+      config.title = `Edit Ranch Oak: ${data.treeId || dataId || ''}`;
+      config.desc = 'Update Ranch Oak field location, status, or customer details';
+      config.btn = 'Save Ranch Oak';
     } else if (typeLower === 'tree' || typeLower === 'edit_tree') {
       config.title = `Edit Tree Profile: ${data.treeId || dataId || ''}`;
       config.desc = 'Update species, zone, or status details';
@@ -161,6 +199,8 @@ export default function UniversalModal({
       trees: 'Tree Records',
       ranch_oaks: 'Tree Records',
       alerts: 'Alerts',
+      documents: 'Documents',
+      sources: 'Data Sources',
     };
     const label = clearLabels[clearKey] || clearKey.replace(/_/g, ' ');
     config.title = clearKey === 'all' ? 'Factory Reset Workspace' : `Clear ${label}`;
@@ -209,6 +249,9 @@ export default function UniversalModal({
                   equipmentList={equipmentList}
                   crewsList={crewsList}
                   clientsList={clientsList}
+                  workOrders={workOrders}
+                  projectMaterialItems={projectMaterialItems}
+                  submitLabel={config.btn}
                 />
              ) : isDestructiveAction ? (
                 <div className="flex flex-col items-center py-6 text-center space-y-4">

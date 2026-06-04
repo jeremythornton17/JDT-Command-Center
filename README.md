@@ -39,18 +39,15 @@ Copy `.env.example` to `.env.local` for local development. Keep real secrets out
 
 Required hosted environment values are managed in Cloud Run:
 
-- `GEMINI_API_KEY`
 - `APP_URL`
-- `VITE_GOOGLE_CLIENT_ID`
-- `VITE_GOOGLE_API_KEY`
-- `VITE_GOOGLE_APP_ID`
-- `VITE_GOOGLE_DRIVE_UPLOAD_FOLDER_ID`
 - `VITE_GOOGLE_MAPS_API_KEY`
-- `VITE_GOOGLE_MAPS_MAP_ID`
+- `VITE_GOOGLE_MAPS_MAP_ID` when a styled Google Maps map ID is used
+
+The Firebase browser config is intentionally stored in `firebase-applet-config.json` for the single production Firebase app. Future Drive Picker and Gemini workflows should add their keys only when those features are implemented; keep Gemini keys server-side.
 
 ## Google Drive Migration
 
-The Documents board supports local file upload, browser folder upload, drag/drop migration, and Google Drive Picker imports. Enable Google Drive API and Google Picker API in the same Google Cloud project. The app requests `https://www.googleapis.com/auth/drive.file` for upload and Picker-selected file access.
+The Documents board now stores document tracking records in Firestore. Keep file uploads and Google Drive Picker integration behind a separate feature flow so the app can request Drive permissions only when a user starts a Drive action.
 
 ## Google Maps Tree Relocation
 

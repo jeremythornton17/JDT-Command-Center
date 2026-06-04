@@ -1,0 +1,1 @@
+window.JDT_RUNTIME_CONFIG = window.JDT_RUNTIME_CONFIG || {};

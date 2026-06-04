@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { Folder, FileText, UploadCloud, Search, Plus } from 'lucide-react';
 import { IconBadge } from './IconBadge';
+import type { DocumentRecord } from '../commandCenter/records';
 
 type DocumentsBoardProps = {
-  openModal: (type: string, data?: any) => void;
+  documents: DocumentRecord[];
+  openModal: (type: string, data?: DocumentRecord) => void;
 };
 
-export default function DocumentsBoard({ openModal }: DocumentsBoardProps) {
+export default function DocumentsBoard({ documents, openModal }: DocumentsBoardProps) {
   const [query, setQuery] = useState('');
-  const documents: any[] = [];
   const filteredDocuments = documents.filter((doc) => {
     const haystack = `${doc.name || ''} ${doc.job || ''} ${doc.category || ''}`.toLowerCase();
     return haystack.includes(query.toLowerCase());
@@ -20,6 +21,7 @@ export default function DocumentsBoard({ openModal }: DocumentsBoardProps) {
 
     const linkedProject = prompt('Enter linked project:', '') || 'Unassigned';
     openModal('document', {
+      id: `document-${Date.now().toString(36)}`,
       name,
       job: linkedProject,
       status: 'Needs Review',

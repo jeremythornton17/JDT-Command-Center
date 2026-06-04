@@ -15,6 +15,16 @@ export interface TreeRelocationMapData {
   notes?: string;
 }
 
+export interface RelocationJobOption {
+  id: string;
+  label: string;
+  title: string;
+  projectId?: string;
+  projectName?: string;
+  clientId?: string;
+  clientName?: string;
+}
+
 export interface TreeRelocationTask {
   id: string;
   label: string;
@@ -24,8 +34,15 @@ export interface TreeRelocationTask {
 }
 
 type RelocationTree = {
+  id?: string;
   treeId?: string;
   status?: string;
+  clientId?: string;
+  clientName?: string;
+  projectId?: string;
+  projectName?: string;
+  jobId?: string;
+  jobName?: string;
   relocationMap?: TreeRelocationMapData;
   rootPruneDate1?: string;
   rootPruneDate2?: string;
@@ -33,6 +50,22 @@ type RelocationTree = {
   rootPruneDate4?: string;
   lastFertilized?: string;
   lastSprayed?: string;
+};
+
+type RelocationJobLike = {
+  id?: string;
+  title?: string;
+  name?: string;
+  clientId?: string;
+  clientName?: string;
+  client?: string;
+  projectId?: string;
+  projectName?: string;
+  jobId?: string;
+  jobName?: string;
+  division?: string;
+  jobType?: string;
+  workTypes?: string[];
 };
 
 const defaultMapBounds = {
@@ -47,6 +80,7 @@ type MapsEnv = Partial<Record<"VITE_GOOGLE_MAPS_API_KEY" | "VITE_GOOGLE_MAPS_MAP
 declare global {
   interface Window {
     google?: any;
+    JDT_RUNTIME_CONFIG?: MapsEnv & { APP_URL?: string };
   }
 }
 
@@ -54,9 +88,18 @@ function viteEnv(): MapsEnv {
   return ((import.meta as unknown as { env?: MapsEnv }).env ?? {}) as MapsEnv;
 }
 
-export function getGoogleMapsConfig(env: MapsEnv = viteEnv()) {
-  const apiKey = env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? "";
-  const mapId = env.VITE_GOOGLE_MAPS_MAP_ID?.trim() ?? "";
+function runtimeEnv(): MapsEnv {
+  if (typeof window === "undefined") return {};
+  return window.JDT_RUNTIME_CONFIG ?? {};
+}
+
+function firstConfiguredValue(...values: (string | undefined)[]): string {
+  return values.map(value => value?.trim() ?? "").find(Boolean) ?? "";
+}
+
+export function getGoogleMapsConfig(env: MapsEnv = viteEnv(), runtimeConfig: MapsEnv = runtimeEnv()) {
+  const apiKey = firstConfiguredValue(env.VITE_GOOGLE_MAPS_API_KEY, runtimeConfig.VITE_GOOGLE_MAPS_API_KEY);
+  const mapId = firstConfiguredValue(env.VITE_GOOGLE_MAPS_MAP_ID, runtimeConfig.VITE_GOOGLE_MAPS_MAP_ID);
 
   return {
     apiKey,
@@ -89,6 +132,60 @@ export function updateTreeRelocationPoint<T extends RelocationTree>(
         recordedBy,
       },
     },
+  };
+}
+
+export function buildRelocationJobOptions(jobs: RelocationJobLike[] = []): RelocationJobOption[] {
+  return jobs
+    .filter(isRelocationMapJob)
+    .map((job) => {
+      const title = String(job.title || job.projectName || job.jobName || job.name || "Untitled relocation job");
+      const clientName = String(job.clientName || job.client || "");
+      return {
+        id: String(job.id || job.jobId || job.projectId || slugify(title)),
+        label: [title, clientName].filter(Boolean).join(" - "),
+        title,
+        projectId: job.projectId,
+        projectName: job.projectName || title,
+        clientId: job.clientId,
+        clientName,
+      };
+    });
+}
+
+export function filterTreesForRelocationJob<T extends RelocationTree>(
+  trees: T[] = [],
+  selectedJobId = "all",
+  jobs: RelocationJobLike[] = [],
+): T[] {
+  if (!selectedJobId || selectedJobId === "all") return trees;
+  const job = jobs.find(candidate => String(candidate.id || candidate.jobId || candidate.projectId) === selectedJobId);
+  if (!job) return trees;
+  return trees.filter(tree => treeMatchesRelocationJob(tree, job));
+}
+
+export function relocationContextForJob(job?: RelocationJobLike | null): Partial<RelocationTree> {
+  if (!job) return {};
+  const title = String(job.title || job.projectName || job.jobName || job.name || "");
+  return {
+    clientId: job.clientId,
+    clientName: job.clientName || job.client,
+    projectId: job.projectId,
+    projectName: job.projectName || title,
+    jobId: job.id || job.jobId,
+    jobName: job.jobName || title,
+  };
+}
+
+export function pointFromDevicePosition(
+  coords: { latitude: number; longitude: number; accuracy?: number | null },
+  pointType: TreeRelocationPointType,
+): TreeRelocationPoint {
+  return {
+    lat: roundCoordinate(coords.latitude),
+    lng: roundCoordinate(coords.longitude),
+    accuracyMeters: typeof coords.accuracy === "number" ? Math.round(coords.accuracy) : undefined,
+    label: pointType === "source" ? "GPS source pin" : "GPS destination pin",
   };
 }
 
@@ -228,4 +325,44 @@ function roundCoordinate(value: number): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function isRelocationMapJob(job: RelocationJobLike): boolean {
+  const haystack = [
+    job.division,
+    job.jobType,
+    ...(job.workTypes || []),
+    job.title,
+    job.projectName,
+    job.jobName,
+  ].join(" ");
+  return /relocation|install/i.test(haystack);
+}
+
+function treeMatchesRelocationJob(tree: RelocationTree, job: RelocationJobLike): boolean {
+  const jobId = String(job.id || job.jobId || "");
+  const projectId = String(job.projectId || "");
+  const jobName = String(job.jobName || job.title || "");
+  const projectName = String(job.projectName || job.title || "");
+  const clientName = String(job.clientName || job.client || "");
+  const values = [
+    tree.jobId,
+    tree.projectId,
+    tree.jobName,
+    tree.projectName,
+    tree.clientName,
+  ].map(value => String(value || "").trim().toLowerCase()).filter(Boolean);
+  const candidates = [jobId, projectId, jobName, projectName, clientName]
+    .map(value => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+  return values.some(value => candidates.includes(value));
+}
+
+function slugify(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }

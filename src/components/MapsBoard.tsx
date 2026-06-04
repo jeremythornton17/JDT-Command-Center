@@ -11,7 +11,9 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import {
+  buildRelocationJobOptions,
   buildTreeRelocationTasks,
+  filterTreesForRelocationJob,
   formatTreeCoordinate,
   getGoogleMapsConfig,
   getRelocationStatusTone,
@@ -20,31 +22,51 @@ import {
   latLngToMapPercent,
   loadGoogleMaps,
   mapPercentToLatLng,
+  pointFromDevicePosition,
+  relocationContextForJob,
   updateTreeRelocationPoint,
   type TreeRelocationPoint,
   type TreeRelocationPointType,
 } from '../treeRelocationMap';
 import { useAuth } from '../AuthProvider';
 import { useFirestoreSyncState } from '../useFirestoreCollection';
+import { jdtHomeBase } from '../commandCenter/equipmentFreight';
 
-const defaultFieldCenter = { lat: 26.5, lng: -80.35 };
+const defaultFieldCenter = jdtHomeBase.coordinates;
 
 type MapsBoardProps = {
   jobs?: any[];
   loads?: any[];
   ranchOaks?: any[];
+  treeRelocationRecords?: any[];
   openDrawer?: (type: string, id: string) => void;
-  onUpdateTreeLocation?: (treeId: string, relocationMap: any) => void;
+  onUpdateTreeLocation?: (treeId: string, relocationMap: any, relocationContext?: any) => void;
 };
 
-export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoardProps) {
+type SelectedPin = {
+  treeId: string;
+  pointType: TreeRelocationPointType;
+};
+
+export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords = [], onUpdateTreeLocation, openDrawer }: MapsBoardProps) {
   const { user } = useAuth();
   const [syncedRanchOaks, setSyncedRanchOaks] = useFirestoreSyncState<any>('ranchOaks', [], !!user && !ranchOaks);
-  const treeRecords = ranchOaks ?? syncedRanchOaks ?? [];
+  const treeRecords = useMemo(
+    () => mergeMapTreeRecords(ranchOaks ?? syncedRanchOaks ?? [], treeRelocationRecords),
+    [ranchOaks, syncedRanchOaks, treeRelocationRecords],
+  );
+  const relocationJobOptions = useMemo(() => buildRelocationJobOptions(jobs), [jobs]);
+  const [selectedJobId, setSelectedJobId] = useState('all');
+  const filteredTreeRecords = useMemo(
+    () => filterTreesForRelocationJob(treeRecords, selectedJobId, jobs),
+    [treeRecords, selectedJobId, jobs],
+  );
+  const selectedJob = jobs.find(job => String(job.id || job.jobId || job.projectId) === selectedJobId);
   const mapsConfig = useMemo(() => getGoogleMapsConfig(), []);
   const [zoomLevel, setZoomLevel] = useState(17);
-  const [selectedTreeId, setSelectedTreeId] = useState<string | null>(() => treeRecords[0]?.treeId ?? treeRecords[0]?.id ?? null);
+  const [selectedTreeId, setSelectedTreeId] = useState<string | null>(() => filteredTreeRecords[0]?.treeId ?? filteredTreeRecords[0]?.id ?? null);
   const [pinMode, setPinMode] = useState<TreeRelocationPointType | null>(null);
+  const [selectedPin, setSelectedPin] = useState<SelectedPin | null>(null);
   const [fieldStatus, setFieldStatus] = useState('Select a tree, choose a pin type, then click the map.');
   const googleMapRef = useRef<HTMLDivElement | null>(null);
   const googleMapInstanceRef = useRef<any>(null);
@@ -58,16 +80,26 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
   }, [pinMode, selectedTreeId]);
 
   useEffect(() => {
-    if (!selectedTreeId && treeRecords[0]) setSelectedTreeId(treeRecords[0].treeId ?? treeRecords[0].id);
-  }, [treeRecords, selectedTreeId]);
+    const selectedStillVisible = filteredTreeRecords.some(tree => tree.treeId === selectedTreeId || tree.id === selectedTreeId);
+    if (!selectedTreeId || !selectedStillVisible) {
+      setSelectedTreeId(filteredTreeRecords[0]?.treeId ?? filteredTreeRecords[0]?.id ?? null);
+      setSelectedPin(null);
+      setPinMode(null);
+    }
+  }, [filteredTreeRecords, selectedTreeId]);
 
-  const selectedTree = treeRecords.find(tree => tree.treeId === selectedTreeId || tree.id === selectedTreeId);
+  const selectedTree = filteredTreeRecords.find(tree => tree.treeId === selectedTreeId || tree.id === selectedTreeId);
   const selectedTasks = selectedTree ? buildTreeRelocationTasks(selectedTree) : [];
-  const allTreeTasks = treeRecords.flatMap(tree => buildTreeRelocationTasks(tree).map(task => ({ ...task, tree })));
+  const allTreeTasks = filteredTreeRecords.flatMap(tree => buildTreeRelocationTasks(tree).map(task => ({ ...task, tree })));
   const readyTasks = allTreeTasks.filter(task => task.status === 'Ready').slice(0, 7);
+  const selectedPinPoint = selectedPin
+    ? selectedTree?.relocationMap?.[selectedPin.pointType]
+    : undefined;
 
   const mapInstruction = pinMode
-    ? `Click the map to set ${pinMode === 'source' ? 'current field position' : 'relocation destination'} for ${selectedTree?.treeId ?? 'selected tree'}.`
+    ? `Click the map to set ${pinMode === 'source' ? 'current field position' : 'relocation destination'} for ${selectedTree?.treeId || selectedTree?.id || 'selected tree'}.`
+    : selectedPin
+      ? `Selected ${selectedPin.pointType} pin. Click Move Selected Pin, drag the marker, or use phone GPS to update it.`
     : 'Choose Source or Destination before marking a tree pin.';
 
   useEffect(() => {
@@ -111,7 +143,7 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
     return () => {
       cancelled = true;
     };
-  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, treeRecords, selectedTreeId, zoomLevel]);
+  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, filteredTreeRecords, selectedTreeId, zoomLevel]);
 
   const renderGoogleTreeMarkers = (maps: any) => {
     const map = googleMapInstanceRef.current;
@@ -120,7 +152,7 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
     googleMarkerRefs.current.forEach(marker => marker.setMap?.(null));
     googleMarkerRefs.current = [];
 
-    treeRecords.forEach(tree => {
+    filteredTreeRecords.forEach(tree => {
       const status = getTreeRelocationStatus(tree);
       (['source', 'destination'] as TreeRelocationPointType[]).forEach(pointType => {
         const point = tree.relocationMap?.[pointType];
@@ -129,16 +161,43 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
         const marker = new maps.Marker({
           position: { lat: point.lat, lng: point.lng },
           map,
-          title: `${tree.treeId} ${pointType}`,
+          title: `${tree.treeId || tree.id} ${pointType}`,
           label: pointType === 'source' ? 'S' : 'D',
+          draggable: true,
         });
         marker.addListener('click', () => {
-          setSelectedTreeId(tree.treeId ?? tree.id);
-          setFieldStatus(`${tree.treeId} ${pointType} pin selected. Status: ${status}.`);
+          selectExistingPin(tree, pointType, status);
+        });
+        marker.addListener('dragend', (event: any) => {
+          if (!event.latLng) return;
+          markTreePoint(tree.treeId ?? tree.id, pointType, {
+            lat: event.latLng.lat(),
+            lng: event.latLng.lng(),
+            label: pointType === 'source' ? 'Moved source pin' : 'Moved destination pin',
+          });
         });
         googleMarkerRefs.current.push(marker);
       });
     });
+  };
+
+  const beginPinEdit = (pointType: TreeRelocationPointType) => {
+    if (!selectedTree) {
+      setFieldStatus('Select a tree before choosing a pin to edit.');
+      return;
+    }
+    const treeId = selectedTree.treeId ?? selectedTree.id;
+    setSelectedPin({ treeId, pointType });
+    setPinMode(pointType);
+    setFieldStatus(`${pointType === 'source' ? 'Source' : 'Destination'} pin edit mode is active. Click the map, drag the marker, or use phone GPS.`);
+  };
+
+  const selectExistingPin = (tree: any, pointType: TreeRelocationPointType, status = getTreeRelocationStatus(tree)) => {
+    const treeId = tree.treeId ?? tree.id;
+    setSelectedTreeId(treeId);
+    setSelectedPin({ treeId, pointType });
+    setPinMode(pointType);
+    setFieldStatus(`${tree.treeId || tree.id} ${pointType} pin selected for editing. Status: ${status}.`);
   };
 
   const markTreePoint = (treeId: string, pointType: TreeRelocationPointType, point: TreeRelocationPoint) => {
@@ -146,16 +205,18 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
     if (!tree) return;
 
     const nextTree = updateTreeRelocationPoint(tree, pointType, point, 'Field Team');
+    const relocationContext = relocationContextForJob(selectedJob);
     if (onUpdateTreeLocation) {
-      onUpdateTreeLocation(tree.treeId || tree.id, nextTree.relocationMap);
+      onUpdateTreeLocation(tree.treeId || tree.id, nextTree.relocationMap, relocationContext);
     } else {
       setSyncedRanchOaks(prev => prev.map(item => (
         item.treeId === treeId || item.id === treeId
-          ? { ...item, relocationMap: nextTree.relocationMap }
+          ? { ...item, ...relocationContext, relocationMap: nextTree.relocationMap }
           : item
       )));
     }
-    setFieldStatus(`${pointType === 'source' ? 'Source' : 'Destination'} pin saved for ${tree.treeId}.`);
+    setFieldStatus(`${pointType === 'source' ? 'Source' : 'Destination'} pin saved for ${tree.treeId || tree.id}.`);
+    setSelectedPin({ treeId: tree.treeId ?? tree.id, pointType });
     setPinMode(null);
   };
 
@@ -168,15 +229,17 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
     const rect = event.currentTarget.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * 100;
     const y = ((event.clientY - rect.top) / rect.height) * 100;
-    markTreePoint(selectedTree.treeId, pinMode, {
+    markTreePoint(selectedTree.treeId || selectedTree.id, pinMode, {
       ...mapPercentToLatLng(x, y),
-      label: pinMode === 'source' ? `${selectedTree.farm || 'Field'} ${selectedTree.zone || ''}`.trim() : 'Relocation destination',
+      label: pinMode === 'source' ? `${selectedTree.farm || selectedTree.existingLocationDescription || 'Field'} ${selectedTree.zone || ''}`.trim() : 'Relocation destination',
     });
   };
 
   const useDeviceLocation = () => {
-    if (!selectedTree || !pinMode) {
-      setFieldStatus('Select a tree and choose Source or Destination before using GPS.');
+    const gpsPointType = pinMode || selectedPin?.pointType;
+    const gpsTreeId = selectedPin?.treeId || selectedTree?.treeId || selectedTree?.id;
+    if (!selectedTree || !gpsPointType || !gpsTreeId) {
+      setFieldStatus('Select a tree pin or choose Source/Destination before using phone GPS.');
       return;
     }
     if (!navigator.geolocation) {
@@ -187,12 +250,7 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
     setFieldStatus('Reading field GPS position...');
     navigator.geolocation.getCurrentPosition(
       position => {
-        markTreePoint(selectedTree.treeId, pinMode, {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          accuracyMeters: Math.round(position.coords.accuracy),
-          label: pinMode === 'source' ? 'GPS source pin' : 'GPS destination pin',
-        });
+        markTreePoint(gpsTreeId, gpsPointType, pointFromDevicePosition(position.coords, gpsPointType));
       },
       () => setFieldStatus('Unable to read GPS. You can still click the map to place the pin.'),
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 10000 },
@@ -200,7 +258,7 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
   };
 
   const renderFallbackTreePins = () => {
-    return treeRecords.flatMap(tree => {
+    return filteredTreeRecords.flatMap(tree => {
       const pins: React.ReactNode[] = [];
       (['source', 'destination'] as TreeRelocationPointType[]).forEach(pointType => {
         const point = tree.relocationMap?.[pointType];
@@ -210,16 +268,15 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
         const isSelected = selectedTreeId === tree.treeId || selectedTreeId === tree.id;
         pins.push(
           <button
-            key={`${tree.treeId}-${pointType}`}
+            key={`${tree.treeId || tree.id}-${pointType}`}
             type="button"
             onClick={(event) => {
               event.stopPropagation();
-              setSelectedTreeId(tree.treeId ?? tree.id);
-              setFieldStatus(`${tree.treeId} ${pointType} pin selected.`);
+              selectExistingPin(tree, pointType);
             }}
             className={`absolute h-8 w-8 rounded-full border-2 border-white shadow-xl flex items-center justify-center ring-4 transition-all hover:scale-110 z-10 ${pointType === 'source' ? 'bg-emerald-700 ring-emerald-200' : 'bg-blue-700 ring-blue-200'} ${isSelected ? 'scale-110 ring-amber-300' : ''}`}
             style={{ left: `${percent.x}%`, top: `${percent.y}%` }}
-            title={`${tree.treeId} ${pointType}`}
+            title={`${tree.treeId || tree.id} ${pointType}`}
           >
             {pointType === 'source' ? <TreePine className="h-4 w-4 text-white" /> : <Target className="h-4 w-4 text-white" />}
           </button>
@@ -269,6 +326,38 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-4">
           <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <label className="block flex-1">
+                <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5">Relocation Job Map</span>
+                <select
+                  value={selectedJobId}
+                  onChange={(event) => {
+                    setSelectedJobId(event.target.value);
+                    setSelectedPin(null);
+                    setPinMode(null);
+                    setFieldStatus(event.target.value === 'all' ? 'Showing all relocation tree pins.' : 'Map filtered to the selected relocation job.');
+                  }}
+                  className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-black text-jdt-text outline-none focus:border-jdt-olive"
+                >
+                  <option value="all">All Relocation Jobs</option>
+                  {relocationJobOptions.map((job) => (
+                    <option key={job.id} value={job.id}>{job.label}</option>
+                  ))}
+                </select>
+              </label>
+              {selectedJob && openDrawer && (
+                <button
+                  type="button"
+                  onClick={() => openDrawer('job', selectedJob.id || selectedJob.jobId || selectedJob.projectId)}
+                  className="rounded-lg border border-jdt-border bg-white px-4 py-2 text-xs font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                >
+                  Open Job
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
                 <p className="text-[10px] font-black uppercase text-zinc-400">Active Tree</p>
@@ -276,14 +365,14 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
                 <p className="text-xs font-bold text-zinc-500 mt-1">{mapInstruction}</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button onClick={() => setPinMode('source')} className={`px-3 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 ${pinMode === 'source' ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'}`}>
+                <button onClick={() => beginPinEdit('source')} className={`px-3 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 ${pinMode === 'source' ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'}`}>
                   <TreePine className="h-4 w-4" /> Source Pin
                 </button>
-                <button onClick={() => setPinMode('destination')} className={`px-3 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 ${pinMode === 'destination' ? 'bg-blue-700 text-white' : 'bg-blue-50 text-blue-800 border border-blue-200'}`}>
+                <button onClick={() => beginPinEdit('destination')} className={`px-3 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 ${pinMode === 'destination' ? 'bg-blue-700 text-white' : 'bg-blue-50 text-blue-800 border border-blue-200'}`}>
                   <Target className="h-4 w-4" /> Destination Pin
                 </button>
                 <button onClick={useDeviceLocation} className="px-3 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 bg-jdt-primary text-white">
-                  <LocateFixed className="h-4 w-4" /> Use GPS
+                  <LocateFixed className="h-4 w-4" /> Use Phone GPS
                 </button>
               </div>
             </div>
@@ -324,8 +413,8 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">
-            <SummaryTile label="Pinned Sources" value={String(treeRecords.filter(tree => tree.relocationMap?.source).length)} icon={TreePine} />
-            <SummaryTile label="Pinned Destinations" value={String(treeRecords.filter(tree => tree.relocationMap?.destination).length)} icon={Target} />
+            <SummaryTile label="Pinned Sources" value={String(filteredTreeRecords.filter(tree => tree.relocationMap?.source).length)} icon={TreePine} />
+            <SummaryTile label="Pinned Destinations" value={String(filteredTreeRecords.filter(tree => tree.relocationMap?.destination).length)} icon={Target} />
             <SummaryTile label="Ready Tasks" value={String(readyTasks.length)} icon={ClipboardList} />
           </div>
         </div>
@@ -334,7 +423,7 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
           <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
             <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5 mb-3"><TreePine className="h-4 w-4 text-emerald-700" /> Tree Pin List</h3>
             <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-              {treeRecords.length > 0 ? treeRecords.map(tree => {
+              {filteredTreeRecords.length > 0 ? filteredTreeRecords.map(tree => {
                 const status = getTreeRelocationStatus(tree);
                 return (
                   <button
@@ -347,7 +436,7 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
                       <span className="font-black text-sm text-jdt-text">{tree.treeId}</span>
                       <span className={`rounded px-2 py-0.5 text-[9px] font-black uppercase ${getRelocationStatusTone(status)}`}>{status}</span>
                     </div>
-                    <p className="text-[11px] font-bold text-zinc-500 mt-1">{tree.farm || 'Farm'} - {tree.zone || 'Zone'} - {tree.ranchOakType || 'Tree'}</p>
+                    <p className="text-[11px] font-bold text-zinc-500 mt-1">{treeMapSubtitle(tree)}</p>
                   </button>
                 );
               }) : (
@@ -364,6 +453,25 @@ export default function MapsBoard({ ranchOaks, onUpdateTreeLocation }: MapsBoard
             <div className="space-y-3 text-xs font-bold">
               <CoordinateCard label="Current Field Position" point={selectedTree?.relocationMap?.source} tone="source" />
               <CoordinateCard label="Relocation Destination" point={selectedTree?.relocationMap?.destination} tone="destination" />
+              <div className="rounded-lg border border-jdt-border bg-white p-3">
+                <p className="text-[10px] font-black uppercase text-zinc-500">Pin Editor</p>
+                {selectedPin ? (
+                  <div className="mt-2 space-y-2">
+                    <p className="text-xs font-black text-jdt-text">{selectedPin.pointType === 'source' ? 'Source pin selected' : 'Destination pin selected'}</p>
+                    <p className="text-[11px] font-bold text-zinc-500">{formatTreeCoordinate(selectedPinPoint)}</p>
+                    <button
+                      type="button"
+                      onClick={() => beginPinEdit(selectedPin.pointType)}
+                      className="w-full rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark"
+                    >
+                      Move Selected Pin
+                    </button>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-[11px] font-bold text-zinc-500">Select a source or destination pin on the map, then click the map again, drag the marker, or use phone GPS to move it.</p>
+                )}
+                <p className="mt-2 text-[10px] font-bold text-zinc-400">GPS accuracy is saved when the phone provides it.</p>
+              </div>
             </div>
           </div>
 
@@ -420,4 +528,19 @@ function SummaryTile({ label, value, icon: Icon }: { label: string; value: strin
       </div>
     </div>
   );
+}
+
+function mergeMapTreeRecords(baseTrees: any[] = [], relocationTrees: any[] = []) {
+  const byId = new Map<string, any>();
+  [...baseTrees, ...relocationTrees].forEach((tree) => {
+    const id = String(tree.treeId || tree.id || '').trim();
+    if (!id) return;
+    byId.set(id, { ...(byId.get(id) || {}), ...tree, treeId: tree.treeId || tree.id });
+  });
+  return Array.from(byId.values());
+}
+
+function treeMapSubtitle(tree: any): string {
+  const parts = [tree.farm, tree.zone, tree.ranchOakType || tree.type || tree.treeType].filter(Boolean);
+  return parts.length ? parts.join(' - ') : 'Project tree asset';
 }

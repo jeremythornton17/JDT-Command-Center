@@ -4,6 +4,7 @@ import { Calendar as CalendarIcon, Clock, MapPin, Truck } from 'lucide-react';
 type CalendarBoardProps = {
   jobs: any[];
   loads: any[];
+  scheduleTasks?: any[];
   openDrawer: (type: string, id: string) => void;
 };
 
@@ -13,7 +14,7 @@ function parseScheduleDate(value: any): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-export default function CalendarBoard({ jobs, loads, openDrawer }: CalendarBoardProps) {
+export default function CalendarBoard({ jobs, loads, scheduleTasks = [], openDrawer }: CalendarBoardProps) {
   const today = new Date();
   const monthLabel = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
@@ -44,8 +45,21 @@ export default function CalendarBoard({ jobs, loads, openDrawer }: CalendarBoard
       }];
     });
 
-    return [...scheduledJobs, ...scheduledLoads].sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [jobs, loads]);
+    const scheduledTasks = scheduleTasks.flatMap((task) => {
+      const date = parseScheduleDate(task.startDate || task.endDate || task.date);
+      if (!date) return [];
+      return [{
+        id: task.id || task.jobScheduleId || task.title,
+        type: 'schedule',
+        date,
+        title: task.task || task.title || task.activityType || 'Scheduled task',
+        detail: task.locationName || task.clientCompany || task.assignee || 'Operations task',
+        time: task.time || task.jobStage || task.loadStatus || 'Scheduled',
+      }];
+    });
+
+    return [...scheduledJobs, ...scheduledLoads, ...scheduledTasks].sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [jobs, loads, scheduleTasks]);
 
   return (
     <div className="space-y-6">
@@ -71,7 +85,7 @@ export default function CalendarBoard({ jobs, loads, openDrawer }: CalendarBoard
                 <div className="min-w-0 flex-1">
                   <button
                     type="button"
-                    onClick={() => event.id && openDrawer(event.type === 'freight' ? 'freight' : 'job', event.id)}
+                    onClick={() => event.id && event.type !== 'schedule' && openDrawer(event.type === 'freight' ? 'freight' : 'job', event.id)}
                     className="text-left text-sm font-black text-jdt-text hover:underline truncate max-w-full"
                   >
                     {event.title}
@@ -89,7 +103,7 @@ export default function CalendarBoard({ jobs, loads, openDrawer }: CalendarBoard
           <div className="rounded-xl border border-dashed border-jdt-border p-10 text-center">
             <CalendarIcon className="h-10 w-10 text-zinc-300 mx-auto mb-3" />
             <p className="text-sm font-black text-jdt-text">No scheduled work yet</p>
-            <p className="text-xs font-bold text-zinc-500 mt-1">Add real job or freight dates and they will appear here.</p>
+            <p className="text-xs font-bold text-zinc-500 mt-1">Add real job, freight, or schedule task dates and they will appear here.</p>
           </div>
         )}
       </div>

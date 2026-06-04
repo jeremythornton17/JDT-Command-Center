@@ -1,9 +1,60 @@
 import React, { useState } from 'react';
 import { BarChart3, FileDown, Loader2, Printer } from 'lucide-react';
 import { jsPDF } from 'jspdf';
+import { buildOperatingKpis } from '../commandCenter/operatingIntelligence';
+import type { AlertRecord, ClientRecord, DocumentRecord, EquipmentRecord, FieldUpdateRecord, ImportBatchRecord, JobRecord, LoadRecord, ProjectRecord, RanchOakRecord, ScheduleTaskRecord, TreeRelocationRecord, WorkOrderRecord } from '../commandCenter/records';
 
-export default function ReportsBoard() {
+type ReportsBoardProps = {
+  jobs: JobRecord[];
+  projects?: ProjectRecord[];
+  workOrders?: WorkOrderRecord[];
+  loads: LoadRecord[];
+  ranchOaks: RanchOakRecord[];
+  equipment: EquipmentRecord[];
+  alerts: AlertRecord[];
+  clients?: ClientRecord[];
+  fieldUpdates?: FieldUpdateRecord[];
+  scheduleTasks?: ScheduleTaskRecord[];
+  treeRelocationRecords?: TreeRelocationRecord[];
+  documents?: DocumentRecord[];
+  importBatches?: ImportBatchRecord[];
+};
+
+const metricToneClass = {
+  ready: 'border-[#82995D] bg-[#F1F6EA] text-[#384521]',
+  watch: 'border-[#D9B85E] bg-[#FFF8DD] text-[#725B11]',
+  bad: 'border-[#C68B64] bg-[#F8EDE5] text-[#7A331F]',
+  context: 'border-jdt-border bg-white text-jdt-text',
+};
+
+export default function ReportsBoard({ jobs, projects = [], workOrders = [], loads, ranchOaks, equipment, alerts, clients = [], fieldUpdates = [], scheduleTasks = [], treeRelocationRecords = [], documents = [], importBatches = [] }: ReportsBoardProps) {
   const [exporting, setExporting] = useState(false);
+  const kpiGroups = buildOperatingKpis({
+    clients,
+    projects,
+    jobs,
+    workOrders,
+    loads,
+    equipment,
+    fieldUpdates,
+    scheduleTasks,
+    treeRelocationRecords,
+    documents,
+    alerts,
+    importBatches,
+  });
+  const rows = [
+    { label: 'Projects', value: jobs.length },
+    { label: 'Freight Loads', value: loads.length },
+    { label: 'Tree Records', value: ranchOaks.length },
+    { label: 'Relocation Records', value: treeRelocationRecords.length },
+    { label: 'Equipment Records', value: equipment.length },
+    { label: 'Clients', value: clients.length },
+    { label: 'Schedule Tasks', value: scheduleTasks.length },
+    { label: 'Import Batches', value: importBatches.length },
+    { label: 'Alerts', value: alerts.length },
+  ];
+  const recentImports = importBatches.slice(0, 5);
 
   const exportPdf = () => {
     setExporting(true);
@@ -11,7 +62,21 @@ export default function ReportsBoard() {
     pdf.setFontSize(16);
     pdf.text('JDT Command Center Report', 20, 24);
     pdf.setFontSize(10);
-    pdf.text('No live report data has been added yet.', 20, 36);
+    rows.forEach((row, index) => {
+      pdf.text(`${row.label}: ${row.value}`, 20, 36 + index * 8);
+    });
+    let cursorY = 50 + rows.length * 8;
+    kpiGroups.forEach((group) => {
+      pdf.setFontSize(12);
+      pdf.text(group.title, 20, cursorY);
+      cursorY += 7;
+      pdf.setFontSize(9);
+      group.metrics.forEach((metric) => {
+        pdf.text(`${metric.label}: ${metric.value} - ${metric.detail}`, 24, cursorY);
+        cursorY += 6;
+      });
+      cursorY += 3;
+    });
     pdf.save('jdt-command-center-report.pdf');
     setExporting(false);
   };
@@ -42,12 +107,75 @@ export default function ReportsBoard() {
         </div>
       </div>
 
-      <div className="bg-jdt-panel border border-jdt-border rounded-xl shadow-sm p-10 text-center">
-        <BarChart3 className="h-12 w-12 text-zinc-300 mx-auto mb-4" />
-        <p className="text-sm font-black text-jdt-text">No report data yet</p>
-        <p className="text-xs font-bold text-zinc-500 mt-1 max-w-md mx-auto">
-          Add jobs, freight loads, equipment records, tree relocation data, and alerts to build reports from your actual information.
-        </p>
+      <div className="bg-jdt-panel border border-jdt-border rounded-xl shadow-sm p-5">
+        <div className="flex items-center gap-3 border-b border-jdt-border pb-4">
+          <BarChart3 className="h-5 w-5 text-jdt-olive" />
+          <h3 className="text-sm font-black uppercase text-jdt-text">Operational KPIs</h3>
+        </div>
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          {kpiGroups.map((group) => (
+            <section key={group.id} className="rounded-lg border border-jdt-border bg-white p-4">
+              <h4 className="text-xs font-black uppercase text-jdt-text">{group.title}</h4>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {group.metrics.map((metric) => (
+                  <div key={`${group.id}-${metric.label}`} className={`rounded-lg border p-3 ${metricToneClass[metric.tone]}`}>
+                    <p className="text-[10px] font-black uppercase opacity-70">{metric.label}</p>
+                    <p className="mt-2 text-2xl font-black">{metric.value}</p>
+                    <p className="mt-1 text-[10px] font-bold leading-snug opacity-75">{metric.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-jdt-panel border border-jdt-border rounded-xl shadow-sm p-5">
+        <div className="flex items-center gap-3 border-b border-jdt-border pb-4">
+          <BarChart3 className="h-5 w-5 text-jdt-olive" />
+          <h3 className="text-sm font-black uppercase text-jdt-text">Workspace Snapshot</h3>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {rows.map((row) => (
+            <div key={row.label} className="rounded-lg border border-jdt-border bg-white p-4">
+              <p className="text-[10px] font-black uppercase text-zinc-400">{row.label}</p>
+              <p className="mt-2 text-3xl font-black text-jdt-primary">{row.value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-jdt-panel border border-jdt-border rounded-xl shadow-sm p-5">
+        <div className="flex items-center gap-3 border-b border-jdt-border pb-4">
+          <FileDown className="h-5 w-5 text-jdt-olive" />
+          <h3 className="text-sm font-black uppercase text-jdt-text">Data Readiness</h3>
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-lg border border-jdt-border bg-white p-4">
+            <p className="text-[10px] font-black uppercase text-zinc-400">Latest Imports</p>
+            {recentImports.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {recentImports.map((batch) => (
+                  <div key={batch.id} className="rounded border border-jdt-border bg-jdt-panel px-3 py-2">
+                    <p className="text-xs font-black text-jdt-text">{batch.name || batch.title}</p>
+                    <p className="mt-1 text-[10px] font-bold uppercase text-zinc-500">{batch.recordCount} records | {batch.status || 'Applied'}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs font-bold text-zinc-500">No imports have been saved yet.</p>
+            )}
+          </div>
+          <div className="rounded-lg border border-jdt-border bg-white p-4">
+            <p className="text-[10px] font-black uppercase text-zinc-400">Operational Coverage</p>
+            <div className="mt-3 space-y-2 text-xs font-bold text-zinc-600">
+              <p>Clients with records: {clients.length}</p>
+              <p>Schedule tasks staged: {scheduleTasks.length}</p>
+              <p>Tree inventory available for maps/reports: {ranchOaks.length}</p>
+              <p>Equipment records ready for service tracking: {equipment.length}</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -1,0 +1,502 @@
+import type { CollectionRecord } from '../firestoreSync';
+import type { WorkbookSourceRef, WorkbookWorkOrderType } from './workbookProjectFlow';
+
+export type HistoryEntry = {
+  date: string;
+  user: string;
+  event: string;
+  notes?: string;
+};
+
+export type CommandRecord = CollectionRecord & {
+  title?: string;
+  name?: string;
+  status?: string;
+  notes?: string;
+  clientId?: string;
+  clientName?: string;
+  projectId?: string;
+  projectName?: string;
+  jobId?: string;
+  jobName?: string;
+  createdAtIso?: string;
+  createdBy?: string;
+  updatedAtIso?: string;
+  updatedBy?: string;
+  history?: HistoryEntry[];
+};
+
+export type JobRecord = CommandRecord & {
+  client?: string;
+  companiesId?: string;
+  projectsId?: string;
+  projectAreaId?: string;
+  projectStatusId?: string;
+  hole?: string;
+  scheduled?: string | boolean;
+  completed?: string | boolean;
+  division?: string;
+  jobType?: string;
+  workTypes?: string[];
+  installItemCount?: string | number;
+  relocationTreeCount?: string | number;
+  location?: string;
+  date?: string;
+  startDate?: string;
+  scheduledDate?: string;
+  crew?: string;
+  pm?: string;
+};
+
+export type ProjectRecord = CommandRecord & {
+  client?: string;
+  companiesId?: string;
+  projectsId?: string;
+  projectAreaId?: string;
+  projectStatusId?: string;
+  hole?: string;
+  scheduled?: string | boolean;
+  completed?: string | boolean;
+  division?: string;
+  projectType?: string;
+  location?: string;
+  locationId?: string;
+  locationName?: string;
+  date?: string;
+  startDate?: string;
+  scheduledDate?: string;
+  crew?: string;
+  pm?: string;
+};
+
+export type WorkOrderStatus = 'Draft' | 'Ready' | 'Scheduled' | 'Active' | 'Blocked' | 'Complete' | 'Cancelled';
+export type WorkOrderPriority = 'Low' | 'Normal' | 'High' | 'Urgent' | 'Critical';
+
+export type WorkOrderRecord = CommandRecord & {
+  workOrderType?: WorkbookWorkOrderType;
+  sourceSheetName?: string;
+  sourceRowId?: string;
+  sourceRefs?: WorkbookSourceRef[];
+  division?: string;
+  taskType?: string;
+  priority?: WorkOrderPriority | string;
+  scheduledDate?: string;
+  dueDate?: string;
+  completedDate?: string;
+  crewLeadId?: string;
+  crewLeadName?: string;
+  assignedCrewIds?: string[];
+  assignedCrewNames?: string[];
+  requiredSkills?: string[];
+  equipmentIds?: string[];
+  equipmentNames?: string[];
+  implementIds?: string[];
+  implementNames?: string[];
+  requiredImplementTypes?: string[];
+  loadIds?: string[];
+  loadNames?: string[];
+  truckIds?: string[];
+  truckNames?: string[];
+  trailerIds?: string[];
+  trailerNames?: string[];
+  treeIds?: string[];
+  treeNames?: string[];
+  inventoryItemIds?: string[];
+  documentIds?: string[];
+  documentNames?: string[];
+  origin?: string;
+  destination?: string;
+  siteArea?: string;
+  equipmentAssignmentNotes?: string;
+  equipmentRequestType?: 'Add Equipment' | 'Swap Equipment' | 'Remove Equipment' | 'Rental Request' | 'Return Rental' | string;
+  equipmentSource?: 'JD Thornton Equipment' | 'Rental Equipment' | 'Either JD Thornton or Rental' | string;
+  rentalVendor?: string;
+  rentalContact?: string;
+  rentalStartDate?: string;
+  rentalEndDate?: string;
+  blockerReason?: string;
+};
+
+export type ProjectMaterialItemRecord = CommandRecord & {
+  projectMaterialItemsId?: string;
+  companiesId?: string;
+  projectsId?: string;
+  projectId?: string;
+  projectName?: string;
+  holeNumberOrArea?: string;
+  source?: 'JD Thornton' | 'Container Pines' | 'McArthur Tree Nursery' | 'Relocated Trees' | 'Client Supplied' | 'Other' | string;
+  materialType?: string;
+  sizeClass?: string;
+  quantityRequired?: string | number;
+  quantityInstalled?: string | number;
+  unitPrice?: string | number;
+  installStatus?: 'Needed' | 'Pulled' | 'Loaded' | 'Delivered' | 'Installed' | 'Rejected' | 'Complete' | 'On Hold' | string;
+  photoIds?: string[];
+  photoNames?: string[];
+  sourceSheetName?: string;
+  sourceRowId?: string;
+  sourceRefs?: WorkbookSourceRef[];
+};
+
+export type LoadRecord = CommandRecord & {
+  loadNumber?: string;
+  driver?: string;
+  truck?: string;
+  truckId?: string;
+  trailer?: string;
+  trailerId?: string;
+  requiredTrailerType?: string;
+  driverNotes?: string;
+  rateUsd?: string | number;
+  outsideNetwork?: boolean;
+  scheduleAsTrip?: boolean;
+  equipmentIds?: string[];
+  equipmentNames?: string[];
+  origin?: string;
+  delivery?: string;
+  destination?: string;
+  eta?: string;
+  date?: string;
+  pickupDate?: string;
+  deliveryDate?: string;
+  departureTime?: string;
+  escortRequired?: boolean;
+  stepPlanText?: string;
+  routeSteps?: Array<{
+    id?: string;
+    sequence?: number;
+    actionType?: 'Hook Trailer' | 'Drop Trailer' | 'Spot Trailer' | 'Load Equipment' | 'Unload Equipment' | 'Move Equipment' | 'Load Trees' | 'Tarp Load' | 'Hold Loaded Overnight' | 'Deliver Trees' | 'Return Empty' | 'Other' | string;
+    label?: string;
+    status?: 'Pending' | 'In Progress' | 'Complete' | 'Skipped' | 'Delayed' | string;
+    truckName?: string;
+    trailerName?: string;
+    equipmentName?: string;
+    materialName?: string;
+    origin?: string;
+    destination?: string;
+    plannedStart?: string;
+    plannedEnd?: string;
+    actualStart?: string;
+    actualEnd?: string;
+    notes?: string;
+    holdUntil?: string;
+    requiresPod?: boolean;
+    completed?: boolean;
+  }>;
+  freightRevision?: number;
+  freightEvents?: Array<{
+    type: string;
+    actorName?: string;
+    summary: string;
+    createdAt: string;
+  }>;
+  requiredDocuments?: Array<{
+    type: string;
+    status?: string;
+    url?: string;
+    notes?: string;
+  }>;
+  pod?: {
+    receiverName?: string;
+    completedAt?: string;
+    signatureDataUrl?: string;
+    bolPhotoDataUrl?: string;
+    notes?: string;
+  };
+  stops?: Array<{
+    id?: string;
+    sequence?: number;
+    label?: string;
+    type?: 'Pickup' | 'Delivery' | 'Drop Off' | 'Other' | string;
+    loadCategory?: 'Equipment' | 'Trailer' | 'Trees' | 'Material' | 'Other' | string;
+    equipmentName?: string;
+    trailerName?: string;
+    mainAddress?: string;
+    constructionAccessPin?: string;
+    loadUnloadPin?: string;
+    location?: string;
+    address?: string;
+    window?: string;
+    requestedTime?: string;
+    status?: 'Pending' | 'InProgress' | 'Completed' | 'Skipped' | string;
+    completed?: boolean;
+    actualArrivalAt?: string;
+    actualDepartureAt?: string;
+    notes?: string;
+    saveLocation?: boolean;
+    saveContact?: boolean;
+    siteContactName?: string;
+    siteContactPhone?: string;
+    requiredPhotos?: boolean;
+    requiredSignature?: boolean;
+  }>;
+};
+
+export type RanchOakRecord = CommandRecord & {
+  treeId?: string;
+  ranchOakType?: string;
+  treeType?: string;
+  species?: string;
+  commonName?: string;
+  farm?: string;
+  fieldLocation?: string;
+  zone?: string;
+  row?: string;
+  position?: string;
+  dbh?: string | number;
+  height?: string | number;
+  spread?: string | number;
+  quantity?: string | number;
+  rootballSize?: string;
+  estimatedWeight?: string;
+  rootPruneDate?: string;
+  dateHarvested?: string;
+  datePlanted?: string;
+  condition?: string;
+  customerName?: string;
+  projectId?: string;
+  photoUrl?: string;
+  mainImageUrl?: string;
+  imageUrls?: string[];
+  imageUrl2?: string;
+  imageUrl3?: string;
+  imageUrl4?: string;
+  imageUrl5?: string;
+  sourceCollection?: string;
+  inventoryClass?: string;
+  price?: string | number;
+  relocationMap?: unknown;
+};
+
+export type EquipmentRecord = CommandRecord & {
+  eqType?: string;
+  type?: string;
+  operator?: string;
+  hours?: string | number;
+  asset?: string;
+  make?: string;
+  model?: string;
+  lastServiceDate?: string;
+  serviceIntervalDays?: string | number;
+  nextServiceDue?: string;
+  serviceStatus?: string;
+  serviceDueHours?: string | number;
+  assetId?: string;
+  category?: 'Machine' | 'Truck' | 'Trailer' | 'Implement' | 'Tool' | 'Support' | string;
+  truckType?: string;
+  trailerType?: string;
+  trailerMaintenanceCategories?: string[];
+  trailerServiceNotes?: string;
+  implementType?: string;
+  compatibleImplementTypes?: string[];
+  attachedImplementIds?: string[];
+  attachedImplementNames?: string[];
+  currentLocationType?: 'Farm' | 'Job Site' | 'Shop' | 'In Transit' | 'Unknown' | string;
+  currentLocationName?: string;
+  currentLocation?: string;
+  location?: string;
+  assignedCrewId?: string;
+  assignedCrewName?: string;
+  assignedProjectId?: string;
+  assignedProjectName?: string;
+  assignedJobId?: string;
+  assignedJobName?: string;
+  assignedTruckId?: string;
+  assignedTruck?: string;
+  availability?: string;
+  registrationNumber?: string;
+  registrationExpirationDate?: string;
+  registrationDocumentUrl?: string;
+  insuranceCompany?: string;
+  insurancePolicyNumber?: string;
+  insuranceExpirationDate?: string;
+  insuranceDocumentUrl?: string;
+  vehicleLoadState?: 'Empty' | 'Pre-loading' | 'Loaded' | 'Staged' | 'In Use' | string;
+  lastSpottedBy?: string;
+  lastSpottedAt?: string;
+  vehicleActivityHistory?: Array<{
+    action: string;
+    actorName?: string;
+    occurredAt: string;
+    locationName?: string;
+    locationAddress?: string;
+    assignedCrewName?: string;
+    assignedTruck?: string;
+    notes?: string;
+  }>;
+};
+
+export type FieldUpdateRecord = CommandRecord & {
+  crewId?: string;
+  crewName?: string;
+  crewRole?: string;
+  userEmail?: string;
+  relatedRecordType?: 'load' | 'workOrder' | 'job' | 'equipment' | 'tree' | 'general' | string;
+  relatedRecordId?: string;
+  relatedTitle?: string;
+  updateType?: 'Arrived' | 'Started' | 'Delayed' | 'Need Help' | 'Issue' | 'Complete' | 'Loaded' | 'Unloaded' | string;
+  fieldStatus?: string;
+  locationName?: string;
+  locationDetail?: string;
+  needsAdminReview?: boolean;
+};
+
+export type CrewRecord = CommandRecord & {
+  role?: string;
+  phone?: string;
+  email?: string;
+  skill?: string;
+  skills?: string[];
+  exceptionalSkills?: string[];
+  availability?: string;
+  type?: string;
+  language?: string;
+  activeJob?: string;
+  assignedEquipment?: string[];
+  appAccess?: 'admin' | 'authorized' | 'contact-only';
+  isRosterContact?: boolean;
+  drivesForCompany?: boolean;
+  cdlCertified?: boolean;
+  driverLicenseNumber?: string;
+  driverLicenseExpirationDate?: string;
+  driverLicenseDocumentUrl?: string;
+  medicalCardExpirationDate?: string;
+  medicalCardDocumentUrl?: string;
+};
+
+export type StaffRecord = CrewRecord & {
+  sourceSheet?: string;
+};
+
+export type ClientRecord = CommandRecord & {
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  billingAddress?: string;
+  billingDetails?: string;
+  accessNotes?: string;
+  activeJobs?: string[];
+  members?: Array<{
+    name?: string;
+    role?: string;
+    phone?: string;
+    email?: string;
+  }>;
+};
+
+export type InventoryItemRecord = RanchOakRecord & {
+  sourceSheet?: string;
+};
+
+export type LocationRecord = CommandRecord & {
+  locationType?: string;
+  locationId?: string;
+  mainAddress?: string;
+  crewAccessPoint?: string;
+  equipmentAccessPoint?: string;
+  sourceSheet?: string;
+};
+
+export type SpeciesRecord = CommandRecord & {
+  speciesId?: string;
+  speciesName?: string;
+  canonicalName?: string;
+  aliases?: string[];
+  sourceSheet?: string;
+};
+
+export type ScheduleTaskRecord = CommandRecord & {
+  jobScheduleId?: string;
+  activityType?: string;
+  jobStage?: string;
+  assignee?: string;
+  task?: string;
+  startDate?: string;
+  endDate?: string;
+  locationId?: string;
+  locationName?: string;
+  mainAddress?: string;
+  clientCompany?: string;
+  clientContactName?: string;
+  clientPhone?: string;
+  clientEmail?: string;
+  equipment?: string;
+  implements?: string;
+  truck?: string;
+  trailer?: string;
+  loadStatus?: string;
+  species?: string;
+  farmId?: string;
+  zone?: string;
+  quantity?: string | number;
+  saveToMaster?: boolean;
+  sourceSheet?: string;
+};
+
+export type TreeRelocationRecord = CommandRecord & {
+  sourceJobId?: string;
+  tag?: string;
+  type?: string;
+  heightSpread?: string;
+  dbh?: string | number;
+  difficulty?: string;
+  relocationCost?: string | number;
+  relocationStatus?: string;
+  rootPruneCuts?: string | number;
+  firstCutDate?: string;
+  secondCutDate?: string;
+  relocationDate?: string;
+  treatments?: string | number;
+  lastTreatmentDate?: string;
+  treatmentAction?: string;
+  location?: string;
+  sourceSheet?: string;
+};
+
+export type AlertRecord = CommandRecord & {
+  body?: string;
+  severity?: string;
+  time?: string;
+};
+
+export type DocumentRecord = CommandRecord & {
+  job?: string;
+  category?: string;
+  url?: string;
+};
+
+export type SyncSourceRecord = CommandRecord & {
+  sourceType?: string;
+  owner?: string;
+  url?: string;
+};
+
+export type SyncMappingRecord = CommandRecord & {
+  sourceId?: string;
+  targetCollection?: string;
+};
+
+export type ImportBatchRecord = CommandRecord & {
+  templateId?: string;
+  sourceSheet?: string;
+  actorEmail?: string;
+  recordCount: number;
+  createdCount: number;
+  updatedCount: number;
+  warningCount: number;
+  warnings: string[];
+  targets: Array<{
+    collectionName: string;
+    label: string;
+    recordIds: string[];
+    createdIds: string[];
+    updatedIds: string[];
+    previousRecords: CommandRecord[];
+  }>;
+};
+
+export type ToastMessage = {
+  id: string;
+  message: string;
+  type: 'success' | 'info' | 'error';
+};

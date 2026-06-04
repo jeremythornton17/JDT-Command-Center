@@ -1,13 +1,32 @@
 import React, { useState } from 'react';
 import { Building2, User, Phone, Mail, MapPin, ClipboardList, DollarSign, Plus, AlertTriangle, Eye, ArrowRight, FolderClosed } from 'lucide-react';
+import type { ClientRecord, JobRecord, ProjectRecord } from '../commandCenter/records';
+import { sameClient } from '../commandCenter/relationships';
 
-export default function ClientsBoard({ clients, openModal, openDrawer }: { clients: any[], openModal: (type: string, data?: any) => void, openDrawer: (type: string, id: string) => void }) {
+type ClientsBoardProps = {
+  clients: ClientRecord[];
+  projects?: ProjectRecord[];
+  jobs?: JobRecord[];
+  openModal: (type: string, data?: any) => void;
+  openDrawer: (type: string, id: string) => void;
+};
+
+function jobHistoryLabels(history: unknown): string[] {
+  if (!Array.isArray(history)) return [];
+  return history.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
+}
+
+function countLabel(count: number, singular: string): string {
+  return `${count} ${singular}${count === 1 ? '' : 's'}`;
+}
+
+export default function ClientsBoard({ clients, projects = [], jobs = [], openModal, openDrawer }: ClientsBoardProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
-  const filteredClients = clients.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.contactName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    c.billingAddress?.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredClients = clients.filter(c =>
+    String(c.name || c.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    String(c.contactName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    String(c.billingAddress || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -42,7 +61,12 @@ export default function ClientsBoard({ clients, openModal, openDrawer }: { clien
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        {filteredClients.map(client => (
+        {filteredClients.map(client => {
+          const clientJobHistory = jobHistoryLabels(client.history);
+          const linkedProjects = projects.filter((project) => sameClient(client, project));
+          const linkedJobs = jobs.filter((job) => sameClient(client, job));
+
+          return (
           <article 
             key={client.id} 
             className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm overflow-hidden flex flex-col group hover:border-zinc-400 hover:shadow-md transition-all"
@@ -53,8 +77,8 @@ export default function ClientsBoard({ clients, openModal, openDrawer }: { clien
                   <Building2 className="h-6 w-6" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-jdt-primary group-hover:text-blue-700 transition-colors leading-tight">{client.name}</h3>
-                  <p className="text-[11px] font-black uppercase text-zinc-400 mt-1 tracking-wider">{client.id.toUpperCase()}</p>
+                  <h3 className="text-lg font-black text-jdt-primary group-hover:text-blue-700 transition-colors leading-tight">{client.name || client.title || 'Client account'}</h3>
+                  <p className="text-[11px] font-black uppercase text-zinc-400 mt-1 tracking-wider">{String(client.id || '').toUpperCase()}</p>
                 </div>
               </div>
               <div className="flex gap-1.5">
@@ -83,12 +107,12 @@ export default function ClientsBoard({ clients, openModal, openDrawer }: { clien
                 </div>
                 <div>
                   <p className="text-[9px] font-black uppercase text-zinc-400 mb-0.5">Phone & Email</p>
-                  <p className="font-bold text-jdt-text flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-zinc-400"/> {client.phone}</p>
-                  <p className="font-bold text-jdt-text flex items-center gap-1.5 mt-1"><Mail className="h-3.5 w-3.5 text-zinc-400"/> {client.email}</p>
+                  <p className="font-bold text-jdt-text flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-zinc-400"/> {client.phone || '-'}</p>
+                  <p className="font-bold text-jdt-text flex items-center gap-1.5 mt-1"><Mail className="h-3.5 w-3.5 text-zinc-400"/> {client.email || '-'}</p>
                 </div>
                 <div>
                   <p className="text-[9px] font-black uppercase text-zinc-400 mb-0.5">Billing Address</p>
-                  <p className="font-bold text-zinc-600 flex items-start gap-1.5"><MapPin className="h-3.5 w-3.5 text-zinc-400 shrink-0 mt-0.5"/> {client.billingAddress}</p>
+                  <p className="font-bold text-zinc-600 flex items-start gap-1.5"><MapPin className="h-3.5 w-3.5 text-zinc-400 shrink-0 mt-0.5"/> {client.billingAddress || '-'}</p>
                 </div>
                 {client.members && client.members.length > 0 && (
                   <div className="pt-2 border-t border-dashed border-zinc-200 mt-2">
@@ -122,11 +146,11 @@ export default function ClientsBoard({ clients, openModal, openDrawer }: { clien
                     </div>
                   </div>
                 )}
-                {client.history && client.history.length > 0 && (
+                {clientJobHistory.length > 0 && (
                   <div>
                     <p className="text-[9px] font-black uppercase text-zinc-400 mb-1">Job History</p>
                     <div className="space-y-1 text-[11px] font-bold text-zinc-500">
-                      {client.history.map((hisName: string) => (
+                      {clientJobHistory.map((hisName: string) => (
                         <p key={hisName} className="flex items-center gap-1"><FolderClosed className="h-3 w-3" /> {hisName}</p>
                       ))}
                     </div>
@@ -136,27 +160,35 @@ export default function ClientsBoard({ clients, openModal, openDrawer }: { clien
                   <p className="text-[9px] font-black uppercase text-zinc-400 mb-1 flex items-center gap-1"><DollarSign className="h-3 w-3" /> Terms & Billing Info</p>
                   <p className="font-black text-jdt-text">{client.billingDetails || 'Net 30'}</p>
                 </div>
+                <div className="rounded-lg border border-jdt-border bg-white p-3">
+                  <p className="text-[9px] font-black uppercase text-zinc-400 mb-2 flex items-center gap-1"><ClipboardList className="h-3 w-3" /> Linked Work</p>
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded bg-jdt-sand px-2 py-1 text-[10px] font-black uppercase text-jdt-primary">{countLabel(linkedProjects.length, 'project')}</span>
+                    <span className="rounded bg-jdt-sand px-2 py-1 text-[10px] font-black uppercase text-jdt-primary">{countLabel(linkedJobs.length, 'job')}</span>
+                  </div>
+                </div>
               </div>
             </div>
 
             {client.accessNotes && (
               <div className="px-4 py-2 bg-amber-50 border-t border-b border-amber-100 flex items-start gap-2 text-[11px] font-bold text-amber-800">
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
-                <p className="leading-snug">Site Access: {client.accessNotes}</p>
+              <p className="leading-snug">Site Access: {client.accessNotes}</p>
               </div>
             )}
 
             <div className="p-3 border-t border-jdt-border bg-jdt-panel/50 flex items-center justify-between">
               <span className="text-[10px] uppercase font-black tracking-wider text-zinc-500">Contact: {client.billingDetails || 'Net 30'} Account</span>
               <button 
-                onClick={() => openModal('contact', { company: client.name })}
+                onClick={() => openModal('contact', { company: client.name || client.title })}
                 className="px-3 py-1.5 text-[10px] font-black uppercase rounded bg-jdt-primary text-white hover:bg-jdt-dark transition-colors"
               >
                 Add Contact Point
               </button>
             </div>
           </article>
-        ))}
+          );
+        })}
 
         {filteredClients.length === 0 && (
           <div className="col-span-full py-16 bg-jdt-panel border border-jdt-border border-dashed rounded-xl flex flex-col items-center justify-center text-center">
