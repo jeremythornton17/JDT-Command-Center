@@ -471,3 +471,44 @@ test('freight support requests are distinct from dispatch moves', () => {
   assert.doesNotMatch(html, /Equipment Request Type/);
   assert.doesNotMatch(html, /Crew Instructions/);
 });
+
+test('project and assignment forms expose readable operating ids', () => {
+  const projectHtml = renderToString(
+    <EntityForms
+      type="job"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{
+        title: "Boca West Course 1 Renovation",
+        client: "Boca West Country Club",
+        projectId: "BWCC-060426",
+        division: "Relocation & Installation",
+      }}
+    />,
+  );
+  const assignmentHtml = renderToString(
+    <EntityForms
+      type="assign_work"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{
+        title: "Root prune Course 1",
+        clientName: "Boca West Country Club",
+        projectName: "Boca West Course 1 Renovation",
+        projectId: "BWCC-060426",
+        jobId: "BWCC-060426-ROOTPRUNE-CR-060526-01",
+        jobName: "Root prune Course 1",
+      }}
+    />,
+  );
+
+  assert.match(projectHtml, /Project ID/);
+  assert.match(projectHtml, /BWCC-060426/);
+  assert.match(projectHtml, /Auto-generated, for example BWCC-060426/);
+  assert.match(assignmentHtml, /Project ID/);
+  assert.match(assignmentHtml, /Job ID/);
+  assert.match(assignmentHtml, /BWCC-060426-ROOTPRUNE-CR-060526-01/);
+  assert.match(assignmentHtml, /Auto-generated, for example BWCC-060426-ROOTPRUNE-CR-060526-01/);
+});

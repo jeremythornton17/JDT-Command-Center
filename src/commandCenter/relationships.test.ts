@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  assigneeInitialsFromName,
   clientIdFromName,
+  clientOperatingCodeFromName,
   jobIdFromName,
+  operatingDateCode,
+  operatingJobIdFromParts,
+  projectOperatingIdFromParts,
   normalizeWorkOrderRelationship,
   normalizeProjectRelationship,
   projectIdFromName,
@@ -16,6 +21,33 @@ describe("client project job relationships", () => {
     assert.equal(clientIdFromName("McArthur Golf Club"), "client-mcarthur-golf-club");
     assert.equal(projectIdFromName("McArthur Golf Club", "Hole 3 Install"), "project-mcarthur-golf-club-hole-3-install");
     assert.equal(jobIdFromName("Hole 3 Install", "Root Prune Phase 1"), "job-hole-3-install-root-prune-phase-1");
+  });
+
+  it("builds readable operating ids for JDT projects and work orders", () => {
+    assert.equal(clientOperatingCodeFromName("Boca West Country Club"), "BWCC");
+    assert.equal(clientOperatingCodeFromName("A Cut Above"), "ACA");
+    assert.equal(operatingDateCode("2026-06-04"), "060426");
+    assert.equal(projectOperatingIdFromParts("Boca West Country Club", "2026-06-04"), "BWCC-060426");
+    assert.equal(assigneeInitialsFromName("Carlos Reyes"), "CR");
+    assert.equal(
+      operatingJobIdFromParts({
+        projectId: "BWCC-060426",
+        purpose: "Root Pruning",
+        assigneeName: "Carlos Reyes",
+        date: "2026-06-05",
+        sequence: 1,
+      }),
+      "BWCC-060426-ROOTPRUNE-CR-060526-01",
+    );
+    assert.equal(
+      operatingJobIdFromParts({
+        projectId: "BWCC-060426",
+        purpose: "Equipment Change",
+        date: "2026-06-05",
+        sequence: 2,
+      }),
+      "BWCC-060426-EQUIP-060526-02",
+    );
   });
 
   it("normalizes a project-like record without dropping readable labels", () => {

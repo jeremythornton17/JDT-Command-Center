@@ -317,6 +317,67 @@ describe("work order UI wiring", () => {
     assert.match(html, /Lowboy move/);
   });
 
+  it("groups relocation projects by client and shows project-specific work orders", () => {
+    const html = renderToString(
+      <TrackerBoard
+        projects={[
+          {
+            id: "BWCC-060426",
+            projectId: "BWCC-060426",
+            title: "Boca West Course 1 Renovation",
+            clientId: "cli-2275",
+            clientName: "Boca West Country Club",
+            division: "Relocation & Installation",
+            jobType: "Relocation Job",
+            status: "Active",
+            date: "2026-06-04",
+          },
+          {
+            id: "BWCC-060127",
+            projectId: "BWCC-060127",
+            title: "Boca West Course 2 Renovation",
+            clientId: "cli-2275",
+            clientName: "Boca West Country Club",
+            division: "Relocation & Installation",
+            jobType: "Mixed Job",
+            status: "Scheduled",
+            date: "2027-06-01",
+          },
+          {
+            id: "FCC-060426",
+            projectId: "FCC-060426",
+            title: "Frenchman's Driving Range",
+            clientName: "Frenchman's Creek Country Club",
+            division: "Relocation & Installation",
+            jobType: "Installation Job",
+          },
+        ]}
+        jobs={[]}
+        workOrders={[{
+          ...rootPruneOrder,
+          id: "BWCC-060426-ROOTPRUNE-CR-060526-01",
+          jobId: "BWCC-060426-ROOTPRUNE-CR-060526-01",
+          title: "Root prune Course 1",
+          projectId: "BWCC-060426",
+          projectName: "Boca West Course 1 Renovation",
+        }]}
+        projectMaterialItems={[]}
+        openDrawer={() => undefined}
+        openModal={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Boca West Country Club/);
+    assert.match(html, /2 projects/);
+    assert.match(html, /Boca West Course 1 Renovation/);
+    assert.match(html, /Boca West Course 2 Renovation/);
+    assert.match(html, /BWCC-060426/);
+    assert.match(html, /Root prune Course 1/);
+    assert.match(html, /Create Job \/ Work Order/);
+    assert.match(html, /Frenchman&#x27;s Creek Country Club/);
+    assert.match(html, /Frenchman&#x27;s Driving Range/);
+  });
+
   it("shows project material items inside a job drawer", () => {
     const materialItem: ProjectMaterialItemRecord = {
       id: "mat-boca-hole-7-pine",

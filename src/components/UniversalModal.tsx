@@ -42,7 +42,7 @@ export default function UniversalModal({
 
   const MODAL_CONFIG: any = {
     'add_new': { title: 'What are you adding?', desc: 'Select the type of record to create', btn: 'Continue' },
-    'job': { title: 'New Job / Project', desc: 'Create a new project or relocation job', btn: 'Create Project' },
+    'job': { title: 'New Project', desc: 'Create a client project that jobs, crews, freight, trees, equipment, and documents can attach to', btn: 'Create Project' },
     'client': { title: 'New Client / Company', desc: 'Add a new client to the directory', btn: 'Save Client' },
     'contact': { title: 'New Contact', desc: 'Add a new person connected to a company', btn: 'Save Contact' },
     'tree': { title: 'New Tree / Plant Asset', desc: 'Enter a new tree into inventory', btn: 'Save Tree' },

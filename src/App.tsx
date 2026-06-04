@@ -85,7 +85,13 @@ import { buildDashboardSummary, type DashboardCommandAlert, type DashboardWorkIt
 import { filterSeedRecords } from './commandCenter/operatingIntelligence';
 import { normalizeProjectImportContext, pasteHeadersForTemplate, sheetImportTemplates, type ImportPreview, type ProjectImportContext, type SheetImportTemplateId } from './commandCenter/sheetImport';
 import { dataSyncDraftStorageKey, serializeDataSyncDraft } from './commandCenter/syncDraft';
-import { normalizeProjectRelationship, normalizeWorkOrderRelationship, sameProjectTreeAsset } from './commandCenter/relationships';
+import {
+  operatingJobIdFromParts,
+  projectOperatingIdFromParts,
+  normalizeProjectRelationship,
+  normalizeWorkOrderRelationship,
+  sameProjectTreeAsset,
+} from './commandCenter/relationships';
 import { sourceRefFromWorkbookRow, workbookTabForWorkOrderType } from './commandCenter/workbookProjectFlow';
 import {
   classifyRelocationInstallationJob,
@@ -189,18 +195,59 @@ function enrichProjectLikeRecord<T extends CommandRecord>(record: T): T {
   const relationship = normalizeProjectRelationship(record);
   const source = record as T & { client?: string };
   const projectName = relationship.projectName || record.title || record.name || 'Untitled project';
+  const clientName = relationship.clientName || source.client;
+  const projectId = String(record.projectId || (record as T & { projectsId?: string }).projectsId || record.id || '').trim()
+    || projectOperatingIdFromParts(clientName, record.createdAtIso || new Date());
 
   return {
     ...record,
     ...relationship,
+    id: record.id || projectId,
+    projectId,
+    projectsId: (record as T & { projectsId?: string }).projectsId || projectId,
     title: record.title || projectName,
     name: record.name || projectName,
-    client: source.client || relationship.clientName,
+    client: source.client || clientName,
+    clientName,
   } as T;
 }
 
-function enrichWorkOrderRecord(record: WorkOrderRecord): WorkOrderRecord {
-  const relationship = normalizeWorkOrderRelationship(record);
+function nextOperatingJobSequence(record: WorkOrderRecord, existingWorkOrders: WorkOrderRecord[], relationship: ReturnType<typeof normalizeWorkOrderRelationship>): number {
+  if (record.jobId) return 1;
+  const purpose = record.taskType || record.workOrderType || record.jobName || record.title;
+  const date = record.scheduledDate || record.dueDate || record.completedDate || record.createdAtIso || new Date();
+  const assigneeName = record.crewLeadName || firstListValue(record.assignedCrewNames);
+  const firstId = operatingJobIdFromParts({
+    projectId: relationship.projectId,
+    projectName: relationship.projectName,
+    purpose,
+    assigneeName,
+    date,
+    sequence: 1,
+  });
+  const prefix = firstId.replace(/-\d{2}$/, '-');
+  const existingCount = existingWorkOrders.filter((workOrder) => String(workOrder.jobId || workOrder.id || '').startsWith(prefix)).length;
+  return existingCount + 1;
+}
+
+function enrichWorkOrderRecord(record: WorkOrderRecord, existingWorkOrders: WorkOrderRecord[] = []): WorkOrderRecord {
+  const baseRelationship = normalizeWorkOrderRelationship(record);
+  const hasExplicitProjectId = Boolean(String(record.projectId || '').trim());
+  const projectId = hasExplicitProjectId
+    ? baseRelationship.projectId
+    : projectOperatingIdFromParts(baseRelationship.clientName, record.createdAtIso || record.scheduledDate || new Date());
+  const relationship = {
+    ...baseRelationship,
+    projectId,
+    jobId: String(record.jobId || '').trim() || operatingJobIdFromParts({
+      projectId,
+      projectName: baseRelationship.projectName,
+      purpose: record.taskType || record.workOrderType || baseRelationship.jobName || baseRelationship.title,
+      assigneeName: record.crewLeadName || firstListValue(record.assignedCrewNames),
+      date: record.scheduledDate || record.dueDate || record.completedDate || record.createdAtIso || new Date(),
+      sequence: nextOperatingJobSequence(record, existingWorkOrders, { ...baseRelationship, projectId }),
+    }),
+  };
   const workOrderType = record.workOrderType || 'general_task';
   const listFields = {
     assignedCrewNames: normalizeDelimitedList(record.assignedCrewNames),
@@ -222,6 +269,7 @@ function enrichWorkOrderRecord(record: WorkOrderRecord): WorkOrderRecord {
   return {
     ...record,
     ...relationship,
+    id: record.id || relationship.jobId,
     ...listFields,
     workOrderType,
     sourceSheetName: record.sourceSheetName || workbookTabForWorkOrderType(workOrderType),
@@ -371,6 +419,12 @@ function projectRecordFromProjectLike(record: CommandRecord): ProjectRecord {
     division: source.division,
     projectType: source.jobType,
     location: source.location,
+    crewAccessAddress: source.crewAccessAddress,
+    truckAccessAddress: source.truckAccessAddress,
+    constructionAccessPin: source.constructionAccessPin,
+    loadUnloadPin: source.loadUnloadPin,
+    secondaryLoadUnloadPin: source.secondaryLoadUnloadPin,
+    siteAccessNotes: source.siteAccessNotes,
     status: enriched.status,
     date: source.date,
     startDate: source.startDate,
@@ -842,15 +896,17 @@ export default function App() {
       case 'assign_equipment':
       case 'assign_freight':
         {
-          const enrichedRecord = enrichWorkOrderRecord(recordData as WorkOrderRecord);
-          setWorkOrders((prev) => upsertRecordWithAudit(
-            prev,
-            enrichedRecord,
-            'work-order',
-            user?.email,
-            normalizedType,
-            (item) => item.id === enrichedRecord.id || Boolean(item.sourceRowId && item.sourceRowId === enrichedRecord.sourceRowId),
-          ));
+          setWorkOrders((prev) => {
+            const enrichedRecord = enrichWorkOrderRecord(recordData as WorkOrderRecord, prev);
+            return upsertRecordWithAudit(
+              prev,
+              enrichedRecord,
+              'work-order',
+              user?.email,
+              normalizedType,
+              (item) => item.id === enrichedRecord.id || Boolean(item.sourceRowId && item.sourceRowId === enrichedRecord.sourceRowId),
+            );
+          });
         }
         break;
       case 'project_material_item':
@@ -1026,7 +1082,7 @@ export default function App() {
   const renderActiveBoard = () => {
     switch (activeTab) {
       case 'tracker':
-        return <TrackerBoard jobs={jobs} workOrders={workOrders} projectMaterialItems={projectMaterialItems} openDrawer={openDrawer} openModal={openModal} />;
+        return <TrackerBoard projects={projects} jobs={jobs} workOrders={workOrders} projectMaterialItems={projectMaterialItems} openDrawer={openDrawer} openModal={openModal} />;
       case 'freight':
         return <FreightBoard loads={loads} equipment={equipmentWithDefaults} workOrders={workOrders} openDrawer={openDrawer} openModal={openModal} />;
       case 'inventory':
@@ -1611,40 +1667,119 @@ function WorkItemStack({ items, emptyTitle, emptyDetail, onOpen }: { items: Dash
   );
 }
 
-export function TrackerBoard({ jobs, workOrders = [], projectMaterialItems = [], openDrawer, openModal }: any) {
+function trackerProjectId(record: any): string {
+  return String(record?.projectId || record?.projectsId || record?.id || '').trim();
+}
+
+function trackerProjectTitle(record: any): string {
+  return String(record?.projectName || record?.title || record?.name || 'Untitled project').trim();
+}
+
+function trackerClientName(record: any): string {
+  return String(record?.clientName || record?.client || 'Unassigned Client').trim();
+}
+
+function trackerProjectKey(record: any): string {
+  return trackerProjectId(record) || trackerProjectTitle(record).toLowerCase();
+}
+
+function trackerFieldMatches(left: unknown, right: unknown): boolean {
+  const cleanLeft = String(left || '').trim();
+  const cleanRight = String(right || '').trim();
+  return Boolean(cleanLeft && cleanRight && cleanLeft === cleanRight);
+}
+
+function mergedRelocationInstallationProjects(projects: any[] = [], jobs: any[] = []) {
+  const byKey = new Map<string, any>();
+  const records = [
+    ...jobs.filter(isRelocationInstallationJob).map((record) => ({ ...record, drawerType: 'job' })),
+    ...projects.filter(isRelocationInstallationJob).map((record) => ({ ...record, drawerType: 'project' })),
+  ];
+
+  records.forEach((record) => {
+    const projectId = trackerProjectId(record);
+    const projectName = trackerProjectTitle(record);
+    const clientName = trackerClientName(record);
+    const key = trackerProjectKey(record);
+    if (!key) return;
+    const normalized = {
+      ...record,
+      id: record.id || projectId || projectName,
+      projectId,
+      projectsId: record.projectsId || projectId,
+      projectName,
+      title: record.title || projectName,
+      name: record.name || projectName,
+      clientName,
+      client: record.client || clientName,
+    };
+    const existing = byKey.get(key);
+    byKey.set(key, existing ? { ...existing, ...normalized } : normalized);
+  });
+
+  return Array.from(byKey.values()).sort((left, right) => (
+    trackerClientName(left).localeCompare(trackerClientName(right))
+    || trackerProjectTitle(left).localeCompare(trackerProjectTitle(right))
+  ));
+}
+
+export function TrackerBoard({ projects = [], jobs = [], workOrders = [], projectMaterialItems = [], openDrawer, openModal }: any) {
   const [jobFilter, setJobFilter] = useState<RelocationInstallationJobFilter>('All');
-  const relocationInstallationJobs = jobs.filter(isRelocationInstallationJob);
-  const filteredJobs = relocationInstallationJobs.filter((job: any) => (
-    jobFilter === 'All' || classifyRelocationInstallationJob(job) === jobFilter
+  const relocationInstallationProjects = useMemo(() => mergedRelocationInstallationProjects(projects, jobs), [projects, jobs]);
+  const filteredProjects = relocationInstallationProjects.filter((project: any) => (
+    jobFilter === 'All' || classifyRelocationInstallationJob(project) === jobFilter
   ));
   const filterCounts = relocationInstallationJobFilters.reduce<Record<string, number>>((counts, filter) => {
     counts[filter] = filter === 'All'
-      ? relocationInstallationJobs.length
-      : relocationInstallationJobs.filter((job: any) => classifyRelocationInstallationJob(job) === filter).length;
+      ? relocationInstallationProjects.length
+      : relocationInstallationProjects.filter((project: any) => classifyRelocationInstallationJob(project) === filter).length;
     return counts;
   }, {});
-  const workOrdersForJob = (job: any) => workOrders.filter((workOrder: WorkOrderRecord) => (
-    workOrder.jobId === job.jobId
-    || workOrder.jobName === job.jobName
-    || workOrder.projectId === job.projectId
-    || workOrder.projectName === job.projectName
-    || workOrder.projectName === job.title
+  const workOrdersForProject = (project: any) => workOrders.filter((workOrder: WorkOrderRecord) => (
+    trackerFieldMatches(workOrder.projectId, project.projectId)
+    || trackerFieldMatches(workOrder.projectId, project.projectsId)
+    || trackerFieldMatches(workOrder.projectId, project.id)
+    || trackerFieldMatches(workOrder.jobId, project.projectId)
+    || trackerFieldMatches(workOrder.jobId, project.id)
+    || trackerFieldMatches(workOrder.projectName, project.projectName)
+    || trackerFieldMatches(workOrder.projectName, project.title)
   ));
-  const materialItemsForJob = (job: any) => projectMaterialItems.filter((item: ProjectMaterialItemRecord) => (
-    item.projectId === job.projectId
-    || item.projectsId === job.projectsId
-    || item.projectName === job.projectName
-    || item.projectName === job.title
+  const materialItemsForProject = (project: any) => projectMaterialItems.filter((item: ProjectMaterialItemRecord) => (
+    trackerFieldMatches(item.projectId, project.projectId)
+    || trackerFieldMatches(item.projectsId, project.projectsId)
+    || trackerFieldMatches(item.projectName, project.projectName)
+    || trackerFieldMatches(item.projectName, project.title)
   ));
-  const projectPayloadForJob = (job: any) => ({
-    clientId: job.clientId,
-    clientName: job.clientName || job.client,
-    projectId: job.projectId,
-    projectName: job.projectName || job.title,
-    jobId: job.jobId || job.id,
-    jobName: job.jobName || job.title,
+  const projectPayloadForProject = (project: any) => ({
+    clientId: project.clientId,
+    clientName: project.clientName || project.client,
+    projectId: project.projectId || project.id,
+    projectsId: project.projectsId || project.projectId || project.id,
+    projectName: project.projectName || project.title,
     division: relocationInstallationDivisionLabel,
+    location: project.location,
+    origin: project.location,
+    destination: project.location,
+    projectSiteAddressOptions: [
+      project.location,
+      project.crewAccessAddress,
+      project.truckAccessAddress,
+      project.constructionAccessPin,
+      project.loadUnloadPin,
+      project.secondaryLoadUnloadPin,
+    ].filter(Boolean),
   });
+  const clientGroups = filteredProjects.reduce<Array<{ clientName: string; clientId?: string; projects: any[] }>>((groups, project) => {
+    const clientName = trackerClientName(project);
+    const clientId = String(project.clientId || '').trim();
+    const existing = groups.find((group) => group.clientId === clientId || group.clientName === clientName);
+    if (existing) {
+      existing.projects.push(project);
+      return groups;
+    }
+    groups.push({ clientName, clientId, projects: [project] });
+    return groups;
+  }, []);
 
   return (
     <div className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm overflow-hidden">
@@ -1657,11 +1792,11 @@ export function TrackerBoard({ jobs, workOrders = [], projectMaterialItems = [],
           onClick={() => openModal('job', { division: relocationInstallationDivisionLabel })}
           className="rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white hover:bg-jdt-dark"
         >
-          Create Job
+          New Project
         </button>
       </div>
 
-      {relocationInstallationJobs.length > 0 ? (
+      {relocationInstallationProjects.length > 0 ? (
         <div>
           <div className="flex flex-wrap gap-2 border-b border-jdt-border bg-white px-4 py-3">
             {relocationInstallationJobFilters.map((filter) => (
@@ -1676,46 +1811,57 @@ export function TrackerBoard({ jobs, workOrders = [], projectMaterialItems = [],
             ))}
           </div>
 
-          {filteredJobs.length > 0 ? (
-            <div className="overflow-x-auto text-sm">
-              <table className="w-full text-left whitespace-nowrap">
-                <thead className="bg-jdt-sand text-zinc-500 border-b border-jdt-border">
-                  <tr>
-                    <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Project Name</th>
-                    <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Job Type</th>
-                    <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Client</th>
-                    <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Status</th>
-                    <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Target Date</th>
-                    <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Crew</th>
-                    <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Next Work</th>
-                    <th className="px-5 py-3.5 font-black uppercase tracking-wide text-[10px]">Needs</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-jdt-border">
-                  {filteredJobs.map((job: any) => {
-                    const jobType = classifyRelocationInstallationJob(job);
-                    const linkedWorkOrders = workOrdersForJob(job);
+          {filteredProjects.length > 0 ? (
+            <div className="space-y-4 bg-jdt-sand/20 p-4">
+              {clientGroups.map((group) => (
+                <section key={group.clientId || group.clientName} className="overflow-hidden rounded-xl border border-jdt-border bg-white shadow-sm">
+                  <div className="flex flex-col gap-1 border-b border-jdt-border bg-jdt-panel px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-black uppercase text-jdt-primary">{group.clientName}</h3>
+                      <p className="text-[10px] font-black uppercase tracking-wide text-zinc-400">{group.clientId || 'No client ID saved'}</p>
+                    </div>
+                    <span className="rounded-md border border-jdt-border bg-white px-3 py-1 text-[10px] font-black uppercase text-zinc-600">
+                      {`${group.projects.length} ${group.projects.length === 1 ? 'project' : 'projects'}`}
+                    </span>
+                  </div>
+
+                  <div className="divide-y divide-jdt-border">
+                    {group.projects.map((project: any) => {
+                    const jobType = classifyRelocationInstallationJob(project);
+                    const linkedWorkOrders = workOrdersForProject(project);
                     const nextWorkOrder = linkedWorkOrders.find((workOrder: WorkOrderRecord) => !['Complete', 'Cancelled'].includes(String(workOrder.status || ''))) || linkedWorkOrders[0];
                     const linkedEquipmentNames = workOrderResourceNames(linkedWorkOrders, 'equipmentNames');
                     const linkedImplementNames = workOrderResourceNames(linkedWorkOrders, 'implementNames');
                     const linkedLoadNames = workOrderResourceNames(linkedWorkOrders, 'loadNames');
-                    const assignmentBase = projectPayloadForJob(job);
-                    const linkedMaterialItems = materialItemsForJob(job);
+                    const assignmentBase = projectPayloadForProject(project);
+                    const linkedMaterialItems = materialItemsForProject(project);
                     const requiredMaterialCount = linkedMaterialItems.reduce((sum: number, item: ProjectMaterialItemRecord) => sum + Number(item.quantityRequired || 0), 0);
                     const installedMaterialCount = linkedMaterialItems.reduce((sum: number, item: ProjectMaterialItemRecord) => sum + Number(item.quantityInstalled || 0), 0);
                     return (
-                      <tr key={job.id || job.title} className="cursor-pointer hover:bg-jdt-sand transition-colors" onClick={() => openDrawer('job', job.id || job.title)}>
-                        <td className="px-5 py-4">
-                          <p className="font-extrabold text-[#384521]">{job.title || 'Untitled project'}</p>
-                          <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{job.location || job.division || relocationInstallationDivisionLabel}</p>
-                          <div className="mt-2 flex flex-wrap gap-1.5">
+                      <div
+                        key={project.id || project.projectId || project.title}
+                        className="cursor-pointer p-4 transition-colors hover:bg-jdt-sand/40"
+                        onClick={() => openDrawer(project.drawerType || 'project', project.id || project.projectId || project.title)}
+                      >
+                        <div className="grid gap-4 xl:grid-cols-[minmax(260px,1.15fr)_minmax(220px,0.85fr)_minmax(260px,1fr)]">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-base font-black text-[#384521]">{project.title || project.projectName || 'Untitled project'}</p>
+                              <span className={`inline-flex rounded-md border px-2 py-1 text-[9px] font-black uppercase ${relocationInstallationJobTypeTone(jobType)}`}>
+                                {jobType}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">Project ID: {project.projectId || project.id || '-'}</p>
+                            <p className="mt-2 text-xs font-bold text-zinc-600">{project.location || project.division || relocationInstallationDivisionLabel}</p>
+                            <div className="mt-3 flex flex-wrap gap-1.5">
                             <button
                               type="button"
+                              aria-label="Create Crew Work"
                               onClick={(event) => {
                                 event.stopPropagation();
                                 openModal('assign_work', {
                                   ...assignmentBase,
-                                  title: `Crew work for ${job.title || 'project'}`,
+                                  title: `Work order for ${project.title || project.projectName || 'project'}`,
                                   workOrderType: 'general_task',
                                   taskType: 'Field work',
                                   status: 'Draft',
@@ -1724,7 +1870,7 @@ export function TrackerBoard({ jobs, workOrders = [], projectMaterialItems = [],
                               }}
                               className="rounded bg-jdt-primary px-2 py-1 text-[9px] font-black uppercase text-white"
                             >
-                              Create Crew Work
+                              Create Job / Work Order
                             </button>
                             <button
                               type="button"
@@ -1732,7 +1878,7 @@ export function TrackerBoard({ jobs, workOrders = [], projectMaterialItems = [],
                                 event.stopPropagation();
                                 openModal('assign_equipment', {
                                   ...assignmentBase,
-                                  title: `Equipment for ${job.title || 'project'}`,
+                                  title: `Equipment for ${project.title || project.projectName || 'project'}`,
                                   workOrderType: 'equipment',
                                   taskType: 'Equipment change request',
                                   status: 'Draft',
@@ -1749,13 +1895,13 @@ export function TrackerBoard({ jobs, workOrders = [], projectMaterialItems = [],
                                 event.stopPropagation();
                                 openModal('assign_freight', {
                                   ...assignmentBase,
-                                  title: `Freight support for ${job.title || 'project'}`,
+                                  title: `Freight support for ${project.title || project.projectName || 'project'}`,
                                   workOrderType: 'freight',
                                   taskType: 'Freight support request',
                                   status: 'Draft',
                                   priority: 'Normal',
-                                  origin: job.location,
-                                  destination: job.location,
+                                  origin: project.location,
+                                  destination: project.location,
                                 });
                               }}
                               className="rounded border border-blue-100 bg-blue-50 px-2 py-1 text-[9px] font-black uppercase text-blue-800 hover:border-blue-300"
@@ -1763,37 +1909,58 @@ export function TrackerBoard({ jobs, workOrders = [], projectMaterialItems = [],
                               Request Freight
                             </button>
                           </div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <span className={`inline-flex rounded-md border px-2 py-1 text-[10px] font-black uppercase ${relocationInstallationJobTypeTone(jobType)}`}>
-                            {jobType}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4 font-bold text-zinc-600">{job.client || '-'}</td>
-                        <td className="px-5 py-4 font-bold text-zinc-600">{job.status || '-'}</td>
-                        <td className="px-5 py-4 font-bold text-zinc-500">{job.date || job.scheduledDate || job.startDate || 'TBD'}</td>
-                        <td className="px-5 py-4 font-bold text-zinc-600">{job.crew || 'Unassigned'}</td>
-                        <td className="px-5 py-4 font-bold text-zinc-600">
-                          <p>{nextWorkOrder?.title || 'No work order'}</p>
-                          <div className="mt-2 flex max-w-xs flex-wrap gap-1">
-                            {linkedEquipmentNames.slice(0, 2).map((name) => <span key={name} className="rounded bg-zinc-100 px-2 py-1 text-[9px] font-black uppercase text-zinc-700">{name}</span>)}
-                            {linkedImplementNames.slice(0, 2).map((name) => <span key={name} className="rounded bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-800">{name}</span>)}
-                            {linkedLoadNames.slice(0, 2).map((name) => <span key={name} className="rounded bg-blue-50 px-2 py-1 text-[9px] font-black uppercase text-blue-800">{name}</span>)}
                           </div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <div className="flex flex-wrap gap-1">
-                            {!nextWorkOrder?.assignedCrewNames?.length && <span className="rounded bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-800">Needs crew</span>}
-                            {!linkedEquipmentNames.length && <span className="rounded bg-zinc-100 px-2 py-1 text-[9px] font-black uppercase text-zinc-600">Equipment</span>}
-                            {!linkedLoadNames.length && <span className="rounded bg-blue-50 px-2 py-1 text-[9px] font-black uppercase text-blue-700">Freight</span>}
-                            {requiredMaterialCount > installedMaterialCount && <span className="rounded bg-green-50 px-2 py-1 text-[9px] font-black uppercase text-green-700">{installedMaterialCount}/{requiredMaterialCount} material</span>}
+
+                          <div className="grid grid-cols-2 gap-2 text-xs font-bold text-zinc-600 sm:grid-cols-4 xl:grid-cols-2">
+                            <div>
+                              <p className="text-[9px] font-black uppercase text-zinc-400">Status</p>
+                              <p>{project.status || '-'}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] font-black uppercase text-zinc-400">Target Date</p>
+                              <p>{project.date || project.scheduledDate || project.startDate || 'TBD'}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] font-black uppercase text-zinc-400">Crew</p>
+                              <p>{project.crew || 'Unassigned'}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] font-black uppercase text-zinc-400">PM</p>
+                              <p>{project.pm || '-'}</p>
+                            </div>
                           </div>
-                        </td>
-                      </tr>
+
+                          <div className="font-bold text-zinc-600">
+                            <p className="text-[9px] font-black uppercase text-zinc-400">Active Jobs / Work Orders</p>
+                            <p className="mt-1 text-sm font-black text-jdt-text">{nextWorkOrder?.title || 'No work order'}</p>
+                            <div className="mt-2 flex max-w-md flex-wrap gap-1">
+                              {linkedWorkOrders.slice(0, 2).map((workOrder: WorkOrderRecord) => (
+                                <span key={workOrder.id || workOrder.jobId || workOrder.title} className="rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">
+                                  {workOrder.jobId || workOrder.status || 'Job'}
+                                </span>
+                              ))}
+                              {linkedEquipmentNames.slice(0, 2).map((name) => <span key={name} className="rounded bg-zinc-100 px-2 py-1 text-[9px] font-black uppercase text-zinc-700">{name}</span>)}
+                              {linkedImplementNames.slice(0, 2).map((name) => <span key={name} className="rounded bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-800">{name}</span>)}
+                              {linkedLoadNames.slice(0, 2).map((name) => <span key={name} className="rounded bg-blue-50 px-2 py-1 text-[9px] font-black uppercase text-blue-800">{name}</span>)}
+                            </div>
+                          </div>
+
+                          <div>
+                            <p className="text-[9px] font-black uppercase text-zinc-400">Needs</p>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {!nextWorkOrder?.assignedCrewNames?.length && <span className="rounded bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-800">Needs crew</span>}
+                              {!linkedEquipmentNames.length && <span className="rounded bg-zinc-100 px-2 py-1 text-[9px] font-black uppercase text-zinc-600">Equipment</span>}
+                              {!linkedLoadNames.length && <span className="rounded bg-blue-50 px-2 py-1 text-[9px] font-black uppercase text-blue-700">Freight</span>}
+                              {requiredMaterialCount > installedMaterialCount && <span className="rounded bg-green-50 px-2 py-1 text-[9px] font-black uppercase text-green-700">{installedMaterialCount}/{requiredMaterialCount} material</span>}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     );
-                  })}
-                </tbody>
-              </table>
+                    })}
+                  </div>
+                </section>
+              ))}
             </div>
           ) : (
             <div className="p-10 text-center">

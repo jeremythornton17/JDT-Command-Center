@@ -55,6 +55,95 @@ export function workOrderIdFromName(jobIdOrName: unknown, workOrderName: unknown
   return parts.length ? `work-order-${parts.join("-")}` : "";
 }
 
+export function clientOperatingCodeFromName(clientName: unknown): string {
+  const words = cleanString(clientName)
+    .replace(/['’]/g, "")
+    .replace(/&/g, " and ")
+    .match(/[a-z0-9]+/gi) || [];
+
+  if (words.length > 1) return words.map((word) => word[0]).join("").toUpperCase();
+
+  const compact = words[0] || cleanString(clientName).replace(/[^a-z0-9]/gi, "");
+  return compact ? compact.slice(0, 4).toUpperCase() : "PROJECT";
+}
+
+export function operatingDateCode(dateLike?: unknown): string {
+  const raw = cleanString(dateLike);
+  const isoMatch = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) return `${isoMatch[2].padStart(2, "0")}${isoMatch[3].padStart(2, "0")}${isoMatch[1].slice(-2)}`;
+
+  const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (slashMatch) return `${slashMatch[1].padStart(2, "0")}${slashMatch[2].padStart(2, "0")}${slashMatch[3].slice(-2)}`;
+
+  const parsed = dateLike instanceof Date
+    ? dateLike
+    : raw
+      ? new Date(raw)
+      : new Date();
+  const date = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  return `${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}${String(date.getFullYear()).slice(-2)}`;
+}
+
+export function projectOperatingIdFromParts(clientName: unknown, createdDate?: unknown): string {
+  return `${clientOperatingCodeFromName(clientName)}-${operatingDateCode(createdDate)}`;
+}
+
+export function assigneeInitialsFromName(name: unknown): string {
+  const words = cleanString(name)
+    .replace(/['’]/g, "")
+    .match(/[a-z0-9]+/gi) || [];
+  if (!words.length) return "";
+  return words.map((word) => word[0]).join("").slice(0, 4).toUpperCase();
+}
+
+export function jobPurposeCodeFromName(purpose: unknown): string {
+  const normalized = slugifyRelationshipPart(purpose);
+  const mapped: Record<string, string> = {
+    "root-pruning": "ROOTPRUNE",
+    "root-prune": "ROOTPRUNE",
+    "tree-pruning": "ROOTPRUNE",
+    "equipment": "EQUIP",
+    "equipment-change": "EQUIP",
+    "equipment-request": "EQUIP",
+    "freight": "FREIGHT",
+    "freight-support": "FREIGHT",
+    "dispatch": "FREIGHT",
+    "installation": "INSTALL",
+    "install": "INSTALL",
+    "relocation": "RELOCATE",
+    "relocation-job": "RELOCATE",
+    "field-work": "WORK",
+    "general-task": "WORK",
+  };
+  if (mapped[normalized]) return mapped[normalized];
+
+  const compact = normalized.replace(/-/g, "").toUpperCase();
+  return compact ? compact.slice(0, 14) : "WORK";
+}
+
+export function operatingJobIdFromParts({
+  projectId,
+  projectName,
+  purpose,
+  assigneeName,
+  date,
+  sequence,
+}: {
+  projectId?: unknown;
+  projectName?: unknown;
+  purpose?: unknown;
+  assigneeName?: unknown;
+  date?: unknown;
+  sequence?: unknown;
+}): string {
+  const projectCode = cleanString(projectId) || slugifyRelationshipPart(projectName).toUpperCase() || "PROJECT";
+  const purposeCode = jobPurposeCodeFromName(purpose);
+  const assigneeCode = assigneeInitialsFromName(assigneeName);
+  const dateCode = operatingDateCode(date);
+  const sequenceCode = String(Number(sequence) > 0 ? Number(sequence) : 1).padStart(2, "0");
+  return [projectCode, purposeCode, assigneeCode, dateCode, sequenceCode].filter(Boolean).join("-");
+}
+
 export function normalizeProjectRelationship(record: RelationshipInput): RelationshipFields {
   const clientName = cleanString(record.clientName) || cleanString(record.client);
   const projectName = cleanString(record.projectName)
