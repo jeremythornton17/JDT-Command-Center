@@ -10,6 +10,7 @@ import {
 import { auth } from "./firebase";
 import { getAppPermissions, getAppRole, getFirebaseAuthErrorMessage, getUnauthorizedAccountMessage, isAdminEmail, isAuthorizedEmail } from "./authAccess";
 import type { AppPermissions, AppRole } from "./commandCenter/dataModel";
+import { googleSheetsScope } from "./commandCenter/googleSheetsSync";
 
 interface AuthContextType {
   user: User | null;
@@ -20,6 +21,7 @@ interface AuthContextType {
   permissions: AppPermissions;
   signIn: (email?: string, password?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  authorizeGoogleSheetsAccess: () => Promise<string>;
   resetPassword: (email: string) => Promise<void>;
   logOut: () => Promise<void>;
 }
@@ -101,11 +103,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const authorizeGoogleSheetsAccess = async () => {
+    const provider = new GoogleAuthProvider();
+    provider.addScope(googleSheetsScope);
+    provider.setCustomParameters({ prompt: "consent select_account" });
+
+    try {
+      const result = await signInWithPopup(auth, provider);
+      await assertAuthorizedUser(result.user);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (!credential?.accessToken) throw new Error("Google Sheets authorization did not return an access token.");
+      return credential.accessToken;
+    } catch (error) {
+      console.error("Google Sheets authorization failed", error);
+      if (isUnauthorizedError(error)) throw error;
+      throw new Error(getFirebaseAuthErrorMessage(error));
+    }
+  };
+
   const logOut = async () => {
     await signOut(auth);
   };
 
-  const contextValue = { user, loading, isAuthorized, isAdmin, role, permissions, signIn, signInWithGoogle, resetPassword, logOut };
+  const contextValue = { user, loading, isAuthorized, isAdmin, role, permissions, signIn, signInWithGoogle, authorizeGoogleSheetsAccess, resetPassword, logOut };
 
   if (loading) return null;
 

@@ -483,7 +483,7 @@ function upsertClientSiteContact(
 }
 
 export default function App() {
-  const { user, logOut, permissions } = useAuth();
+  const { user, logOut, permissions, authorizeGoogleSheetsAccess } = useAuth();
   const [activeTab, setActiveTab] = useState('board');
   const [drawerConfig, setDrawerConfig] = useState<DrawerConfig>({ isOpen: false, type: '', itemId: null, defaultTab: 'overview' });
   const [modalConfig, setModalConfig] = useState<ModalConfig>({ isOpen: false, type: '' });
@@ -1119,7 +1119,7 @@ export default function App() {
       case 'documents':
         return <DocumentsBoard documents={documents} openModal={openModal} />;
       case 'sheets':
-        return <SyncBoard sources={syncSources} mappings={syncMappings} importBatches={importBatches} openModal={openModal} openDrawer={openDrawer} onImportPreview={handleImportPreview} onRollbackImport={handleRollbackImport} canImport={permissions.canImport} projectImportContext={projectImportContext} projects={projects} treeRelocationRecords={treeRelocationRecords} workOrders={workOrders} projectMaterialItems={projectMaterialItems} documents={documents} />;
+        return <SyncBoard sources={syncSources} mappings={syncMappings} importBatches={importBatches} openModal={openModal} openDrawer={openDrawer} onImportPreview={handleImportPreview} onRollbackImport={handleRollbackImport} canImport={permissions.canImport} projectImportContext={projectImportContext} projects={projects} treeRelocationRecords={treeRelocationRecords} workOrders={workOrders} projectMaterialItems={projectMaterialItems} documents={documents} authorizeGoogleSheetsAccess={authorizeGoogleSheetsAccess} />;
       case 'settings':
         return <SettingsBoard openModal={openModal} onClearSeedData={handleClearSeedData} />;
       default:

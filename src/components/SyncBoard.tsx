@@ -18,7 +18,8 @@ import {
   type ProjectImportContext,
   type SheetImportTemplateId,
 } from '../commandCenter/sheetImport';
-import { buildProjectWorkbookExport, canonicalProjectWorkbookTabNames, workbookExportTableToTsv } from '../commandCenter/workbookProjectFlow';
+import { writeWorkbookExportTablesToSheets } from '../commandCenter/googleSheetsSync';
+import { buildProjectWorkbookExport, buildWorkbookSetupTables, canonicalProjectWorkbookTabNames, workbookExportTableToTsv } from '../commandCenter/workbookProjectFlow';
 
 type SyncBoardProps = {
   sources: SyncSourceRecord[];
@@ -35,6 +36,7 @@ type SyncBoardProps = {
   workOrders?: WorkOrderRecord[];
   projectMaterialItems?: ProjectMaterialItemRecord[];
   documents?: DocumentRecord[];
+  authorizeGoogleSheetsAccess?: () => Promise<string>;
 };
 
 function readInitialDataSyncDraft(): DataSyncDraft | null {
@@ -71,6 +73,7 @@ export default function SyncBoard({
   workOrders = [],
   projectMaterialItems = [],
   documents = [],
+  authorizeGoogleSheetsAccess,
 }: SyncBoardProps) {
   const [initialDraft] = useState(readInitialDataSyncDraft);
   const [selectedTemplateId, setSelectedTemplateId] = useState<SheetImportTemplateId>(
@@ -84,6 +87,8 @@ export default function SyncBoard({
   const [isSavingImport, setIsSavingImport] = useState(false);
   const [selectedExportSheetName, setSelectedExportSheetName] = useState<string>(canonicalProjectWorkbookTabNames[1]);
   const [copyMessage, setCopyMessage] = useState('');
+  const [isWritingWorkbook, setIsWritingWorkbook] = useState(false);
+  const [isWritingWorkbookSetup, setIsWritingWorkbookSetup] = useState(false);
   const selectedTemplate = useMemo(() => sheetImportTemplates.find((template) => template.id === selectedTemplateId) || sheetImportTemplates[0], [selectedTemplateId]);
   const selectedPasteHeaders = useMemo(() => pasteHeadersForTemplate(selectedTemplate), [selectedTemplate]);
   const selectedProjectContext = isProjectWorkbookTemplateId(selectedTemplateId) ? activeProjectContext : null;
@@ -182,6 +187,45 @@ export default function SyncBoard({
       setCopyMessage(`Copied ${selectedExportTable.sheetName} backup rows.`);
     } catch {
       setCopyMessage('Copy failed. Select the export text and copy it manually.');
+    }
+  };
+
+  const handleWriteWorkbook = async () => {
+    if (!selectedExportTable || !authorizeGoogleSheetsAccess) return;
+    setCopyMessage('');
+    setIsWritingWorkbook(true);
+
+    try {
+      const accessToken = await authorizeGoogleSheetsAccess();
+      await writeWorkbookExportTablesToSheets({
+        accessToken,
+        tables: [selectedExportTable],
+      });
+      setCopyMessage(`Wrote ${selectedExportTable.sheetName} to the JDT Command Center workbook.`);
+    } catch (err) {
+      setCopyMessage(err instanceof Error ? err.message : 'Unable to write the workbook through Google Sheets API.');
+    } finally {
+      setIsWritingWorkbook(false);
+    }
+  };
+
+  const handleWriteWorkbookSetup = async () => {
+    if (!authorizeGoogleSheetsAccess) return;
+    setCopyMessage('');
+    setIsWritingWorkbookSetup(true);
+
+    try {
+      const accessToken = await authorizeGoogleSheetsAccess();
+      const setupTables = buildWorkbookSetupTables();
+      const result = await writeWorkbookExportTablesToSheets({
+        accessToken,
+        tables: [...setupTables, ...exportTables],
+      });
+      setCopyMessage(`Wrote ${result.sheetNames.length} workbook tabs to the JDT Command Center workbook.`);
+    } catch (err) {
+      setCopyMessage(err instanceof Error ? err.message : 'Unable to write the workbook setup through Google Sheets API.');
+    } finally {
+      setIsWritingWorkbookSetup(false);
     }
   };
 
@@ -396,6 +440,22 @@ export default function SyncBoard({
               className="inline-flex items-center gap-2 rounded-lg bg-jdt-primary px-4 py-2 text-xs font-black uppercase text-white shadow-sm hover:bg-jdt-dark transition-colors"
             >
               <ClipboardCopy className="h-4 w-4" /> Copy Export
+            </button>
+            <button
+              type="button"
+              onClick={handleWriteWorkbook}
+              disabled={!authorizeGoogleSheetsAccess || !canImport || isWritingWorkbook || isWritingWorkbookSetup}
+              className="inline-flex items-center gap-2 rounded-lg border border-jdt-border bg-white px-4 py-2 text-xs font-black uppercase text-jdt-text hover:border-jdt-olive disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+            >
+              <FileSpreadsheet className="h-4 w-4" /> {isWritingWorkbook ? 'Writing...' : 'Write to Workbook'}
+            </button>
+            <button
+              type="button"
+              onClick={handleWriteWorkbookSetup}
+              disabled={!authorizeGoogleSheetsAccess || !canImport || isWritingWorkbook || isWritingWorkbookSetup}
+              className="inline-flex items-center gap-2 rounded-lg bg-jdt-olive px-4 py-2 text-xs font-black uppercase text-white shadow-sm hover:bg-jdt-primary disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+            >
+              <FileSpreadsheet className="h-4 w-4" /> {isWritingWorkbookSetup ? 'Writing Setup...' : 'Write Setup'}
             </button>
           </div>
         </div>

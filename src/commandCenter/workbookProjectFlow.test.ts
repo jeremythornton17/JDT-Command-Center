@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildProjectWorkbookExport,
+  buildWorkbookSetupTables,
   canonicalProjectWorkbookTabNames,
   jdtProjectFlowWorkbook,
   projectWorkbookSchemaVersion,
@@ -133,4 +134,18 @@ test("exports project records into canonical JDT Command Center workbook rows", 
   assert.equal(purposeRow?.Summary, "Root Pruning");
   assert.equal("Crew_Lead" in purposeRow!, false);
   assert.equal("Truck_Names" in purposeRow!, false);
+});
+
+test("builds workbook setup and schema map tables for Google Sheets writeback", () => {
+  const setupTables = buildWorkbookSetupTables();
+  const setupTable = setupTables.find((table) => table.sheetName === "App Import Setup");
+  const schemaMap = setupTables.find((table) => table.sheetName === "App_Schema_Map");
+
+  assert.equal(setupTables.length, 2);
+  assert.equal(setupTable?.primaryId, "Setup_Item");
+  assert.equal(setupTable?.rows.some((row) => row.Workbook_Tab === "Project_Tree_Assets"), true);
+  assert.equal(schemaMap?.primaryId, "Workbook_Column");
+  assert.equal(schemaMap?.columns.includes("Schema_Version"), true);
+  assert.equal(schemaMap?.rows.some((row) => row.Workbook_Tab === "Project_Tree_Assets" && row.Workbook_Column === "Tree_Type" && row.App_Field === "treeType"), true);
+  assert.equal(schemaMap?.rows.some((row) => row.Workbook_Column === "Construction_Access_Pin" && row.Data_Type === "lat_lng_or_maps_pin"), true);
 });

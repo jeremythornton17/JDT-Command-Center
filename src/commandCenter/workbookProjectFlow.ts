@@ -196,6 +196,8 @@ export const canonicalProjectWorkbookTabNames = [
   "Project_Work_Purposes",
 ] as const;
 
+export const appImportSetupSheetName = "App Import Setup";
+
 export const jdtProjectFlowWorkbook = {
   title: "JDT Command Center",
   spreadsheetName: "JDT Command Center",
@@ -310,6 +312,73 @@ export function buildProjectWorkbookExport(input: ProjectWorkbookExportInput): W
   ];
 
   return tables;
+}
+
+export function buildWorkbookSetupTables(): WorkbookExportTable[] {
+  const schemaColumns = jdtProjectFlowWorkbook.tabs.App_Schema_Map.columns;
+  const schemaRows = canonicalProjectWorkbookTabNames.flatMap((sheetName) => {
+    const tab = resolveWorkbookTab(sheetName);
+    if (!tab) return [];
+    return tab.columns.map((column) => compactRow({
+      Workbook_Tab: tab.sheetName,
+      Workbook_Column: column,
+      App_Field: appFieldForWorkbookColumn(column),
+      Data_Type: dataTypeForWorkbookColumn(column),
+      Required: isRequiredWorkbookColumn(tab, column) ? "Yes" : "",
+      Import_Enabled: "Yes",
+      Export_Enabled: "Yes",
+      Allowed_Values: allowedValuesForWorkbookColumn(column),
+      Schema_Version: projectWorkbookSchemaVersion,
+      Notes: notesForWorkbookColumn(tab, column),
+    }));
+  });
+
+  return [
+    {
+      sheetName: appImportSetupSheetName,
+      primaryId: "Setup_Item",
+      columns: ["Setup_Item", "Value", "Workbook_Tab", "Import_Enabled", "Export_Enabled", "Notes"],
+      rows: [
+        {
+          Setup_Item: "Source Workbook",
+          Value: jdtProjectFlowWorkbook.spreadsheetName,
+          Notes: "Use this workbook as the single backup and bulk-entry source for the app.",
+        },
+        {
+          Setup_Item: "Spreadsheet ID",
+          Value: jdtProjectFlowWorkbook.spreadsheetId,
+          Notes: "The app writes to this exact Google Sheets file through the Google Sheets API.",
+        },
+        {
+          Setup_Item: "Schema Version",
+          Value: projectWorkbookSchemaVersion,
+          Notes: "Update this when app/workbook columns intentionally change.",
+        },
+        {
+          Setup_Item: "Stable ID Rule",
+          Value: "Do not rename or recycle ID values",
+          Notes: "Project_ID, Tree_Asset_ID, work IDs, and material IDs keep app records linked across imports and exports.",
+        },
+        ...canonicalProjectWorkbookTabNames.map((sheetName) => {
+          const tab = resolveWorkbookTab(sheetName)!;
+          return {
+            Setup_Item: `Tab: ${tab.sheetName}`,
+            Value: tab.appPurpose,
+            Workbook_Tab: tab.sheetName,
+            Import_Enabled: "Yes",
+            Export_Enabled: "Yes",
+            Notes: `Primary ID: ${tab.primaryId}. ${tab.legacySheetNames?.length ? `Legacy names accepted on import: ${tab.legacySheetNames.join(", ")}.` : "Use this exact tab name for new bulk entry."}`,
+          };
+        }),
+      ],
+    },
+    {
+      sheetName: jdtProjectFlowWorkbook.tabs.App_Schema_Map.sheetName,
+      primaryId: jdtProjectFlowWorkbook.tabs.App_Schema_Map.primaryId,
+      columns: schemaColumns,
+      rows: schemaRows,
+    },
+  ];
 }
 
 export function workbookExportTableToTsv(table: WorkbookExportTable): string {
@@ -535,6 +604,52 @@ function purposeType(workOrder: WorkOrderRecord): string {
   if (workOrder.workOrderType === "freight") return "Freight Support";
   if (workOrder.workOrderType === "equipment") return "Equipment Change";
   return workOrder.title || workOrder.name || "General Task";
+}
+
+function appFieldForWorkbookColumn(column: string): string {
+  const explicit: Record<string, string> = {
+    App_Record_ID: "id",
+    DBH_IN: "dbh",
+    Photo_URL: "url",
+    Date_1st_Cut: "scheduledDate",
+    Date_2nd_Cut: "secondCutDate",
+    Date_3rd_Cut: "thirdCutDate",
+    Date_Last_Treatment: "completedDate",
+  };
+  if (explicit[column]) return explicit[column];
+
+  return column.toLowerCase().replace(/_([a-z0-9])/g, (_, letter: string) => letter.toUpperCase());
+}
+
+function dataTypeForWorkbookColumn(column: string): string {
+  if (/Date|Updated_At/.test(column)) return "date";
+  if (/Cost|Price|Quantity|DBH|Height|Spread|Cut_Count/.test(column)) return "number";
+  if (/Required|Needed|Enabled/.test(column)) return "yes_no";
+  if (/Pin/.test(column)) return "lat_lng_or_maps_pin";
+  if (/URL/.test(column)) return "url";
+  return "text";
+}
+
+function isRequiredWorkbookColumn(tab: WorkbookTabConfig, column: string): boolean {
+  return column === tab.primaryId || column === "Project_ID" || column === "Tree_Asset_ID";
+}
+
+function allowedValuesForWorkbookColumn(column: string): string {
+  if (column === "Division") return "Relocation & Installation; Nursery; Freight; Equipment";
+  if (column === "Project_Type") return "Relocation Job; Installation Job; Mixed Job";
+  if (column === "Status" || column === "Current_Status" || column === "Relocation_Status" || column === "Install_Status") return "Planned; Active; Scheduled; In Progress; Ready; Complete; Blocked; On Hold";
+  if (/Required|Needed|Enabled/.test(column)) return "Yes; No";
+  if (column === "Priority") return "Low; Normal; High; Urgent";
+  return "";
+}
+
+function notesForWorkbookColumn(tab: WorkbookTabConfig, column: string): string {
+  if (column === tab.primaryId) return "Stable ID generated by the app unless you are bulk-entering a known existing record.";
+  if (syncColumns.includes(column)) return "Managed by app sync. Leave blank during manual workbook entry.";
+  if (column === "Project_ID") return "Required to tie this row back to the project profile.";
+  if (column === "Tree_Asset_ID") return "Required to tie pruning, nutrient care, and photos back to one tree.";
+  if (/Pin/.test(column)) return "Accepts pasted Google Maps link, decimal lat/long, or saved site pin text.";
+  return "";
 }
 
 function formatTsvValue(value: WorkbookExportValue): string {
