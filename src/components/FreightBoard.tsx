@@ -1,5 +1,6 @@
 import React from 'react';
 import { Truck, MapPin, Clock, CheckCircle2, UserCheck, AlertTriangle, QrCode, FileText, Wrench, Route } from 'lucide-react';
+import { CategoryIcon } from './CategoryIcon';
 import { IconButton } from './IconBadge';
 import { complianceBadgeClass, vehicleComplianceSummary, type ComplianceStatus } from '../commandCenter/compliance';
 import type { EquipmentRecord, WorkOrderRecord } from '../commandCenter/records';
@@ -146,9 +147,12 @@ export default function FreightBoard({
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-         <div>
-            <h2 className="text-2xl font-black text-jdt-primary">Freight Dispatch</h2>
-            <p className="text-sm font-bold text-zinc-500 mt-1">Truck, trailer, equipment move, and delivery tracking</p>
+         <div className="flex items-start gap-3">
+            <CategoryIcon category="freight" size="md" />
+            <div>
+              <h2 className="text-2xl font-black text-jdt-primary">Freight Dispatch</h2>
+              <p className="text-sm font-bold text-zinc-500 mt-1">Truck, trailer, equipment move, and delivery tracking</p>
+            </div>
          </div>
          <button onClick={() => openModal('load')} className="rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white hover:bg-jdt-dark">
            Create Freight Move
@@ -211,7 +215,10 @@ export default function FreightBoard({
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-[10px] font-black uppercase text-zinc-400">{typeLabel || 'Vehicle'}</p>
+                        <div className="flex items-center gap-2">
+                          <CategoryIcon category="freight" size="xs" />
+                          <p className="text-[10px] font-black uppercase text-zinc-400">{typeLabel || 'Vehicle'}</p>
+                        </div>
                         <h4 className="mt-1 text-lg font-black text-jdt-primary truncate">{equipmentDisplayName(vehicle)}</h4>
                       </div>
                       <StatusBadge status={vehicle.status || 'Available'} />

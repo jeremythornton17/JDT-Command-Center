@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Wrench, MapPin, UserCheck, AlertTriangle, Clock, Activity, QrCode, ClipboardList, PenTool, Truck } from 'lucide-react';
+import { Wrench, MapPin, UserCheck, AlertTriangle, Clock, Activity, QrCode, ClipboardList, PenTool } from 'lucide-react';
 import { complianceBadgeClass, vehicleComplianceSummary, type ComplianceStatus } from '../commandCenter/compliance';
 import { equipmentCategory, equipmentDisplayName } from '../commandCenter/equipmentFreight';
-import { IconBadge, IconButton } from './IconBadge';
+import { CategoryIcon } from './CategoryIcon';
+import { IconButton } from './IconBadge';
 
 function VehicleCompliancePill({ label, status }: { label: string; status: ComplianceStatus }) {
   return (
@@ -53,9 +54,12 @@ export default function EquipmentBoard({ starterEquipment, openDrawer, openModal
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-         <div>
-            <h2 className="text-2xl font-black text-jdt-primary">Maintenance & Equipment</h2>
-            <p className="text-sm font-bold text-zinc-500 mt-1">Fleet, trailers, implements, location, and service readiness</p>
+         <div className="flex items-start gap-3">
+            <CategoryIcon category="equipment" size="md" />
+            <div>
+              <h2 className="text-2xl font-black text-jdt-primary">Maintenance & Equipment</h2>
+              <p className="text-sm font-bold text-zinc-500 mt-1">Fleet, trailers, implements, location, and service readiness</p>
+            </div>
          </div>
          <button onClick={() => openModal('equipment')} className="rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white hover:bg-jdt-dark">
            Add Equipment
@@ -101,11 +105,7 @@ export default function EquipmentBoard({ starterEquipment, openDrawer, openModal
                         >
                            <div>
                              <div className="flex items-center gap-3">
-                               <IconBadge
-                                  icon={equipmentCategory(eq).toLowerCase().includes('truck') ? Truck : Wrench}
-                                  size="md" 
-                                  colorClass="text-orange-600 group-hover:scale-110 transition-transform" 
-                               />
+                               <CategoryIcon category="equipment" size="md" className="group-hover:scale-110 transition-transform" />
                                <div>
                                  <h4 className="text-xl font-black text-jdt-primary group-hover:text-blue-700 transition-colors">{equipmentDisplayName(eq)}</h4>
                                  <p className="text-xs font-black uppercase text-zinc-500 tracking-wider mt-1">{equipmentCategory(eq)} - {eq.assetId || eq.id}</p>

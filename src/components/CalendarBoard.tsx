@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Calendar as CalendarIcon, Clock, MapPin, Truck } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, MapPin } from 'lucide-react';
+import { CategoryIcon } from './CategoryIcon';
 
 type CalendarBoardProps = {
   jobs: any[];
@@ -79,9 +80,7 @@ export default function CalendarBoard({ jobs, loads, scheduleTasks = [], openDra
           <ul className="divide-y divide-jdt-border">
             {events.map((event) => (
               <li key={`${event.type}-${event.id}-${event.date.toISOString()}`} className="flex flex-col sm:flex-row sm:items-center gap-4 py-4">
-                <div className="h-12 w-12 rounded-lg bg-jdt-sand border border-jdt-border flex items-center justify-center text-jdt-primary shrink-0">
-                  {event.type === 'freight' ? <Truck className="h-5 w-5" /> : <MapPin className="h-5 w-5" />}
-                </div>
+                <CategoryIcon category={event.type === 'freight' ? 'freight' : event.type === 'schedule' ? 'schedule' : 'relocation'} size="md" className="h-12 w-12" />
                 <div className="min-w-0 flex-1">
                   <button
                     type="button"

@@ -9,6 +9,7 @@ import CrewViewBoard from "./CrewViewBoard";
 import CrewsBoard from "./CrewsBoard";
 import EquipmentBoard from "./EquipmentBoard";
 import FreightBoard from "./FreightBoard";
+import NurseryBoard from "./NurseryBoard";
 import SyncBoard from "./SyncBoard";
 
 describe("work order UI wiring", () => {
@@ -315,6 +316,38 @@ describe("work order UI wiring", () => {
     assert.match(html, /Request Freight/);
     assert.match(html, /CAT 299D/);
     assert.match(html, /Lowboy move/);
+  });
+
+  it("renders division category icons on operating board surfaces", () => {
+    const trackerHtml = renderToString(
+      <TrackerBoard
+        projects={[]}
+        jobs={[{ ...bocaJob, division: "Relocation & Installation", status: "Active" }]}
+        workOrders={[]}
+        projectMaterialItems={[]}
+        openDrawer={() => undefined}
+        openModal={() => undefined}
+      />,
+    );
+    assert.match(trackerHtml, /data-category="relocation"/);
+    assert.match(trackerHtml, /data-category="crew"/);
+    assert.match(trackerHtml, /data-category="equipment"/);
+    assert.match(trackerHtml, /data-category="freight"/);
+
+    const freightHtml = renderToString(
+      <FreightBoard loads={[]} equipment={[]} workOrders={[]} openDrawer={() => undefined} openModal={() => undefined} />,
+    );
+    assert.match(freightHtml, /data-category="freight"/);
+
+    const equipmentHtml = renderToString(
+      <EquipmentBoard starterEquipment={[]} openDrawer={() => undefined} openModal={() => undefined} />,
+    );
+    assert.match(equipmentHtml, /data-category="equipment"/);
+
+    const nurseryHtml = renderToString(
+      <NurseryBoard starterRanchOaks={[]} inventoryItems={[]} ranchOaks={[]} openDrawer={() => undefined} openModal={() => undefined} />,
+    );
+    assert.match(nurseryHtml, /data-category="nursery"/);
   });
 
   it("groups relocation projects by client and shows project-specific work orders", () => {

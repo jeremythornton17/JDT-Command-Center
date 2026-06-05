@@ -3,6 +3,7 @@ import { Users, Globe, Award, ClipboardCheck, Phone, Plus, AlertCircle, Star, Ma
 import { complianceBadgeClass, driverComplianceSummary, type ComplianceStatus } from '../commandCenter/compliance';
 import { defaultJdtPersonnelRoster, mergePersonnelRecords, personnelRoleOptions } from '../commandCenter/personnel';
 import type { CrewRecord, WorkOrderRecord } from '../commandCenter/records';
+import { CategoryIcon } from './CategoryIcon';
 
 function primarySkillFor(member: CrewRecord) {
   const directSkill = member.skill?.trim();
@@ -83,9 +84,12 @@ export default function CrewsBoard({ crews, workOrders = [], openModal, openDraw
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-black text-jdt-primary">Operations Crews & Personnel</h2>
-          <p className="text-sm font-bold text-zinc-500 mt-1">Manage ownership, office, crew leaders, drivers, mechanics, irrigation, and field support</p>
+        <div className="flex items-start gap-3">
+          <CategoryIcon category="crew" size="md" />
+          <div>
+            <h2 className="text-2xl font-black text-jdt-primary">Operations Crews & Personnel</h2>
+            <p className="text-sm font-bold text-zinc-500 mt-1">Manage ownership, office, crew leaders, drivers, mechanics, irrigation, and field support</p>
+          </div>
         </div>
         <button 
           onClick={() => openModal('employee')} 

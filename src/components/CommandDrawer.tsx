@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, MapPin, User, Truck, Wrench, Leaf, Clock, History, Edit2, FileText, Upload, Search } from 'lucide-react';
+import { X, MapPin, User, Truck, Tractor, HardHat, Leaf, Clock, History, Edit2, FileText, Upload, Search } from 'lucide-react';
 import type { DocumentRecord, FieldUpdateRecord, LoadRecord, ProjectMaterialItemRecord, TreeRelocationRecord, WorkOrderRecord } from '../commandCenter/records';
 import type { ProjectImportContext, SheetImportTemplateId } from '../commandCenter/sheetImport';
 import { sameClient, sameProject } from '../commandCenter/relationships';
@@ -35,8 +35,8 @@ const drawerConfig: Record<string, { title: string; icon: any; editType: string;
   tree: { title: 'Tree', icon: Leaf, editType: 'edit_tree', collection: 'ranchOaksList' },
   freight: { title: 'Freight', icon: Truck, editType: 'edit_freight', collection: 'loadsList' },
   load: { title: 'Freight', icon: Truck, editType: 'edit_freight', collection: 'loadsList' },
-  equipment: { title: 'Equipment', icon: Wrench, editType: 'equipment', collection: 'equipmentList' },
-  employee: { title: 'Employee', icon: User, editType: 'employee', collection: 'crewsList' },
+  equipment: { title: 'Equipment', icon: Tractor, editType: 'equipment', collection: 'equipmentList' },
+  employee: { title: 'Employee', icon: HardHat, editType: 'employee', collection: 'crewsList' },
   client: { title: 'Client', icon: User, editType: 'client', collection: 'clientsList' },
 };
 
@@ -1061,7 +1061,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                   <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-jdt-text">
-                        <Wrench className="h-4 w-4 text-jdt-olive" /> Equipment On Site
+                        <Tractor className="h-4 w-4 text-jdt-olive" /> Equipment On Site
                       </h4>
                       <p className="mt-1 text-[11px] font-bold text-zinc-500">Equipment currently assigned to this project, job, or project site location.</p>
                     </div>
@@ -1425,7 +1425,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h3 className="text-sm font-black uppercase text-jdt-text flex items-center gap-2">
-                    <Wrench className="h-4 w-4 text-jdt-olive" /> Equipment On Site
+                    <Tractor className="h-4 w-4 text-jdt-olive" /> Equipment On Site
                   </h3>
                   <p className="mt-1 text-xs font-bold text-zinc-500">Machines, trailers, trucks, and implements currently assigned to this project.</p>
                 </div>

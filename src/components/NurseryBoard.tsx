@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Search, Plus, Edit2, QrCode, MapPin, Trash2, X, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
 import { IconButton } from './IconBadge';
+import { CategoryIcon } from './CategoryIcon';
 import type { RanchOakRecord } from '../commandCenter/records';
 import {
   isRanchOakInventoryRecord,
@@ -448,9 +449,12 @@ export default function NurseryBoard({
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-black text-jdt-primary">Nursery & Inventory</h2>
-          <p className="mt-1 text-sm font-bold text-zinc-500">Production board, stock tracking, and Ranch Oaks inventory</p>
+        <div className="flex items-start gap-3">
+          <CategoryIcon category="nursery" size="md" />
+          <div>
+            <h2 className="text-2xl font-black text-jdt-primary">Nursery & Inventory</h2>
+            <p className="mt-1 text-sm font-bold text-zinc-500">Production board, stock tracking, and Ranch Oaks inventory</p>
+          </div>
         </div>
         <button type="button" onClick={() => openModal(isRanchOakTab ? 'ranch_oak' : 'tree', isRanchOakTab ? ranchOakFormSeed() : undefined)} className="inline-flex items-center gap-2 rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white hover:bg-jdt-dark">
           <Plus className="h-4 w-4" /> {isRanchOakTab ? 'Add Ranch Oak' : 'Add Tree'}

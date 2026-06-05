@@ -8,18 +8,17 @@ import {
   Database,
   DollarSign,
   Folder,
+  HardHat,
   LayoutGrid,
   Leaf,
   LogOut,
   MapPin,
   Menu,
-  MessageSquare,
   Plus,
   Settings,
+  Tractor,
   Truck,
   User,
-  UserCheck,
-  Wrench,
   X,
 } from 'lucide-react';
 
@@ -38,6 +37,7 @@ import MapsBoard from './components/MapsBoard';
 import ReportsBoard from './components/ReportsBoard';
 import DocumentsBoard from './components/DocumentsBoard';
 import SettingsBoard from './components/SettingsBoard';
+import { CategoryIcon, CategoryPill } from './components/CategoryIcon';
 import { useAuth } from './AuthProvider';
 import { auditEventForRecordType, stampRecordForSave } from './commandCenter/audit';
 import { collectionNamesForClear } from './commandCenter/dataModel';
@@ -102,15 +102,16 @@ import {
   relocationInstallationJobTypeTone,
   type RelocationInstallationJobFilter,
 } from './commandCenter/relocationInstallation';
+import { categoryForWorkItemTone, operatingCategoryForRecordType } from './commandCenter/visualLanguage';
 
 const mainNav = [
   { id: 'board', label: 'Command Board', icon: LayoutGrid },
   { id: 'tracker', label: 'Relocation & Installation', icon: MapPin },
   { id: 'freight', label: 'Freight', icon: Truck },
   { id: 'inventory', label: 'Nursery', icon: Leaf },
-  { id: 'equipment', label: 'Equipment', icon: Wrench },
-  { id: 'crews', label: 'Crews', icon: UserCheck },
-  { id: 'crewView', label: 'Crew View', icon: MessageSquare },
+  { id: 'equipment', label: 'Equipment', icon: Tractor },
+  { id: 'crews', label: 'Crews', icon: HardHat },
+  { id: 'crewView', label: 'Crew View', icon: HardHat },
   { id: 'clients', label: 'Clients', icon: User },
 ];
 
@@ -1261,7 +1262,7 @@ const operationIconMap: Record<FeaturedOperation['id'], typeof MapPin> = {
   relocation: MapPin,
   freight: Truck,
   nursery: Leaf,
-  equipment: Wrench,
+  equipment: Tractor,
 };
 
 const operationToneMap: Record<FeaturedOperation['id'], string> = {
@@ -1292,9 +1293,9 @@ const commandAlertIconMap: Record<DashboardCommandAlert['id'], typeof MapPin> = 
   blocked: AlertTriangle,
   approved: DollarSign,
   trees: Leaf,
-  crew: UserCheck,
+  crew: HardHat,
   freight: Truck,
-  equipment: Wrench,
+  equipment: Tractor,
 };
 
 const commandAlertToneMap: Record<DashboardCommandAlert['tone'], string> = {
@@ -1463,16 +1464,22 @@ function Dashboard({ recentRecords, dashboardSummary, openModal, openDrawer, set
           </div>
           {dashboardSummary.todaySchedule.length > 0 ? (
             <div className="grid gap-3 p-4 md:grid-cols-2 2xl:grid-cols-3">
-              {dashboardSummary.todaySchedule.map((item: DashboardWorkItem) => (
-                <button key={`${item.drawerType}-${item.id}`} type="button" onClick={() => openWorkItem(item)} className={`min-h-[130px] rounded-lg border border-jdt-border border-l-4 p-4 text-left shadow-sm transition-colors hover:border-jdt-olive ${workItemToneMap[item.tone]}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-[10px] font-black uppercase text-zinc-500">{item.assignee}</p>
-                    <span className="rounded bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-text shadow-sm">{item.status}</span>
-                  </div>
-                  <p className="mt-3 line-clamp-2 text-sm font-black uppercase text-jdt-text">{item.title}</p>
-                  <p className="mt-2 line-clamp-2 text-[11px] font-bold text-zinc-500">{item.detail}</p>
-                </button>
-              ))}
+              {dashboardSummary.todaySchedule.map((item: DashboardWorkItem) => {
+                const category = categoryForWorkItemTone(item.tone);
+                return (
+                  <button key={`${item.drawerType}-${item.id}`} type="button" onClick={() => openWorkItem(item)} className={`min-h-[130px] rounded-lg border border-jdt-border border-l-4 p-4 text-left shadow-sm transition-colors hover:border-jdt-olive ${workItemToneMap[item.tone]}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <CategoryIcon category={category} size="xs" />
+                        <p className="truncate text-[10px] font-black uppercase text-zinc-500">{item.assignee}</p>
+                      </div>
+                      <span className="shrink-0 rounded bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-text shadow-sm">{item.status}</span>
+                    </div>
+                    <p className="mt-3 line-clamp-2 text-sm font-black uppercase text-jdt-text">{item.title}</p>
+                    <p className="mt-2 line-clamp-2 text-[11px] font-bold text-zinc-500">{item.detail}</p>
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <div className="p-6">
@@ -1599,15 +1606,21 @@ function Dashboard({ recentRecords, dashboardSummary, openModal, openDrawer, set
 
           {recentRecords.length > 0 ? (
             <div className="divide-y divide-jdt-border">
-              {recentRecords.map((record: any, index: number) => (
-                <button key={`${record.type}-${record.id}-${index}`} onClick={() => openDrawer(record.type, record.id)} className="flex w-full items-center justify-between gap-4 py-4 text-left hover:bg-jdt-sand/40">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-black text-jdt-text">{record.label}</p>
-                    <p className="mt-1 text-xs font-bold text-zinc-500">{record.meta}</p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-zinc-400" />
-                </button>
-              ))}
+              {recentRecords.map((record: any, index: number) => {
+                const category = operatingCategoryForRecordType(record.type);
+                return (
+                  <button key={`${record.type}-${record.id}-${index}`} onClick={() => openDrawer(record.type, record.id)} className="flex w-full items-center justify-between gap-4 py-4 text-left hover:bg-jdt-sand/40">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <CategoryIcon category={category} size="sm" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black text-jdt-text">{record.label}</p>
+                        <p className="mt-1 text-xs font-bold text-zinc-500">{record.meta}</p>
+                      </div>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-zinc-400" />
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-jdt-border p-10 text-center">
@@ -1656,16 +1669,22 @@ function WorkItemStack({ items, emptyTitle, emptyDetail, onOpen }: { items: Dash
 
   return (
     <div className="divide-y divide-jdt-border">
-      {items.map((item) => (
-        <button key={`${item.drawerType}-${item.id}`} type="button" onClick={() => onOpen(item)} className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-jdt-sand/50">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-black text-jdt-text">{item.title}</p>
-            <p className="mt-1 line-clamp-2 text-xs font-bold text-zinc-500">{item.detail}</p>
-            <p className="mt-2 text-[10px] font-black uppercase text-jdt-olive">{item.assignee}</p>
-          </div>
-          <span className="shrink-0 rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{item.status}</span>
-        </button>
-      ))}
+      {items.map((item) => {
+        const category = categoryForWorkItemTone(item.tone);
+        return (
+          <button key={`${item.drawerType}-${item.id}`} type="button" onClick={() => onOpen(item)} className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-jdt-sand/50">
+            <div className="flex min-w-0 items-start gap-3">
+              <CategoryIcon category={category} size="xs" className="mt-0.5" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black text-jdt-text">{item.title}</p>
+                <p className="mt-1 line-clamp-2 text-xs font-bold text-zinc-500">{item.detail}</p>
+                <p className="mt-2 text-[10px] font-black uppercase text-jdt-olive">{item.assignee}</p>
+              </div>
+            </div>
+            <span className="shrink-0 rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{item.status}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -1787,9 +1806,12 @@ export function TrackerBoard({ projects = [], jobs = [], workOrders = [], projec
   return (
     <div className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-jdt-border bg-jdt-sand/50 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-black text-jdt-primary">{relocationInstallationDivisionLabel}</h2>
-          <p className="text-sm font-bold text-zinc-500">Track relocation jobs, installation jobs, and mixed project work from one operating board</p>
+        <div className="flex items-start gap-3">
+          <CategoryIcon category="relocation" size="md" />
+          <div>
+            <h2 className="text-xl font-black text-jdt-primary">{relocationInstallationDivisionLabel}</h2>
+            <p className="text-sm font-bold text-zinc-500">Track relocation jobs, installation jobs, and mixed project work from one operating board</p>
+          </div>
         </div>
         <button
           onClick={() => openModal('job', { division: relocationInstallationDivisionLabel })}
@@ -1871,8 +1893,9 @@ export function TrackerBoard({ projects = [], jobs = [], workOrders = [], projec
                                   priority: 'Normal',
                                 });
                               }}
-                              className="rounded bg-jdt-primary px-2 py-1 text-[9px] font-black uppercase text-white"
+                              className="inline-flex items-center gap-1.5 rounded bg-jdt-primary px-2 py-1 text-[9px] font-black uppercase text-white"
                             >
+                              <CategoryPill category="crew" compact className="border-white/20 bg-white/10 px-1.5 py-0.5 text-white" />
                               Create Job / Work Order
                             </button>
                             <button
@@ -1888,8 +1911,9 @@ export function TrackerBoard({ projects = [], jobs = [], workOrders = [], projec
                                   priority: 'Normal',
                                 });
                               }}
-                              className="rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                              className="inline-flex items-center gap-1.5 rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
                             >
+                              <CategoryPill category="equipment" compact className="px-1.5 py-0.5" />
                               Request Equipment
                             </button>
                             <button
@@ -1907,8 +1931,9 @@ export function TrackerBoard({ projects = [], jobs = [], workOrders = [], projec
                                   destination: project.location,
                                 });
                               }}
-                              className="rounded border border-blue-100 bg-blue-50 px-2 py-1 text-[9px] font-black uppercase text-blue-800 hover:border-blue-300"
+                              className="inline-flex items-center gap-1.5 rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
                             >
+                              <CategoryPill category="freight" compact className="px-1.5 py-0.5" />
                               Request Freight
                             </button>
                           </div>
@@ -1942,18 +1967,18 @@ export function TrackerBoard({ projects = [], jobs = [], workOrders = [], projec
                                   {workOrder.jobId || workOrder.status || 'Job'}
                                 </span>
                               ))}
-                              {linkedEquipmentNames.slice(0, 2).map((name) => <span key={name} className="rounded bg-zinc-100 px-2 py-1 text-[9px] font-black uppercase text-zinc-700">{name}</span>)}
+                              {linkedEquipmentNames.slice(0, 2).map((name) => <CategoryPill key={name} category="equipment" label={name} className="bg-zinc-100 text-zinc-700" />)}
                               {linkedImplementNames.slice(0, 2).map((name) => <span key={name} className="rounded bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-800">{name}</span>)}
-                              {linkedLoadNames.slice(0, 2).map((name) => <span key={name} className="rounded bg-blue-50 px-2 py-1 text-[9px] font-black uppercase text-blue-800">{name}</span>)}
+                              {linkedLoadNames.slice(0, 2).map((name) => <CategoryPill key={name} category="freight" label={name} className="bg-zinc-100 text-zinc-700" />)}
                             </div>
                           </div>
 
                           <div>
                             <p className="text-[9px] font-black uppercase text-zinc-400">Needs</p>
                             <div className="mt-1 flex flex-wrap gap-1">
-                              {!nextWorkOrder?.assignedCrewNames?.length && <span className="rounded bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-800">Needs crew</span>}
-                              {!linkedEquipmentNames.length && <span className="rounded bg-zinc-100 px-2 py-1 text-[9px] font-black uppercase text-zinc-600">Equipment</span>}
-                              {!linkedLoadNames.length && <span className="rounded bg-blue-50 px-2 py-1 text-[9px] font-black uppercase text-blue-700">Freight</span>}
+                              {!nextWorkOrder?.assignedCrewNames?.length && <CategoryPill category="crew" label="Needs crew" className="border-amber-200 bg-amber-50 text-amber-800" />}
+                              {!linkedEquipmentNames.length && <CategoryPill category="equipment" label="Needs equipment" className="border-amber-200 bg-amber-50 text-amber-800" />}
+                              {!linkedLoadNames.length && <CategoryPill category="freight" label="Needs freight" className="border-amber-200 bg-amber-50 text-amber-800" />}
                               {requiredMaterialCount > installedMaterialCount && <span className="rounded bg-green-50 px-2 py-1 text-[9px] font-black uppercase text-green-700">{installedMaterialCount}/{requiredMaterialCount} material</span>}
                             </div>
                           </div>
