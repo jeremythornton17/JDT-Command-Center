@@ -4,7 +4,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import type { CrewRecord, DocumentRecord, EquipmentRecord, FieldUpdateRecord, JobRecord, LoadRecord, ProjectMaterialItemRecord, TreeRelocationRecord, WorkOrderRecord } from "../commandCenter/records";
 import { TrackerBoard } from "../App";
-import CommandDrawer, { projectModalContextForRecord, projectSiteMapUrl } from "./CommandDrawer";
+import CommandDrawer, { filterTreeAssets, projectModalContextForRecord, projectSiteMapUrl } from "./CommandDrawer";
 import CrewViewBoard from "./CrewViewBoard";
 import CrewsBoard from "./CrewsBoard";
 import EquipmentBoard from "./EquipmentBoard";
@@ -504,6 +504,136 @@ describe("work order UI wiring", () => {
     assert.match(html, /Photos/);
     assert.match(html, /No tree photos yet/);
     assert.match(html, /Add Photo/);
+  });
+
+  it("defaults project tree assets from lowest tree asset id to highest", () => {
+    const treeAssets: TreeRelocationRecord[] = [
+      {
+        id: "tree-boca-1003",
+        treeId: "1003",
+        title: "Live Oak 1003",
+        projectId: bocaJob.projectId,
+        projectName: bocaJob.projectName,
+        type: "Live Oak",
+      },
+      {
+        id: "tree-boca-1001",
+        treeId: "1001",
+        title: "Live Oak 1001",
+        projectId: bocaJob.projectId,
+        projectName: bocaJob.projectName,
+        type: "Live Oak",
+      },
+      {
+        id: "tree-boca-1002",
+        treeId: "1002",
+        title: "Live Oak 1002",
+        projectId: bocaJob.projectId,
+        projectName: bocaJob.projectName,
+        type: "Live Oak",
+      },
+    ];
+
+    const html = renderToString(
+      <CommandDrawer
+        isOpen
+        onClose={() => undefined}
+        type="job"
+        itemId={bocaJob.id}
+        defaultTab="tree assets"
+        openModal={() => undefined}
+        jobsList={[bocaJob]}
+        treeRelocationRecordsList={treeAssets}
+      />,
+    );
+
+    assert.ok(html.indexOf(">1001<") < html.indexOf(">1002<"));
+    assert.ok(html.indexOf(">1002<") < html.indexOf(">1003<"));
+  });
+
+  it("shows tree asset filters for searchable project tree criteria", () => {
+    const treeAsset: TreeRelocationRecord = {
+      id: "tree-boca-1003",
+      treeId: "1003",
+      title: "LIVE OAK",
+      projectId: bocaJob.projectId,
+      projectName: bocaJob.projectName,
+      type: "LIVE OAK",
+      dbh: 33,
+      difficulty: "Hard",
+      status: "Ready for Relocation",
+    };
+
+    const html = renderToString(
+      <CommandDrawer
+        isOpen
+        onClose={() => undefined}
+        type="job"
+        itemId={bocaJob.id}
+        defaultTab="tree assets"
+        openModal={() => undefined}
+        jobsList={[bocaJob]}
+        treeRelocationRecordsList={[treeAsset]}
+      />,
+    );
+
+    assert.match(html, /Filter Tree Assets/);
+    assert.match(html, /Tree ID, name, location/);
+    assert.match(html, /Tree Type/);
+    assert.match(html, /Status/);
+    assert.match(html, /Priority/);
+    assert.match(html, /Difficulty/);
+  });
+
+  it("filters project tree assets by search text and selected criteria", () => {
+    const treeAssets: TreeRelocationRecord[] = [
+      {
+        id: "tree-boca-1001",
+        treeId: "1001",
+        title: "Live Oak 1001",
+        projectId: bocaJob.projectId,
+        projectName: bocaJob.projectName,
+        type: "Live Oak",
+        status: "Ready for Relocation",
+        priority: "Normal",
+        difficulty: "Medium",
+        existingLocationDescription: "Hole 4 fairway",
+      },
+      {
+        id: "tree-boca-1002",
+        treeId: "1002",
+        title: "Live Oak 1002",
+        projectId: bocaJob.projectId,
+        projectName: bocaJob.projectName,
+        type: "Live Oak",
+        status: "Root Pruning",
+        priority: "High",
+        difficulty: "Hard",
+        existingLocationDescription: "Hole 7 green",
+      },
+      {
+        id: "tree-boca-1003",
+        treeId: "1003",
+        title: "Sabal Palm 1003",
+        projectId: bocaJob.projectId,
+        projectName: bocaJob.projectName,
+        type: "Sabal Palm",
+        status: "Installed",
+        priority: "Low",
+        difficulty: "Easy",
+        existingLocationDescription: "Clubhouse",
+      },
+    ];
+
+    const results = filterTreeAssets(treeAssets, {
+      query: "hole 7",
+      treeType: "Live Oak",
+      status: "Root Pruning",
+      priority: "High",
+      difficulty: "Hard",
+    });
+
+    assert.deepEqual(results.map((tree) => tree.treeId), ["1002"]);
   });
 
   it("shows active work orders on crew cards", () => {

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, MapPin, User, Truck, Wrench, Leaf, Clock, History, Edit2, FileText, Upload } from 'lucide-react';
+import { X, MapPin, User, Truck, Wrench, Leaf, Clock, History, Edit2, FileText, Upload, Search } from 'lucide-react';
 import type { DocumentRecord, FieldUpdateRecord, LoadRecord, ProjectMaterialItemRecord, TreeRelocationRecord, WorkOrderRecord } from '../commandCenter/records';
 import type { ProjectImportContext, SheetImportTemplateId } from '../commandCenter/sheetImport';
 import { sameClient, sameProject } from '../commandCenter/relationships';
@@ -52,8 +52,108 @@ function displayValue(value: any): string {
   return String(value);
 }
 
+export type TreeAssetFilterState = {
+  query: string;
+  treeType: string;
+  status: string;
+  priority: string;
+  difficulty: string;
+};
+
+const emptyTreeAssetFilters: TreeAssetFilterState = {
+  query: '',
+  treeType: '',
+  status: '',
+  priority: '',
+  difficulty: '',
+};
+
+const treeAssetIdCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
 function recordTitle(record: any, fallback = 'Untitled record'): string {
   return displayValue(record?.title || record?.name || record?.projectName || record?.jobName || record?.loadNumber || record?.relatedTitle || fallback);
+}
+
+function cleanFilterValue(value: unknown): string {
+  return String(value || '').trim();
+}
+
+function normalizeFilterValue(value: unknown): string {
+  return cleanFilterValue(value).toLowerCase();
+}
+
+function treeAssetIdForSort(tree: TreeRelocationRecord): string {
+  return cleanFilterValue(
+    tree.treeId
+      || tree.treeAssetId
+      || tree.treeAssetsId
+      || tree.Tree_Asset_ID
+      || tree.Tree_Assets_ID
+      || tree.id
+      || tree.title,
+  );
+}
+
+function treeAssetType(tree: TreeRelocationRecord): string {
+  return cleanFilterValue(tree.type || tree.treeType || tree.species || tree.title);
+}
+
+function treeAssetStatus(tree: TreeRelocationRecord): string {
+  return cleanFilterValue(tree.relocationStatus || tree.status || tree.currentStatus);
+}
+
+function sortedTreeAssetsByAssetId(trees: TreeRelocationRecord[]): TreeRelocationRecord[] {
+  return [...trees].sort((left, right) => (
+    treeAssetIdCollator.compare(treeAssetIdForSort(left), treeAssetIdForSort(right))
+    || treeAssetIdCollator.compare(treeAssetType(left), treeAssetType(right))
+    || treeAssetIdCollator.compare(cleanFilterValue(left.id), cleanFilterValue(right.id))
+  ));
+}
+
+function uniqueTreeAssetOptions(trees: TreeRelocationRecord[], getValue: (tree: TreeRelocationRecord) => unknown): string[] {
+  const seen = new Set<string>();
+  const values: string[] = [];
+  for (const tree of trees) {
+    const value = cleanFilterValue(getValue(tree));
+    const key = value.toLowerCase();
+    if (!value || seen.has(key)) continue;
+    seen.add(key);
+    values.push(value);
+  }
+  return values.sort((left, right) => treeAssetIdCollator.compare(left, right));
+}
+
+function treeMatchesSelectedFilter(value: unknown, filter: string): boolean {
+  return !filter || normalizeFilterValue(value) === normalizeFilterValue(filter);
+}
+
+function treeAssetSearchText(tree: TreeRelocationRecord): string {
+  return [
+    treeAssetIdForSort(tree),
+    treeAssetType(tree),
+    tree.title,
+    tree.tag,
+    treeAssetStatus(tree),
+    tree.condition,
+    tree.difficulty,
+    tree.priority,
+    tree.dbh,
+    tree.existingLocationDescription,
+    tree.proposedFinalLocationDescription,
+    tree.location,
+    tree.notes,
+  ].map(normalizeFilterValue).join(' ');
+}
+
+export function filterTreeAssets(trees: TreeRelocationRecord[], filters: TreeAssetFilterState): TreeRelocationRecord[] {
+  const query = normalizeFilterValue(filters.query);
+  return sortedTreeAssetsByAssetId(trees).filter((tree) => (
+    (!query || treeAssetSearchText(tree).includes(query))
+    && treeMatchesSelectedFilter(treeAssetType(tree), filters.treeType)
+    && treeMatchesSelectedFilter(treeAssetStatus(tree), filters.status)
+    && treeMatchesSelectedFilter(tree.priority, filters.priority)
+    && treeMatchesSelectedFilter(tree.difficulty, filters.difficulty)
+  ));
 }
 
 function sameKnownField(left: unknown, right: unknown): boolean {
@@ -699,9 +799,13 @@ export default function CommandDrawer(props: CommandDrawerProps) {
     openDrawer,
   } = props;
   const [activeTab, setActiveTab] = useState(defaultTab);
+  const [treeAssetFilters, setTreeAssetFilters] = useState<TreeAssetFilterState>(emptyTreeAssetFilters);
 
   useEffect(() => {
-    if (isOpen) setActiveTab(defaultTab);
+    if (isOpen) {
+      setActiveTab(defaultTab);
+      setTreeAssetFilters(emptyTreeAssetFilters);
+    }
   }, [isOpen, defaultTab, type, itemId]);
 
   const config = drawerConfig[type] || drawerConfig.job;
@@ -726,6 +830,15 @@ export default function CommandDrawer(props: CommandDrawerProps) {
     ? clientLoadsForRecord(record, props.loadsList || [], relatedClientProjects, relatedClientJobs)
     : loadsForRecord(type, record, props.loadsList || []);
   const relatedTreeAssets = treeAssetsForRecord(type, record, props.treeRelocationRecordsList || []);
+  const visibleTreeAssets = filterTreeAssets(relatedTreeAssets, treeAssetFilters);
+  const treeTypeFilterOptions = uniqueTreeAssetOptions(relatedTreeAssets, treeAssetType);
+  const treeStatusFilterOptions = uniqueTreeAssetOptions(relatedTreeAssets, treeAssetStatus);
+  const treePriorityFilterOptions = uniqueTreeAssetOptions(relatedTreeAssets, (tree) => tree.priority);
+  const treeDifficultyFilterOptions = uniqueTreeAssetOptions(relatedTreeAssets, (tree) => tree.difficulty);
+  const hasTreeAssetFilters = Object.values(treeAssetFilters).some((value) => value.trim());
+  const updateTreeAssetFilter = (key: keyof TreeAssetFilterState, value: string) => {
+    setTreeAssetFilters((current) => ({ ...current, [key]: value }));
+  };
   const relatedTreeWorkOrders = treeWorkOrdersForRecord(relatedWorkOrders, relatedTreeAssets);
   const relatedDocuments = type === 'client'
     ? clientDocumentsForRecord(record, props.documentsList || [], relatedClientProjects, relatedClientJobs)
@@ -1110,7 +1223,85 @@ export default function CommandDrawer(props: CommandDrawerProps) {
 
                 {relatedTreeAssets.length > 0 ? (
                   <div className="space-y-3">
-                    {relatedTreeAssets.map((tree) => {
+                    <div className="rounded-lg border border-jdt-border bg-white p-3">
+                      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h4 className="flex items-center gap-2 text-[11px] font-black uppercase text-jdt-text">
+                            <Search className="h-3.5 w-3.5 text-jdt-olive" /> Filter Tree Assets
+                          </h4>
+                          <p className="mt-1 text-[10px] font-bold uppercase text-zinc-400">
+                            {visibleTreeAssets.length} of {relatedTreeAssets.length} shown | Tree Asset ID low to high
+                          </p>
+                        </div>
+                        {hasTreeAssetFilters && (
+                          <button
+                            type="button"
+                            onClick={() => setTreeAssetFilters(emptyTreeAssetFilters)}
+                            className="w-fit rounded-lg border border-jdt-border bg-jdt-panel px-3 py-1.5 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                          >
+                            Reset Filters
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid gap-2 md:grid-cols-5">
+                        <label className="block md:col-span-2">
+                          <span className="text-[10px] font-black uppercase text-zinc-500">Tree ID, name, location</span>
+                          <input
+                            type="search"
+                            value={treeAssetFilters.query}
+                            onChange={(event) => updateTreeAssetFilter('query', event.target.value)}
+                            placeholder="Search tree assets"
+                            className="mt-1 w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-xs font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-[10px] font-black uppercase text-zinc-500">Tree Type</span>
+                          <select
+                            value={treeAssetFilters.treeType}
+                            onChange={(event) => updateTreeAssetFilter('treeType', event.target.value)}
+                            className="mt-1 w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-xs font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                          >
+                            <option value="">All types</option>
+                            {treeTypeFilterOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+                          </select>
+                        </label>
+                        <label className="block">
+                          <span className="text-[10px] font-black uppercase text-zinc-500">Status</span>
+                          <select
+                            value={treeAssetFilters.status}
+                            onChange={(event) => updateTreeAssetFilter('status', event.target.value)}
+                            className="mt-1 w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-xs font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                          >
+                            <option value="">All statuses</option>
+                            {treeStatusFilterOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+                          </select>
+                        </label>
+                        <label className="block">
+                          <span className="text-[10px] font-black uppercase text-zinc-500">Priority</span>
+                          <select
+                            value={treeAssetFilters.priority}
+                            onChange={(event) => updateTreeAssetFilter('priority', event.target.value)}
+                            className="mt-1 w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-xs font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                          >
+                            <option value="">All priorities</option>
+                            {treePriorityFilterOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+                          </select>
+                        </label>
+                        <label className="block">
+                          <span className="text-[10px] font-black uppercase text-zinc-500">Difficulty</span>
+                          <select
+                            value={treeAssetFilters.difficulty}
+                            onChange={(event) => updateTreeAssetFilter('difficulty', event.target.value)}
+                            className="mt-1 w-full rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-xs font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                          >
+                            <option value="">All difficulties</option>
+                            {treeDifficultyFilterOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+
+                    {visibleTreeAssets.length > 0 ? visibleTreeAssets.map((tree) => {
                       const treeKey = String(tree.id || tree.treeId || tree.title);
                       const treeLabel = displayValue(tree.type || tree.treeType || tree.title || tree.treeId || 'Project tree');
                       const locationLine = [tree.existingLocationDescription, tree.proposedFinalLocationDescription]
@@ -1215,7 +1406,9 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                           </div>
                         </article>
                       );
-                    })}
+                    }) : (
+                      <p className="rounded-lg border border-dashed border-jdt-border bg-white p-4 text-sm font-bold text-zinc-500">No tree assets match these filters.</p>
+                    )}
                   </div>
                 ) : (
                   <p className="text-sm font-bold text-zinc-500">No tree assets are linked to this project yet.</p>
