@@ -377,6 +377,18 @@ describe("sheet import mapping", () => {
     });
   });
 
+  it("defaults imported project tree assets with blank relocation status to Not Started", () => {
+    const preview = buildImportPreview("jdt_project_flow_tree_assets", [
+      ["Tree_Asset_ID", "Project_ID", "Tree_Type", "Relocation_Status"],
+      ["BWCC-060426-TREE-1004", "BWCC-060426", "Live Oak", ""],
+    ]);
+    const trees = preview.targets.find((target) => target.collectionName === "treeRelocationRecords")?.records as any[];
+
+    assert.equal(trees?.length, 1);
+    assert.equal(trees[0].relocationStatus, "Not Started");
+    assert.equal(trees[0].status, "Not Started");
+  });
+
   it("maps canonical JDT Command Center root pruning and nutrient care headers into work orders", () => {
     const pruningPreview = buildImportPreview("jdt_project_flow_tree_pruning", [
       ["Root_Pruning_ID", "Tree_Asset_ID", "Project_ID", "Cut_Count", "Date_1st_Cut", "Readiness_Status", "Next_Action", "Notes"],

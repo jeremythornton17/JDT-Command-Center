@@ -21,6 +21,7 @@ import {
   type DailyCommandBrief,
   type ProjectRiskScore,
 } from "./operatingIntelligence";
+import { buildTreeLifecycleAlerts, type TreeLifecycleAlert } from "./treeLifecycle";
 
 export type DashboardPipelineStage = {
   id: "inquiries" | "siteVisits" | "estimates" | "approved" | "scheduled" | "completed" | "invoiced";
@@ -49,7 +50,7 @@ export type FeaturedOperation = {
 };
 
 export type DashboardCommandAlert = {
-  id: "today" | "blocked" | "approved" | "crew" | "freight" | "equipment";
+  id: "today" | "blocked" | "approved" | "trees" | "crew" | "freight" | "equipment";
   label: string;
   value: string;
   detail: string;
@@ -259,7 +260,21 @@ function buildTomorrowQueue(jobs: JobRecord[], scheduleTasks: ScheduleTaskRecord
   return [...approvedJobs, ...readyTasks].slice(0, 6);
 }
 
-function buildOwnerReviewQueue(jobs: JobRecord[], loads: LoadRecord[], equipment: EquipmentRecord[], alerts: AlertRecord[], fieldUpdates: FieldUpdateRecord[]): DashboardWorkItem[] {
+function treeLifecycleWorkItem(alert: TreeLifecycleAlert): DashboardWorkItem {
+  return {
+    id: alert.id,
+    title: alert.title,
+    assignee: alert.treeName,
+    status: alert.dueDate || "Needs scheduling",
+    detail: alert.detail,
+    targetTab: alert.targetTab,
+    drawerType: alert.drawerType,
+    recordId: alert.recordId,
+    tone: "relocation",
+  };
+}
+
+function buildOwnerReviewQueue(jobs: JobRecord[], loads: LoadRecord[], equipment: EquipmentRecord[], alerts: AlertRecord[], fieldUpdates: FieldUpdateRecord[], treeLifecycleAlerts: TreeLifecycleAlert[]): DashboardWorkItem[] {
   const blockedJobs = jobs
     .filter(isBlockedRecord)
     .map((job) => workItem(job, {
@@ -316,7 +331,9 @@ function buildOwnerReviewQueue(jobs: JobRecord[], loads: LoadRecord[], equipment
       tone: "task",
     }));
 
-  return [...blockedJobs, ...freightIssues, ...equipmentIssues, ...fieldUpdateIssues, ...alertIssues].slice(0, 6);
+  const treeIssues = treeLifecycleAlerts.map(treeLifecycleWorkItem);
+
+  return [...blockedJobs, ...treeIssues, ...freightIssues, ...equipmentIssues, ...fieldUpdateIssues, ...alertIssues].slice(0, 6);
 }
 
 function quantityTotal(trees: Array<RanchOakRecord | InventoryItemRecord>) {
@@ -361,12 +378,14 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
   };
   const dailyBrief = buildDailyCommandBrief(intelligenceInput);
   const projectRisks = buildProjectRiskScores(intelligenceInput);
+  const treeLifecycleAlerts = buildTreeLifecycleAlerts({ trees: treeRelocationRecords, jobs, workOrders, todayIso });
   const todaySchedule = buildTodaySchedule(jobs, loads, scheduleTasks);
   const tomorrowQueue = buildTomorrowQueue(jobs, scheduleTasks);
-  const ownerReviewQueue = buildOwnerReviewQueue(jobs, loads, equipment, alerts, fieldUpdates);
+  const ownerReviewQueue = buildOwnerReviewQueue(jobs, loads, equipment, alerts, fieldUpdates, treeLifecycleAlerts);
   const fieldUpdateReviewCount = fieldUpdates.filter(isFieldUpdateNeedingReview).length;
   const blockedCount = jobs.filter(isBlockedRecord).length + loads.filter(isBlockedRecord).length + equipment.filter(isEquipmentHold).length + alerts.filter((alert) => !isInactive(alert)).length + fieldUpdateReviewCount;
   const approvedUnscheduledCount = jobs.filter(isApprovedUnscheduledJob).length;
+  const treeLifecycleCount = treeLifecycleAlerts.length;
   const crewGapCount = scheduleTasks.filter(isCrewDispatchGap).length + loads.filter((load) => !isInactive(load) && !load.driver).length + fieldUpdateReviewCount;
   const freightIssueCount = loads.filter(isFreightIssue).length;
   const equipmentHoldCount = equipment.filter(isEquipmentHold).length;
@@ -394,6 +413,14 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
       value: String(approvedUnscheduledCount),
       detail: "Not scheduled yet",
       tone: "ready",
+      targetTab: "tracker",
+    },
+    {
+      id: "trees",
+      label: "Tree timeline",
+      value: String(treeLifecycleCount),
+      detail: "Root prune, relocation, or care cue",
+      tone: treeLifecycleCount > 0 ? "warn" : "ready",
       targetTab: "tracker",
     },
     {

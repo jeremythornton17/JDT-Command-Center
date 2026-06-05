@@ -5,6 +5,7 @@ import type {
   TreeRelocationRecord,
   WorkOrderRecord,
 } from './records';
+import { relocationStatusOptions } from './treeLifecycle';
 
 export type WorkbookWorkOrderType =
   | "tree_pruning"
@@ -637,7 +638,8 @@ function isRequiredWorkbookColumn(tab: WorkbookTabConfig, column: string): boole
 function allowedValuesForWorkbookColumn(column: string): string {
   if (column === "Division") return "Relocation & Installation; Nursery; Freight; Equipment";
   if (column === "Project_Type") return "Relocation Job; Installation Job; Mixed Job";
-  if (column === "Status" || column === "Current_Status" || column === "Relocation_Status" || column === "Install_Status") return "Planned; Active; Scheduled; In Progress; Ready; Complete; Blocked; On Hold";
+  if (column === "Relocation_Status") return relocationStatusOptions.join("; ");
+  if (column === "Status" || column === "Current_Status" || column === "Install_Status") return "Planned; Active; Scheduled; In Progress; Ready; Complete; Blocked; On Hold";
   if (/Required|Needed|Enabled/.test(column)) return "Yes; No";
   if (column === "Priority") return "Low; Normal; High; Urgent";
   return "";

@@ -420,6 +420,7 @@ describe("work order UI wiring", () => {
       projectName: bocaJob.projectName,
       type: "Live Oak",
       dbh: 31,
+      relocationCost: 12732.5,
       relocationStatus: "Invoiced",
       status: "Root Pruning",
     };
@@ -462,6 +463,7 @@ describe("work order UI wiring", () => {
     assert.match(html, /Tree Assets/);
     assert.match(html, /Live Oak/);
     assert.match(html, /DBH/);
+    assert.match(html, /\$12,732\.50/);
     assert.match(html, /Aftercare tree-boca-109/);
     assert.match(html, /Before relocation/);
   });

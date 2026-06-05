@@ -17,6 +17,7 @@ import {
 } from '../commandCenter/equipmentFreight';
 import { personnelCrewAllocationOptions, personnelLanguageOptions, personnelRoleOptions } from '../commandCenter/personnel';
 import { relocationInstallationDivisionLabel, relocationInstallationJobTypes } from '../commandCenter/relocationInstallation';
+import { defaultRelocationStatus, relocationStatusOptions } from '../commandCenter/treeLifecycle';
 import { jdtProjectFlowWorkbook } from '../commandCenter/workbookProjectFlow';
 
 type FieldConfig = {
@@ -149,6 +150,13 @@ const fieldSets: Record<string, FieldConfig[]> = {
     },
     { key: 'division', label: 'Division', type: 'select', options: divisionOptions },
     { key: 'jobType', label: 'Job Type', type: 'select', options: [...relocationInstallationJobTypes] },
+    {
+      key: 'rootPruningPeriodMonths',
+      label: 'Default Root Pruning Months',
+      type: 'number',
+      defaultValue: 4,
+      hint: 'Used to calculate the 2nd cut halfway point and ready-for-relocation date for project trees.',
+    },
     { key: 'location', label: 'Main Jobsite Address', section: 'Project Site Addresses', placeholder: 'Paste street address or Google Maps link', wide: true },
     { key: 'crewAccessAddress', label: 'Crew Access Address', placeholder: 'Paste access address, Google Maps link, or lat,long pin', wide: true },
     { key: 'truckAccessAddress', label: 'Truck / Equipment Access Address', placeholder: 'Paste access address, Google Maps link, or lat,long pin', wide: true },
@@ -255,7 +263,13 @@ const fieldSets: Record<string, FieldConfig[]> = {
     { key: 'status', label: 'Current Status', type: 'select', options: ['Open', 'Ready for Root Pruning', 'Root Pruning', 'Ready for Relocation', 'Relocated', 'Installed', 'Preservation', 'Removed', 'On Hold'] },
     { key: 'relocationRequired', label: 'Relocation Required', type: 'checkbox' },
     { key: 'relocationCost', label: 'Relocation Cost', type: 'number' },
-    { key: 'relocationStatus', label: 'Relocation Status' },
+    { key: 'relocationStatus', label: 'Relocation Status', type: 'select', options: [...relocationStatusOptions], defaultValue: defaultRelocationStatus },
+    {
+      key: 'rootPruningPeriodMonths',
+      label: 'Tree Root Pruning Months',
+      type: 'number',
+      hint: 'Leave blank to use the project default. Use this when a tree needs more or less root-pruning time.',
+    },
     { key: 'installationRequired', label: 'Installation Required', type: 'checkbox' },
     { key: 'preservationRequired', label: 'Preservation Required', type: 'checkbox' },
     { key: 'removalRequired', label: 'Removal Required', type: 'checkbox' },

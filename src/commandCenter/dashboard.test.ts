@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { buildDashboardSummary } from "./dashboard";
-import type { ClientRecord, EquipmentRecord, FieldUpdateRecord, InventoryItemRecord, JobRecord, LoadRecord, ScheduleTaskRecord } from "./records";
+import type { ClientRecord, EquipmentRecord, FieldUpdateRecord, InventoryItemRecord, JobRecord, LoadRecord, ScheduleTaskRecord, TreeRelocationRecord } from "./records";
 
 describe("command board dashboard summary", () => {
   it("builds actionable command strip counts for the hybrid board", () => {
@@ -30,6 +30,7 @@ describe("command board dashboard summary", () => {
         ["today", "4"],
         ["blocked", "3"],
         ["approved", "1"],
+        ["trees", "0"],
         ["crew", "2"],
         ["freight", "2"],
         ["equipment", "1"],
@@ -104,6 +105,49 @@ describe("command board dashboard summary", () => {
     assert.equal(crewAlert?.targetTab, "crewView");
     assert.deepEqual(summary.ownerReviewQueue.map((item) => [item.id, item.title, item.assignee, item.targetTab]), [
       ["field-update-christian-delay", "Semi #1 dispatch", "Christian Crespo", "crewView"],
+    ]);
+  });
+
+  it("surfaces tree lifecycle reminders on the command board", () => {
+    const jobs: JobRecord[] = [
+      {
+        id: "job-boca-course-1",
+        title: "Boca West Course 1 Renovation",
+        projectId: "project-boca-course-1",
+        projectName: "Boca West Course 1 Renovation",
+        clientName: "Boca West Country Club",
+        rootPruningPeriodMonths: 4,
+      },
+    ];
+    const treeRelocationRecords: TreeRelocationRecord[] = [
+      {
+        id: "tree-boca-1001",
+        treeId: "1001",
+        type: "Live Oak",
+        projectId: "project-boca-course-1",
+        projectName: "Boca West Course 1 Renovation",
+        relocationStatus: "Not Started",
+      },
+      {
+        id: "tree-boca-1002",
+        treeId: "1002",
+        type: "Live Oak",
+        projectId: "project-boca-course-1",
+        projectName: "Boca West Course 1 Renovation",
+        relocationStatus: "Relocated",
+        relocationDate: "2026-06-01",
+      },
+    ];
+
+    const summary = buildDashboardSummary({ jobs, treeRelocationRecords, todayIso: "2026-06-04" });
+    const lifecycleAlert = summary.commandAlerts.find((alert) => alert.id === "trees");
+
+    assert.equal(lifecycleAlert?.value, "3");
+    assert.equal(lifecycleAlert?.targetTab, "tracker");
+    assert.deepEqual(summary.ownerReviewQueue.slice(0, 3).map((item) => [item.title, item.recordId]), [
+      ["Schedule 1st Cut", "job-boca-course-1"],
+      ["Invoice Relocated Tree", "job-boca-course-1"],
+      ["Schedule Nutrient Care After Relocation", "job-boca-course-1"],
     ]);
   });
 

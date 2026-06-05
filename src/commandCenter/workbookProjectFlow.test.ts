@@ -147,5 +147,6 @@ test("builds workbook setup and schema map tables for Google Sheets writeback", 
   assert.equal(schemaMap?.primaryId, "Workbook_Column");
   assert.equal(schemaMap?.columns.includes("Schema_Version"), true);
   assert.equal(schemaMap?.rows.some((row) => row.Workbook_Tab === "Project_Tree_Assets" && row.Workbook_Column === "Tree_Type" && row.App_Field === "treeType"), true);
+  assert.equal(schemaMap?.rows.some((row) => row.Workbook_Tab === "Project_Tree_Assets" && row.Workbook_Column === "Relocation_Status" && String(row.Allowed_Values).includes("In Nutrient Care Phase")), true);
   assert.equal(schemaMap?.rows.some((row) => row.Workbook_Column === "Construction_Access_Pin" && row.Data_Type === "lat_lng_or_maps_pin"), true);
 });

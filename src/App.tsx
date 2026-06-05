@@ -83,6 +83,7 @@ import type {
 import { defaultJdtPersonnelRoster, mergePersonnelRecords } from './commandCenter/personnel';
 import { buildDashboardSummary, type DashboardCommandAlert, type DashboardWorkItem, type FeaturedOperation } from './commandCenter/dashboard';
 import { filterSeedRecords } from './commandCenter/operatingIntelligence';
+import { defaultRelocationStatus } from './commandCenter/treeLifecycle';
 import { normalizeProjectImportContext, pasteHeadersForTemplate, sheetImportTemplates, type ImportPreview, type ProjectImportContext, type SheetImportTemplateId } from './commandCenter/sheetImport';
 import { dataSyncDraftStorageKey, serializeDataSyncDraft } from './commandCenter/syncDraft';
 import {
@@ -325,7 +326,7 @@ function enrichProjectTreeAssetRecord(record: TreeRelocationRecord): TreeRelocat
   const treeId = String(record.treeId || record.id || '').trim();
   const projectId = String(record.projectId || record.projectsId || '').trim();
   const type = String(record.type || record.treeType || record.ranchOakType || record.title || '').trim();
-  const currentStatus = String(record.status || record.currentStatus || 'Open');
+  const currentStatus = String(record.status || record.currentStatus || record.relocationStatus || defaultRelocationStatus);
   const generatedId = [projectId, treeId, type].map(slugifyLocalId).filter(Boolean).join('-');
   const sourcePin = coordinatePointFromText(record.existingLocationDescription || record.location, 'Manual source pin');
   const relocationMap = sourcePin ? { ...(record.relocationMap || {}), source: sourcePin } : record.relocationMap;
@@ -340,6 +341,7 @@ function enrichProjectTreeAssetRecord(record: TreeRelocationRecord): TreeRelocat
     treeType: String(record.treeType || type),
     ranchOakType: String(record.ranchOakType || type),
     status: currentStatus,
+    relocationStatus: String(record.relocationStatus || currentStatus || defaultRelocationStatus),
     projectId,
     projectsId: String(record.projectsId || projectId),
     sourceSheetName: String(record.sourceSheetName || 'Manual Project Profile'),
@@ -1289,6 +1291,7 @@ const commandAlertIconMap: Record<DashboardCommandAlert['id'], typeof MapPin> = 
   today: Calendar,
   blocked: AlertTriangle,
   approved: DollarSign,
+  trees: Leaf,
   crew: UserCheck,
   freight: Truck,
   equipment: Wrench,
@@ -1356,7 +1359,7 @@ function Dashboard({ recentRecords, dashboardSummary, openModal, openDrawer, set
         </div>
       </div>
 
-      <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[1.35fr_repeat(5,minmax(0,1fr))]">
+      <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[1.35fr_repeat(6,minmax(0,1fr))]">
         {dashboardSummary.commandAlerts.map((alert: DashboardCommandAlert) => {
           const Icon = commandAlertIconMap[alert.id];
           return (

@@ -14,6 +14,7 @@ import type {
 } from './records';
 import { normalizeDelimitedList, withHomeBaseEquipmentDefaults } from './equipmentFreight';
 import { clientIdFromName, jobIdFromName, projectIdFromName } from './relationships';
+import { defaultRelocationStatus } from './treeLifecycle';
 import { sourceRefFromWorkbookRow } from './workbookProjectFlow';
 
 export type SheetImportTemplateId =
@@ -785,8 +786,8 @@ function mapRelocation(template: SheetImportTemplate, rows: string[][]): ImportT
         dbh: numberFrom(value(row, 'DBH (IN)')) ?? cleanOptional(value(row, 'DBH (IN)')),
         difficulty: value(row, 'Difficulty'),
         relocationCost: moneyFrom(value(row, 'RELOCATION COST')) ?? cleanOptional(value(row, 'RELOCATION COST')),
-        relocationStatus: value(row, 'RELOCATION STATUS'),
-        status: value(row, 'RELOCATION STATUS') || 'Open',
+        relocationStatus: value(row, 'RELOCATION STATUS') || defaultRelocationStatus,
+        status: value(row, 'RELOCATION STATUS') || defaultRelocationStatus,
         rootPruneCuts: numberFrom(value(row, 'ROOT PRUNE CUTS')) ?? cleanOptional(value(row, 'ROOT PRUNE CUTS')),
         firstCutDate: value(row, 'DATE OF FIRST CUT'),
         secondCutDate: value(row, 'DATE OF SECOND CUT'),
@@ -848,11 +849,11 @@ function mapJdtProjectFlowTreeAssets(template: SheetImportTemplate, rows: string
         condition: value(row, 'Condition'),
         existingLocationDescription,
         proposedFinalLocationDescription,
-        currentStatus: firstValue(row, 'Current_Status', 'Current Status'),
-        status: firstValue(row, 'Current_Status', 'Current Status', 'Relocation_Status', 'Relocation Status') || 'Open',
+        currentStatus: firstValue(row, 'Current_Status', 'Current Status') || defaultRelocationStatus,
+        status: firstValue(row, 'Current_Status', 'Current Status', 'Relocation_Status', 'Relocation Status') || defaultRelocationStatus,
         relocationRequired: firstValue(row, 'Relocation_Required', 'Relocation Required'),
         relocationCost: moneyFrom(firstValue(row, 'Relocation_Cost', 'Relocation Cost')) ?? cleanOptional(firstValue(row, 'Relocation_Cost', 'Relocation Cost')),
-        relocationStatus: firstValue(row, 'Relocation_Status', 'Relocation Status'),
+        relocationStatus: firstValue(row, 'Relocation_Status', 'Relocation Status') || defaultRelocationStatus,
         installationRequired: firstValue(row, 'Installation_Required', 'Installation Required'),
         preservationRequired: firstValue(row, 'Preservation_Required', 'Preservation Required'),
         removalRequired: firstValue(row, 'Removal_Required', 'Removal Required'),

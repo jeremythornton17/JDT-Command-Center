@@ -4,6 +4,7 @@ import type { DocumentRecord, FieldUpdateRecord, LoadRecord, ProjectMaterialItem
 import type { ProjectImportContext, SheetImportTemplateId } from '../commandCenter/sheetImport';
 import { sameClient, sameProject } from '../commandCenter/relationships';
 import { equipmentCategory, equipmentDisplayName } from '../commandCenter/equipmentFreight';
+import { defaultRelocationStatus, formatRelocationCost, relocationStatusBadgeClass } from '../commandCenter/treeLifecycle';
 
 type CommandDrawerProps = {
   isOpen: boolean;
@@ -1319,7 +1320,9 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                               <p className="text-sm font-black text-jdt-primary">{treeLabel}</p>
                               <p className="mt-1 text-[10px] font-bold uppercase text-zinc-400">{displayValue(tree.treeId || tree.id)}</p>
                             </div>
-                            <span className="rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{displayValue(tree.relocationStatus || tree.status || 'Open')}</span>
+                            <span className={`rounded border px-2 py-1 text-[9px] font-black uppercase ${relocationStatusBadgeClass(tree.relocationStatus || tree.status || defaultRelocationStatus)}`}>
+                              {displayValue(tree.relocationStatus || tree.status || defaultRelocationStatus)}
+                            </span>
                           </div>
                           <div className="mt-3 flex flex-wrap gap-2">
                             <button type="button" onClick={() => openModal('project_tree_asset', seedTreeAsset(tree))} className="rounded-lg border border-jdt-border bg-jdt-panel px-3 py-1.5 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Edit Tree</button>
@@ -1328,10 +1331,11 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                             <button type="button" onClick={() => openModal('project_tree_photo', seedTreePhoto(tree))} className="rounded-lg border border-jdt-border bg-jdt-panel px-3 py-1.5 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Add Photo</button>
                             <button type="button" onClick={() => openModal('delete_tree', tree)} className="rounded-lg border border-red-100 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase text-red-700 hover:border-red-300">Delete Tree</button>
                           </div>
-                          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                          <div className="mt-3 grid gap-2 sm:grid-cols-4">
                             <p className="text-xs font-bold text-zinc-600"><span className="font-black text-zinc-400 uppercase">DBH:</span> {displayValue(tree.dbh)}</p>
                             <p className="text-xs font-bold text-zinc-600"><span className="font-black text-zinc-400 uppercase">Difficulty:</span> {displayValue(tree.difficulty)}</p>
                             <p className="text-xs font-bold text-zinc-600"><span className="font-black text-zinc-400 uppercase">Priority:</span> {displayValue(tree.priority)}</p>
+                            <p className="text-xs font-bold text-zinc-600"><span className="font-black text-zinc-400 uppercase">Cost:</span> {formatRelocationCost(tree.relocationCost)}</p>
                           </div>
                           {locationLine && <p className="mt-2 text-xs font-semibold text-zinc-600">{locationLine}</p>}
                           <div className="mt-4 grid gap-3 lg:grid-cols-3">

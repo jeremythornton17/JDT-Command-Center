@@ -126,12 +126,35 @@ test('project tree asset forms expose editable tree, pruning, aftercare, and pho
 
   assert.match(treeHtml, /Tree Type/);
   assert.match(treeHtml, /Existing Location Description/);
+  assert.match(treeHtml, /Relocation Status/);
+  assert.match(treeHtml, /Not Started/);
+  assert.match(treeHtml, /1st Cut Scheduled/);
+  assert.match(treeHtml, /In Nutrient Care Phase/);
+  assert.match(treeHtml, /Tree Root Pruning Months/);
   assert.match(pruningHtml, /Date of 1st Cut/);
   assert.match(pruningHtml, /Readiness Reviews/);
   assert.match(aftercareHtml, /Treatment Action/);
   assert.match(aftercareHtml, /Next Follow-up Date/);
   assert.match(photoHtml, /Photo/);
   assert.match(photoHtml, /Captured Date/);
+});
+
+test('project forms expose a default root pruning period for relocation timing', () => {
+  const html = renderToString(
+    <EntityForms
+      type="edit_project"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{
+        title: "Boca West Course 1 Renovation",
+        rootPruningPeriodMonths: 4,
+      }}
+    />,
+  );
+
+  assert.match(html, /Default Root Pruning Months/);
+  assert.match(html, /4/);
 });
 
 test('project tree asset forms show and require the selected project context', () => {
