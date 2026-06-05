@@ -311,7 +311,7 @@ describe("sheet import mapping", () => {
     assert.equal(workOrders?.length, 1);
     assert.equal(workOrders[0].id, "prune-boca-001");
     assert.equal(workOrders[0].workOrderType, "tree_pruning");
-    assert.equal(workOrders[0].sourceSheetName, "Tree Pruning");
+    assert.equal(workOrders[0].sourceSheetName, "Project_Root_Pruning");
     assert.equal(workOrders[0].sourceRowId, "prune-boca-001");
     assert.equal(workOrders[0].treeIds?.[0], "tree-boca-001");
   });
@@ -352,6 +352,62 @@ describe("sheet import mapping", () => {
     });
   });
 
+  it("maps canonical JDT Command Center project tree asset headers into relocation tree records", () => {
+    const preview = buildImportPreview("jdt_project_flow_tree_assets", [
+      ["Tree_Asset_ID", "Project_ID", "Client_ID", "Tree_Type", "Tag", "DBH_IN", "Existing_Source_Pin", "Destination_Pin", "Current_Status", "Relocation_Status", "Priority"],
+      ["BWCC-060426-TREE-1003", "BWCC-060426", "CLI-2275", "Live Oak", "1003", "33", "26.387315,-80.1712583", "26.388,-80.172", "Ready for Relocation", "Ready for Relocation", "High"],
+    ]);
+    const trees = preview.targets.find((target) => target.collectionName === "treeRelocationRecords")?.records as any[];
+
+    assert.equal(trees?.length, 1);
+    assert.equal(trees[0].id, "BWCC-060426-TREE-1003");
+    assert.equal(trees[0].projectId, "BWCC-060426");
+    assert.equal(trees[0].clientId, "CLI-2275");
+    assert.equal(trees[0].treeType, "Live Oak");
+    assert.equal(trees[0].tag, "1003");
+    assert.deepEqual(trees[0].relocationMap.source, {
+      lat: 26.38732,
+      lng: -80.17126,
+      label: "Imported source pin",
+    });
+    assert.deepEqual(trees[0].relocationMap.destination, {
+      lat: 26.388,
+      lng: -80.172,
+      label: "Imported destination pin",
+    });
+  });
+
+  it("maps canonical JDT Command Center root pruning and nutrient care headers into work orders", () => {
+    const pruningPreview = buildImportPreview("jdt_project_flow_tree_pruning", [
+      ["Root_Pruning_ID", "Tree_Asset_ID", "Project_ID", "Cut_Count", "Date_1st_Cut", "Readiness_Status", "Next_Action", "Notes"],
+      ["RP-BWCC-1003", "BWCC-060426-TREE-1003", "BWCC-060426", "1", "2026-06-06", "Scheduled", "Second cut", "First cut assigned"],
+    ]);
+    const pruning = pruningPreview.targets.find((target) => target.collectionName === "workOrders")?.records as any[];
+
+    assert.equal(pruning?.length, 1);
+    assert.equal(pruning[0].id, "RP-BWCC-1003");
+    assert.equal(pruning[0].workOrderType, "tree_pruning");
+    assert.equal(pruning[0].sourceSheetName, "Project_Root_Pruning");
+    assert.equal(pruning[0].sourceRowId, "RP-BWCC-1003");
+    assert.equal(pruning[0].projectId, "BWCC-060426");
+    assert.equal(pruning[0].treeIds?.[0], "BWCC-060426-TREE-1003");
+    assert.match(pruning[0].notes, /Second cut/);
+
+    const nutrientPreview = buildImportPreview("jdt_project_flow_treatment_aftercare", [
+      ["Nutrient_Care_ID", "Tree_Asset_ID", "Project_ID", "Treatment", "Treatment_Type", "Date_Last_Treatment", "Treatment_Action", "Completed_By", "Follow_Up_Needed", "Next_Follow_Up_Date"],
+      ["NC-BWCC-1003", "BWCC-060426-TREE-1003", "BWCC-060426", "Deep root feed", "Fertilizer", "2026-06-01", "Monitor", "Samuel Rivera", "Yes", "2026-06-10"],
+    ]);
+    const nutrient = nutrientPreview.targets.find((target) => target.collectionName === "workOrders")?.records as any[];
+
+    assert.equal(nutrient?.length, 1);
+    assert.equal(nutrient[0].id, "NC-BWCC-1003");
+    assert.equal(nutrient[0].workOrderType, "treatment_aftercare");
+    assert.equal(nutrient[0].sourceSheetName, "Project_Nutrient_Care");
+    assert.equal(nutrient[0].projectId, "BWCC-060426");
+    assert.equal(nutrient[0].treeIds?.[0], "BWCC-060426-TREE-1003");
+    assert.equal(nutrient[0].crewLeadName, "Samuel Rivera");
+  });
+
   it("stamps project tree asset imports with the selected project context", () => {
     const preview = buildImportPreview("jdt_project_flow_tree_assets", [
       ["Tree_Assets_ID", "Projects_ID", "Tree Type", "DBH (IN)", "Existing Location Description", "Current Status"],
@@ -390,7 +446,7 @@ describe("sheet import mapping", () => {
     assert.equal(workOrders?.length, 1);
     assert.equal(workOrders[0].id, "treat-boca-109-1");
     assert.equal(workOrders[0].workOrderType, "treatment_aftercare");
-    assert.equal(workOrders[0].sourceSheetName, "Treatment or Aftercare");
+    assert.equal(workOrders[0].sourceSheetName, "Project_Nutrient_Care");
     assert.equal(workOrders[0].treeIds?.[0], "tree-boca-109");
     assert.match(workOrders[0].notes, /Fertilizer/);
     assert.match(workOrders[0].notes, /Monitor weekly/);
@@ -410,6 +466,6 @@ describe("sheet import mapping", () => {
     assert.equal(documents[0].url, "https://drive.google.com/file/d/photo");
     assert.equal(documents[0].takenBy, "Jennifer Bermudez");
     assert.equal(documents[0].photoDate, "2026-05-31");
-    assert.equal(documents[0].sourceSheetName, "Tree Photos");
+    assert.equal(documents[0].sourceSheetName, "Project_Tree_Photos");
   });
 });

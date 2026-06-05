@@ -303,7 +303,7 @@ function enrichProjectMaterialItemRecord(record: ProjectMaterialItemRecord): Pro
     sourceSheetName: record.sourceSheetName || 'Project_Material_Items',
     sourceRowId: record.sourceRowId || projectMaterialItemsId,
     sourceRefs: record.sourceRefs || [sourceRefFromWorkbookRow('Project_Material_Items', {
-      Project_Material_Items_ID: projectMaterialItemsId,
+      Material_Item_ID: projectMaterialItemsId,
     })],
   };
 }
@@ -355,7 +355,7 @@ function firstListValue(value: unknown): string {
 function enrichProjectTreeWorkOrderRecord(record: WorkOrderRecord, workOrderType: WorkOrderRecord['workOrderType']): WorkOrderRecord {
   const treeId = firstListValue(record.treeIds || record.treeNames);
   const titlePrefix = workOrderType === 'tree_pruning' ? 'Root Pruning' : 'Nutrient Care';
-  const sourceSheetName = workOrderType === 'tree_pruning' ? 'Tree Pruning' : 'Treatment or Aftercare';
+  const sourceSheetName = workOrderType === 'tree_pruning' ? 'Project_Root_Pruning' : 'Project_Nutrient_Care';
   const generatedId = [record.projectId, treeId, workOrderType, record.scheduledDate, record.completedDate].map(slugifyLocalId).filter(Boolean).join('-');
 
   return enrichWorkOrderRecord({
@@ -385,7 +385,7 @@ function enrichProjectTreePhotoRecord(record: DocumentRecord): DocumentRecord {
     category: record.category || 'Tree Photo',
     treeId,
     treeIds: normalizeDelimitedList(record.treeIds || treeId),
-    sourceSheetName: record.sourceSheetName || 'Tree Photos',
+    sourceSheetName: record.sourceSheetName || 'Project_Tree_Photos',
   } as DocumentRecord;
 }
 
@@ -1119,7 +1119,7 @@ export default function App() {
       case 'documents':
         return <DocumentsBoard documents={documents} openModal={openModal} />;
       case 'sheets':
-        return <SyncBoard sources={syncSources} mappings={syncMappings} importBatches={importBatches} openModal={openModal} openDrawer={openDrawer} onImportPreview={handleImportPreview} onRollbackImport={handleRollbackImport} canImport={permissions.canImport} projectImportContext={projectImportContext} />;
+        return <SyncBoard sources={syncSources} mappings={syncMappings} importBatches={importBatches} openModal={openModal} openDrawer={openDrawer} onImportPreview={handleImportPreview} onRollbackImport={handleRollbackImport} canImport={permissions.canImport} projectImportContext={projectImportContext} projects={projects} treeRelocationRecords={treeRelocationRecords} workOrders={workOrders} projectMaterialItems={projectMaterialItems} documents={documents} />;
       case 'settings':
         return <SettingsBoard openModal={openModal} onClearSeedData={handleClearSeedData} />;
       default:

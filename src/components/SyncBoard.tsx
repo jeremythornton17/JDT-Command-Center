@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Columns, Database, FileSpreadsheet, FolderSync, Upload } from 'lucide-react';
-import type { ImportBatchRecord, SyncMappingRecord, SyncSourceRecord } from '../commandCenter/records';
+import { AlertTriangle, CheckCircle2, ClipboardCopy, Columns, Database, FileSpreadsheet, FolderSync, Upload } from 'lucide-react';
+import type { DocumentRecord, ImportBatchRecord, ProjectMaterialItemRecord, ProjectRecord, SyncMappingRecord, SyncSourceRecord, TreeRelocationRecord, WorkOrderRecord } from '../commandCenter/records';
 import {
   dataSyncDraftStorageKey,
   parseDataSyncDraft,
@@ -18,6 +18,7 @@ import {
   type ProjectImportContext,
   type SheetImportTemplateId,
 } from '../commandCenter/sheetImport';
+import { buildProjectWorkbookExport, canonicalProjectWorkbookTabNames, workbookExportTableToTsv } from '../commandCenter/workbookProjectFlow';
 
 type SyncBoardProps = {
   sources: SyncSourceRecord[];
@@ -29,6 +30,11 @@ type SyncBoardProps = {
   onRollbackImport?: (batchId: string) => void;
   canImport?: boolean;
   projectImportContext?: ProjectImportContext | null;
+  projects?: ProjectRecord[];
+  treeRelocationRecords?: TreeRelocationRecord[];
+  workOrders?: WorkOrderRecord[];
+  projectMaterialItems?: ProjectMaterialItemRecord[];
+  documents?: DocumentRecord[];
 };
 
 function readInitialDataSyncDraft(): DataSyncDraft | null {
@@ -51,7 +57,21 @@ function previewFromDraft(draft: DataSyncDraft | null): ImportPreview | null {
   }
 }
 
-export default function SyncBoard({ sources, mappings, importBatches = [], openModal, onImportPreview, onRollbackImport, canImport = true, projectImportContext = null }: SyncBoardProps) {
+export default function SyncBoard({
+  sources,
+  mappings,
+  importBatches = [],
+  openModal,
+  onImportPreview,
+  onRollbackImport,
+  canImport = true,
+  projectImportContext = null,
+  projects = [],
+  treeRelocationRecords = [],
+  workOrders = [],
+  projectMaterialItems = [],
+  documents = [],
+}: SyncBoardProps) {
   const [initialDraft] = useState(readInitialDataSyncDraft);
   const [selectedTemplateId, setSelectedTemplateId] = useState<SheetImportTemplateId>(
     initialDraft?.templateId || (projectImportContext ? 'jdt_project_flow_tree_assets' : 'inventory'),
@@ -62,11 +82,23 @@ export default function SyncBoard({ sources, mappings, importBatches = [], openM
   const [error, setError] = useState('');
   const [draftRestored, setDraftRestored] = useState(Boolean(initialDraft?.pastedRows.trim()));
   const [isSavingImport, setIsSavingImport] = useState(false);
+  const [selectedExportSheetName, setSelectedExportSheetName] = useState<string>(canonicalProjectWorkbookTabNames[1]);
+  const [copyMessage, setCopyMessage] = useState('');
   const selectedTemplate = useMemo(() => sheetImportTemplates.find((template) => template.id === selectedTemplateId) || sheetImportTemplates[0], [selectedTemplateId]);
   const selectedPasteHeaders = useMemo(() => pasteHeadersForTemplate(selectedTemplate), [selectedTemplate]);
   const selectedProjectContext = isProjectWorkbookTemplateId(selectedTemplateId) ? activeProjectContext : null;
   const previewWarnings = useMemo(() => preview ? Array.from(new Set([...preview.warnings, ...preview.targets.flatMap((target) => target.warnings)])) : [], [preview]);
   const previewRecordCount = preview?.targets.reduce((sum, target) => sum + target.records.length, 0) || 0;
+  const exportTables = useMemo(() => buildProjectWorkbookExport({
+    projects,
+    treeAssets: treeRelocationRecords,
+    workOrders,
+    materialItems: projectMaterialItems,
+    documents,
+  }), [projects, treeRelocationRecords, workOrders, projectMaterialItems, documents]);
+  const selectedExportTable = exportTables.find((table) => table.sheetName === selectedExportSheetName) || exportTables[0];
+  const selectedExportText = selectedExportTable ? workbookExportTableToTsv(selectedExportTable) : '';
+  const exportRecordCount = selectedExportTable?.rows.length || 0;
 
   useEffect(() => {
     if (projectImportContext) {
@@ -138,6 +170,18 @@ export default function SyncBoard({ sources, mappings, importBatches = [], openM
       setError(`${message} Your pasted rows are still saved as a local draft.`);
     } finally {
       setIsSavingImport(false);
+    }
+  };
+
+  const handleCopyExport = async () => {
+    if (!selectedExportText) return;
+    setCopyMessage('');
+
+    try {
+      await navigator.clipboard.writeText(selectedExportText);
+      setCopyMessage(`Copied ${selectedExportTable.sheetName} backup rows.`);
+    } catch {
+      setCopyMessage('Copy failed. Select the export text and copy it manually.');
     }
   };
 
@@ -321,6 +365,63 @@ export default function SyncBoard({ sources, mappings, importBatches = [], openM
                 {!canImport && <p className="mt-2 text-[10px] font-black uppercase text-amber-700">Preview only for this account</p>}
               </div>
             )}
+          </aside>
+        </div>
+      </section>
+
+      <section className="bg-jdt-panel border border-jdt-border rounded-xl shadow-sm overflow-hidden">
+        <div className="border-b border-jdt-border px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h3 className="text-sm font-black uppercase text-jdt-text flex items-center gap-2">
+              <ClipboardCopy className="h-4 w-4 text-jdt-olive" /> Workbook Backup Export
+            </h3>
+            <p className="mt-1 text-xs font-bold text-zinc-500">Copy app records back into the matching JDT Command Center workbook tab by stable ID.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={selectedExportTable?.sheetName || selectedExportSheetName}
+              onChange={(event) => {
+                setSelectedExportSheetName(event.target.value);
+                setCopyMessage('');
+              }}
+              className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-black uppercase text-jdt-text outline-none focus:border-jdt-olive"
+            >
+              {exportTables.map((table) => (
+                <option key={table.sheetName} value={table.sheetName}>{table.sheetName}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleCopyExport}
+              className="inline-flex items-center gap-2 rounded-lg bg-jdt-primary px-4 py-2 text-xs font-black uppercase text-white shadow-sm hover:bg-jdt-dark transition-colors"
+            >
+              <ClipboardCopy className="h-4 w-4" /> Copy Export
+            </button>
+          </div>
+        </div>
+        <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+          <textarea
+            value={selectedExportText}
+            readOnly
+            className="min-h-[180px] w-full resize-y rounded-lg border border-jdt-border bg-white p-3 font-mono text-xs text-jdt-text outline-none"
+          />
+          <aside className="rounded-lg border border-jdt-border bg-white p-4">
+            <p className="text-[10px] font-black uppercase text-zinc-400">Selected Tab</p>
+            <p className="mt-1 text-lg font-black text-jdt-primary">{selectedExportTable?.sheetName}</p>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
+                <p className="text-[10px] font-black uppercase text-zinc-400">Rows</p>
+                <p className="text-xl font-black text-jdt-text">{exportRecordCount}</p>
+              </div>
+              <div className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
+                <p className="text-[10px] font-black uppercase text-zinc-400">Columns</p>
+                <p className="text-xl font-black text-jdt-text">{selectedExportTable?.columns.length || 0}</p>
+              </div>
+            </div>
+            <p className="mt-4 text-xs font-bold leading-relaxed text-zinc-500">
+              Export rows include durable project backup details. Temporary dispatch details like which truck a crew used stay in the app event history unless they belong to the permanent record.
+            </p>
+            {copyMessage && <p className="mt-3 rounded-lg border border-jdt-border bg-jdt-sand px-3 py-2 text-xs font-black text-jdt-primary">{copyMessage}</p>}
           </aside>
         </div>
       </section>

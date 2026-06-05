@@ -37,6 +37,7 @@ export type SheetImportTemplate = {
   sourceSheet: string;
   targetCollections: string[];
   requiredHeaders: string[];
+  headerAliases?: Record<string, string[]>;
   pasteHeaders?: string[];
   previewFields?: Array<{ label: string; key: string }>;
 };
@@ -141,10 +142,15 @@ export const sheetImportTemplates: SheetImportTemplate[] = [
   {
     id: 'jdt_project_flow_tree_assets',
     label: 'JDT Project Flow - Tree Assets',
-    sourceSheet: 'Tree Assets',
+    sourceSheet: 'Project_Tree_Assets',
     targetCollections: ['treeRelocationRecords'],
-    requiredHeaders: ['Tree_Assets_ID', 'Projects_ID', 'Tree Type'],
-    pasteHeaders: ['Tree_Assets_ID', 'Projects_ID', 'Tree Type', 'DBH (IN)', 'Difficulty ', 'Condition', 'Existing Location Description', 'Proposed Final Location Description', 'Current Status', 'Relocation Required', 'Relocation Cost', 'Relocation Status', 'Installation Required', 'Preservation Required', 'Removal Required', 'Priority'],
+    requiredHeaders: ['Tree_Asset_ID', 'Project_ID', 'Tree_Type'],
+    headerAliases: {
+      Tree_Asset_ID: ['Tree_Assets_ID', 'Tree Assets_ID', 'Tree Assets ID'],
+      Project_ID: ['Projects_ID', 'Project ID'],
+      Tree_Type: ['Tree Type', 'TYPE'],
+    },
+    pasteHeaders: ['Tree_Asset_ID', 'Project_ID', 'Client_ID', 'Tree_Type', 'Tag', 'DBH_IN', 'Height', 'Spread', 'Difficulty', 'Condition', 'Existing_Location_Description', 'Existing_Source_Pin', 'Proposed_Final_Location_Description', 'Destination_Pin', 'Current_Status', 'Relocation_Required', 'Installation_Required', 'Preservation_Required', 'Removal_Required', 'Relocation_Status', 'Relocation_Cost', 'Priority', 'Notes', 'App_Record_ID', 'App_Updated_At', 'Last_Sync_Batch_ID', 'Schema_Version'],
     previewFields: [
       { label: 'Project', key: 'projectId' },
       { label: 'Tree', key: 'type' },
@@ -154,11 +160,15 @@ export const sheetImportTemplates: SheetImportTemplate[] = [
   },
   {
     id: 'jdt_project_flow_tree_pruning',
-    label: 'JDT Project Flow - Tree Pruning',
-    sourceSheet: 'Tree Pruning',
+    label: 'JDT Project Flow - Root Pruning',
+    sourceSheet: 'Project_Root_Pruning',
     targetCollections: ['workOrders'],
-    requiredHeaders: ['Tree Assets_ID', 'Tree_Prune_ID'],
-    pasteHeaders: ['Tree Assets_ID', 'Tree_Prune_ID', 'Root Prune Cuts', 'Date of 1st Cut', 'Date of 2nd Cut', 'Date of 3rd Cut', 'Prep Checks', 'Readiness Reviews', 'Notes'],
+    requiredHeaders: ['Tree_Asset_ID', 'Root_Pruning_ID'],
+    headerAliases: {
+      Tree_Asset_ID: ['Tree Assets_ID', 'Tree_Assets_ID', 'Tree Assets ID'],
+      Root_Pruning_ID: ['Tree_Prune_ID'],
+    },
+    pasteHeaders: ['Root_Pruning_ID', 'Tree_Asset_ID', 'Project_ID', 'Cut_Count', 'Date_1st_Cut', 'Date_2nd_Cut', 'Date_3rd_Cut', 'Prep_Checks', 'Readiness_Status', 'Next_Action', 'Notes', 'App_Record_ID', 'App_Updated_At', 'Last_Sync_Batch_ID', 'Schema_Version'],
     previewFields: [
       { label: 'Tree', key: 'treeNames' },
       { label: 'Status', key: 'status' },
@@ -167,11 +177,15 @@ export const sheetImportTemplates: SheetImportTemplate[] = [
   },
   {
     id: 'jdt_project_flow_treatment_aftercare',
-    label: 'JDT Project Flow - Treatment or Aftercare',
-    sourceSheet: 'Treatment or Aftercare',
+    label: 'JDT Project Flow - Nutrient Care',
+    sourceSheet: 'Project_Nutrient_Care',
     targetCollections: ['workOrders'],
-    requiredHeaders: ['Treatment_Aftercare Logs_ID', 'Tree Assets_ID'],
-    pasteHeaders: ['Treatment_Aftercare Logs_ID', 'Tree Assets_ID', 'Treatments', 'Treatments Type', 'Date Of Last Treatment', 'Treatment Action', 'Completed By', 'Condition Observed', 'Watering Status', 'Irrigation Status', 'Stress Level', 'Follow-up Needed', 'Next Follow-up Date', 'Notes'],
+    requiredHeaders: ['Nutrient_Care_ID', 'Tree_Asset_ID'],
+    headerAliases: {
+      Nutrient_Care_ID: ['Treatment_Aftercare Logs_ID', 'Treatment_Aftercare_Logs_ID'],
+      Tree_Asset_ID: ['Tree Assets_ID', 'Tree_Assets_ID', 'Tree Assets ID'],
+    },
+    pasteHeaders: ['Nutrient_Care_ID', 'Tree_Asset_ID', 'Project_ID', 'Treatment', 'Treatment_Type', 'Date_Last_Treatment', 'Treatment_Action', 'Completed_By', 'Condition_Observed', 'Watering_Status', 'Irrigation_Status', 'Stress_Level', 'Follow_Up_Needed', 'Next_Follow_Up_Date', 'Notes', 'App_Record_ID', 'App_Updated_At', 'Last_Sync_Batch_ID', 'Schema_Version'],
     previewFields: [
       { label: 'Tree', key: 'treeNames' },
       { label: 'Action', key: 'taskType' },
@@ -181,10 +195,14 @@ export const sheetImportTemplates: SheetImportTemplate[] = [
   {
     id: 'jdt_project_flow_tree_photos',
     label: 'JDT Project Flow - Tree Photos',
-    sourceSheet: 'Tree Photos',
+    sourceSheet: 'Project_Tree_Photos',
     targetCollections: ['documents'],
-    requiredHeaders: ['Tree_Photos_ID', 'Tree Assets_ID'],
-    pasteHeaders: ['Tree_Photos_ID', 'Tree Assets_ID', 'Photo', 'Captured By', 'Captured Date', 'Photo Location', 'Notes'],
+    requiredHeaders: ['Tree_Photo_ID', 'Tree_Asset_ID'],
+    headerAliases: {
+      Tree_Photo_ID: ['Tree_Photos_ID'],
+      Tree_Asset_ID: ['Tree Assets_ID', 'Tree_Assets_ID', 'Tree Assets ID'],
+    },
+    pasteHeaders: ['Tree_Photo_ID', 'Tree_Asset_ID', 'Project_ID', 'Photo_URL', 'Photo_Type', 'Captured_By', 'Captured_Date', 'Photo_Location', 'Notes', 'App_Record_ID', 'App_Updated_At', 'Last_Sync_Batch_ID', 'Schema_Version'],
     previewFields: [
       { label: 'Tree', key: 'treeId' },
       { label: 'Type', key: 'photoType' },
@@ -196,8 +214,13 @@ export const sheetImportTemplates: SheetImportTemplate[] = [
     label: 'JDT Project Flow - Project Material Items',
     sourceSheet: 'Project_Material_Items',
     targetCollections: ['projectMaterialItems'],
-    requiredHeaders: ['Project_Material_Items_ID', 'Projects_ID', 'Material Type'],
-    pasteHeaders: ['Project_Material_Items_ID', 'Projects_ID', 'Project Name', 'Hole Number / Area', 'Source', 'Material Type', 'Size / Class', 'Quantity Required', 'Quantity Installed', 'Unit Price', 'Install Status', 'Notes'],
+    requiredHeaders: ['Material_Item_ID', 'Project_ID', 'Material_Type'],
+    headerAliases: {
+      Material_Item_ID: ['Project_Material_Items_ID'],
+      Project_ID: ['Projects_ID'],
+      Material_Type: ['Material Type'],
+    },
+    pasteHeaders: ['Material_Item_ID', 'Project_ID', 'Client_ID', 'Project_Name', 'Area', 'Source', 'Material_Type', 'Size_Class', 'Quantity_Required', 'Quantity_Installed', 'Unit_Price', 'Install_Status', 'Notes', 'App_Record_ID', 'App_Updated_At', 'Last_Sync_Batch_ID', 'Schema_Version'],
     previewFields: [
       { label: 'Project', key: 'projectName' },
       { label: 'Area', key: 'holeNumberOrArea' },
@@ -384,7 +407,7 @@ function mapTemplate(template: SheetImportTemplate, rows: string[][], options: B
 }
 
 function mapInventory(template: SheetImportTemplate, rows: string[][]): ImportTarget {
-  const { records, warnings } = objectRows(rows, template.requiredHeaders);
+  const { records, warnings } = objectRows(rows, template.requiredHeaders, template.headerAliases);
   const inventory = records
     .map(({ row, index }) => {
       const farm = value(row, 'Farm ID');
@@ -428,7 +451,7 @@ function mapInventory(template: SheetImportTemplate, rows: string[][]): ImportTa
 }
 
 function mapClients(template: SheetImportTemplate, rows: string[][]): ImportTarget {
-  const { records, warnings } = objectRows(rows, template.requiredHeaders);
+  const { records, warnings } = objectRows(rows, template.requiredHeaders, template.headerAliases);
   const grouped = new Map<string, ClientRecord>();
 
   records.forEach(({ row, index }) => {
@@ -481,7 +504,7 @@ function mapClients(template: SheetImportTemplate, rows: string[][]): ImportTarg
 }
 
 function mapEquipment(template: SheetImportTemplate, rows: string[][]): ImportTarget {
-  const { records, warnings } = objectRows(rows, template.requiredHeaders);
+  const { records, warnings } = objectRows(rows, template.requiredHeaders, template.headerAliases);
   const equipment = records
     .map(({ row, index }) => {
       const assetId = firstValue(row, 'Equipment ID', 'Asset ID', 'Asset');
@@ -545,7 +568,7 @@ function mapEquipment(template: SheetImportTemplate, rows: string[][]): ImportTa
 }
 
 function mapLocations(template: SheetImportTemplate, rows: string[][]): ImportTarget {
-  const { records, warnings } = objectRows(rows, template.requiredHeaders);
+  const { records, warnings } = objectRows(rows, template.requiredHeaders, template.headerAliases);
   const locations = records
     .map(({ row, index }) => {
       const locationType = value(row, 'Location ID') || value(row, 'Location Type');
@@ -582,7 +605,7 @@ function mapLocations(template: SheetImportTemplate, rows: string[][]): ImportTa
 }
 
 function mapStaff(template: SheetImportTemplate, rows: string[][]): ImportTarget {
-  const { records, warnings } = objectRows(rows, template.requiredHeaders);
+  const { records, warnings } = objectRows(rows, template.requiredHeaders, template.headerAliases);
   const staff = records
     .map(({ row, index }) => {
       const name = value(row, 'Staff Name');
@@ -622,7 +645,7 @@ function mapStaff(template: SheetImportTemplate, rows: string[][]): ImportTarget
 }
 
 function mapSpecies(template: SheetImportTemplate, rows: string[][]): ImportTarget {
-  const { records, warnings } = objectRows(rows, template.requiredHeaders);
+  const { records, warnings } = objectRows(rows, template.requiredHeaders, template.headerAliases);
   const seen = new Map<string, SpeciesRecord>();
 
   records.forEach(({ row, index }) => {
@@ -664,7 +687,7 @@ function mapSpecies(template: SheetImportTemplate, rows: string[][]): ImportTarg
 }
 
 function mapSchedule(template: SheetImportTemplate, rows: string[][]): ImportTarget {
-  const { records, warnings, headers } = objectRows(rows, template.requiredHeaders);
+  const { records, warnings, headers } = objectRows(rows, template.requiredHeaders, template.headerAliases);
   const activityHeader = headers.find((header) => /relocation|freight|nursery|maintenance/i.test(header)) || 'Activity';
   const schedule = records
     .map(({ row, index }) => {
@@ -726,7 +749,7 @@ function mapSchedule(template: SheetImportTemplate, rows: string[][]): ImportTar
 }
 
 function mapRelocation(template: SheetImportTemplate, rows: string[][]): ImportTarget {
-  const { records, warnings } = objectRows(rows, template.requiredHeaders);
+  const { records, warnings } = objectRows(rows, template.requiredHeaders, template.headerAliases);
   const relocation = records
     .map(({ row, index }) => {
       const jobId = value(row, 'JOB ID');
@@ -781,16 +804,19 @@ function mapRelocation(template: SheetImportTemplate, rows: string[][]): ImportT
 }
 
 function mapJdtProjectFlowTreeAssets(template: SheetImportTemplate, rows: string[][], projectContext?: ProjectImportContext | null): ImportTarget {
-  const { records, warnings } = objectRows(rows, template.requiredHeaders);
+  const { records, warnings } = objectRows(rows, template.requiredHeaders, template.headerAliases);
   const normalizedContext = normalizeProjectImportContext(projectContext);
   const contextProjectId = normalizedContext?.projectId || normalizedContext?.projectsId || '';
   const treeAssets = records
     .map(({ row, index }) => {
-      const treeAssetId = value(row, 'Tree_Assets_ID');
-      const projectsId = value(row, 'Projects_ID') || contextProjectId;
-      const type = value(row, 'Tree Type');
-      const existingLocationDescription = firstValue(row, 'Existing Location Description', 'LOCATION', 'Location');
-      const sourcePin = coordinatePointFromText(existingLocationDescription, 'Imported source pin');
+      const treeAssetId = firstValue(row, 'Tree_Asset_ID', 'Tree_Assets_ID', 'Tree Assets_ID');
+      const projectsId = firstValue(row, 'Project_ID', 'Projects_ID') || contextProjectId;
+      const clientId = firstValue(row, 'Client_ID', 'Companies_ID');
+      const type = firstValue(row, 'Tree_Type', 'Tree Type', 'TYPE');
+      const existingLocationDescription = firstValue(row, 'Existing_Location_Description', 'Existing Location Description', 'LOCATION', 'Location');
+      const proposedFinalLocationDescription = firstValue(row, 'Proposed_Final_Location_Description', 'Proposed Final Location Description');
+      const sourcePin = coordinatePointFromText(firstValue(row, 'Existing_Source_Pin', 'Source Pin') || existingLocationDescription, 'Imported source pin');
+      const destinationPin = coordinatePointFromText(firstValue(row, 'Destination_Pin', 'Destination Pin') || proposedFinalLocationDescription, 'Imported destination pin');
 
       if (!treeAssetId && !projectsId && !type) {
         warnings.push(`Row ${index} skipped: blank tree asset row`);
@@ -798,7 +824,7 @@ function mapJdtProjectFlowTreeAssets(template: SheetImportTemplate, rows: string
       }
 
       if (!treeAssetId || !projectsId || !type) {
-        warnings.push(`Row ${index} skipped: tree asset rows need Tree_Assets_ID, Projects_ID or selected project context, and Tree Type`);
+        warnings.push(`Row ${index} skipped: tree asset rows need Tree_Asset_ID, Project_ID or selected project context, and Tree_Type`);
         return null;
       }
 
@@ -807,32 +833,40 @@ function mapJdtProjectFlowTreeAssets(template: SheetImportTemplate, rows: string
         treeId: treeAssetId,
         name: [type, treeAssetId].filter(Boolean).join(' '),
         title: [type, treeAssetId].filter(Boolean).join(' '),
+        clientId,
         projectId: projectsId,
         projectsId,
-        projectName: value(row, 'Project Name') || normalizedContext?.projectName,
+        projectName: firstValue(row, 'Project_Name', 'Project Name') || normalizedContext?.projectName,
+        tag: firstValue(row, 'Tag', 'TAG') || treeAssetId,
         type,
         ranchOakType: type,
         treeType: type,
-        dbh: numberFrom(value(row, 'DBH (IN)')) ?? cleanOptional(value(row, 'DBH (IN)')),
-        difficulty: value(row, 'Difficulty'),
+        dbh: numberFrom(firstValue(row, 'DBH_IN', 'DBH (IN)')) ?? cleanOptional(firstValue(row, 'DBH_IN', 'DBH (IN)')),
+        height: firstValue(row, 'Height'),
+        spread: firstValue(row, 'Spread'),
+        difficulty: firstValue(row, 'Difficulty', 'Difficulty '),
         condition: value(row, 'Condition'),
         existingLocationDescription,
-        proposedFinalLocationDescription: value(row, 'Proposed Final Location Description'),
-        currentStatus: value(row, 'Current Status'),
-        status: value(row, 'Current Status') || value(row, 'Relocation Status') || 'Open',
-        relocationRequired: value(row, 'Relocation Required'),
-        relocationCost: moneyFrom(value(row, 'Relocation Cost')) ?? cleanOptional(value(row, 'Relocation Cost')),
-        relocationStatus: value(row, 'Relocation Status'),
-        installationRequired: value(row, 'Installation Required'),
-        preservationRequired: value(row, 'Preservation Required'),
-        removalRequired: value(row, 'Removal Required'),
+        proposedFinalLocationDescription,
+        currentStatus: firstValue(row, 'Current_Status', 'Current Status'),
+        status: firstValue(row, 'Current_Status', 'Current Status', 'Relocation_Status', 'Relocation Status') || 'Open',
+        relocationRequired: firstValue(row, 'Relocation_Required', 'Relocation Required'),
+        relocationCost: moneyFrom(firstValue(row, 'Relocation_Cost', 'Relocation Cost')) ?? cleanOptional(firstValue(row, 'Relocation_Cost', 'Relocation Cost')),
+        relocationStatus: firstValue(row, 'Relocation_Status', 'Relocation Status'),
+        installationRequired: firstValue(row, 'Installation_Required', 'Installation Required'),
+        preservationRequired: firstValue(row, 'Preservation_Required', 'Preservation Required'),
+        removalRequired: firstValue(row, 'Removal_Required', 'Removal Required'),
         priority: value(row, 'Priority'),
-        relocationMap: sourcePin ? { source: sourcePin } : undefined,
-        sourceSheetName: 'Tree Assets',
+        notes: value(row, 'Notes'),
+        relocationMap: sourcePin || destinationPin ? {
+          ...(sourcePin ? { source: sourcePin } : {}),
+          ...(destinationPin ? { destination: destinationPin } : {}),
+        } : undefined,
+        sourceSheetName: 'Project_Tree_Assets',
         sourceSheet: template.sourceSheet,
         sourceRowId: treeAssetId,
-        sourceRefs: [sourceRefFromWorkbookRow('Tree Assets', {
-          Tree_Assets_ID: treeAssetId,
+        sourceRefs: [sourceRefFromWorkbookRow('Project_Tree_Assets', {
+          Tree_Asset_ID: treeAssetId,
         }, index)],
       } satisfies TreeRelocationRecord;
     })
@@ -842,15 +876,17 @@ function mapJdtProjectFlowTreeAssets(template: SheetImportTemplate, rows: string
 }
 
 function mapJdtProjectFlowTreePruning(template: SheetImportTemplate, rows: string[][]): ImportTarget {
-  const { records, warnings } = objectRows(rows, template.requiredHeaders);
+  const { records, warnings } = objectRows(rows, template.requiredHeaders, template.headerAliases);
   const workOrders = records
     .map(({ row, index }) => {
-      const treeAssetId = value(row, 'Tree Assets_ID');
-      const treePruneId = value(row, 'Tree_Prune_ID');
-      const firstCutDate = value(row, 'Date of 1st Cut');
-      const rootPruneCuts = value(row, 'Root Prune Cuts');
-      const prepChecks = value(row, 'Prep Checks');
-      const readinessReview = value(row, 'Readiness Reviews');
+      const treeAssetId = firstValue(row, 'Tree_Asset_ID', 'Tree Assets_ID', 'Tree_Assets_ID');
+      const treePruneId = firstValue(row, 'Root_Pruning_ID', 'Tree_Prune_ID');
+      const projectId = firstValue(row, 'Project_ID', 'Projects_ID');
+      const firstCutDate = firstValue(row, 'Date_1st_Cut', 'Date of 1st Cut');
+      const rootPruneCuts = firstValue(row, 'Cut_Count', 'Root Prune Cuts');
+      const prepChecks = firstValue(row, 'Prep_Checks', 'Prep Checks');
+      const readinessReview = firstValue(row, 'Readiness_Status', 'Readiness Reviews');
+      const nextAction = firstValue(row, 'Next_Action', 'Next Action');
 
       if (!treeAssetId && !treePruneId && !rootPruneCuts && !firstCutDate) {
         warnings.push(`Row ${index} skipped: blank tree pruning row`);
@@ -858,30 +894,32 @@ function mapJdtProjectFlowTreePruning(template: SheetImportTemplate, rows: strin
       }
 
       if (!treeAssetId || !treePruneId) {
-        warnings.push(`Row ${index} skipped: tree pruning rows need Tree Assets_ID and Tree_Prune_ID`);
+        warnings.push(`Row ${index} skipped: root pruning rows need Tree_Asset_ID and Root_Pruning_ID`);
         return null;
       }
 
       return {
         id: treePruneId,
         title: `Root prune ${treeAssetId}`,
+        projectId,
         workOrderType: 'tree_pruning',
         division: 'Relocation & Installation',
         taskType: 'Root Pruning',
         status: readinessReview || 'Ready',
         scheduledDate: firstCutDate,
-        sourceSheetName: 'Tree Pruning',
+        sourceSheetName: 'Project_Root_Pruning',
         sourceRowId: treePruneId,
         treeIds: [treeAssetId],
         treeNames: [treeAssetId],
         notes: [
           rootPruneCuts && `Root prune cuts: ${rootPruneCuts}`,
           prepChecks && `Prep checks: ${prepChecks}`,
+          nextAction && `Next action: ${nextAction}`,
           value(row, 'Notes'),
         ].filter(Boolean).join('\n'),
-        sourceRefs: [sourceRefFromWorkbookRow('Tree Pruning', {
-          Tree_Assets_ID: treeAssetId,
-          Tree_Prune_ID: treePruneId,
+        sourceRefs: [sourceRefFromWorkbookRow('Project_Root_Pruning', {
+          Tree_Asset_ID: treeAssetId,
+          Root_Pruning_ID: treePruneId,
         }, index)],
       } satisfies WorkOrderRecord;
     })
@@ -891,14 +929,15 @@ function mapJdtProjectFlowTreePruning(template: SheetImportTemplate, rows: strin
 }
 
 function mapJdtProjectFlowTreatmentAftercare(template: SheetImportTemplate, rows: string[][]): ImportTarget {
-  const { records, warnings } = objectRows(rows, template.requiredHeaders);
+  const { records, warnings } = objectRows(rows, template.requiredHeaders, template.headerAliases);
   const workOrders = records
     .map(({ row, index }) => {
-      const treatmentId = value(row, 'Treatment_Aftercare Logs_ID');
-      const treeAssetId = value(row, 'Tree Assets_ID');
-      const treatmentType = firstValue(row, 'Treatments Type', 'Treatment Type');
-      const treatmentAction = value(row, 'Treatment Action');
-      const nextFollowUpDate = value(row, 'Next Follow-up Date');
+      const treatmentId = firstValue(row, 'Nutrient_Care_ID', 'Treatment_Aftercare Logs_ID', 'Treatment_Aftercare_Logs_ID');
+      const treeAssetId = firstValue(row, 'Tree_Asset_ID', 'Tree Assets_ID', 'Tree_Assets_ID');
+      const projectId = firstValue(row, 'Project_ID', 'Projects_ID');
+      const treatmentType = firstValue(row, 'Treatment_Type', 'Treatments Type', 'Treatment Type');
+      const treatmentAction = firstValue(row, 'Treatment_Action', 'Treatment Action');
+      const nextFollowUpDate = firstValue(row, 'Next_Follow_Up_Date', 'Next Follow-up Date');
 
       if (!treatmentId && !treeAssetId && !treatmentType && !treatmentAction) {
         warnings.push(`Row ${index} skipped: blank treatment or aftercare row`);
@@ -906,36 +945,37 @@ function mapJdtProjectFlowTreatmentAftercare(template: SheetImportTemplate, rows
       }
 
       if (!treatmentId || !treeAssetId) {
-        warnings.push(`Row ${index} skipped: treatment rows need Treatment_Aftercare Logs_ID and Tree Assets_ID`);
+        warnings.push(`Row ${index} skipped: nutrient care rows need Nutrient_Care_ID and Tree_Asset_ID`);
         return null;
       }
 
       return {
         id: treatmentId,
-        title: [treatmentType || treatmentAction || 'Aftercare', treeAssetId].filter(Boolean).join(' '),
+        title: [treatmentType || treatmentAction || 'Nutrient Care', treeAssetId].filter(Boolean).join(' '),
+        projectId,
         workOrderType: 'treatment_aftercare',
         division: 'Relocation & Installation',
-        taskType: treatmentType || treatmentAction || 'Treatment / Aftercare',
-        status: /yes|true|needed/i.test(value(row, 'Follow-up Needed')) ? 'Ready' : (treatmentAction || 'Complete'),
+        taskType: treatmentType || treatmentAction || 'Nutrient Care',
+        status: /yes|true|needed/i.test(firstValue(row, 'Follow_Up_Needed', 'Follow-up Needed')) ? 'Ready' : (treatmentAction || 'Complete'),
         scheduledDate: nextFollowUpDate,
-        completedDate: value(row, 'Date Of Last Treatment'),
-        crewLeadName: value(row, 'Completed By'),
-        sourceSheetName: 'Treatment or Aftercare',
+        completedDate: firstValue(row, 'Date_Last_Treatment', 'Date Of Last Treatment'),
+        crewLeadName: firstValue(row, 'Completed_By', 'Completed By'),
+        sourceSheetName: 'Project_Nutrient_Care',
         sourceRowId: treatmentId,
         treeIds: [treeAssetId],
         treeNames: [treeAssetId],
         notes: [
-          value(row, 'Treatments') && `Treatments: ${value(row, 'Treatments')}`,
+          firstValue(row, 'Treatment', 'Treatments') && `Treatments: ${firstValue(row, 'Treatment', 'Treatments')}`,
           treatmentType && `Treatment type: ${treatmentType}`,
           treatmentAction && `Action: ${treatmentAction}`,
-          value(row, 'Condition Observed') && `Condition observed: ${value(row, 'Condition Observed')}`,
-          value(row, 'Watering Status') && `Watering: ${value(row, 'Watering Status')}`,
-          value(row, 'Irrigation Status') && `Irrigation: ${value(row, 'Irrigation Status')}`,
-          value(row, 'Stress Level') && `Stress level: ${value(row, 'Stress Level')}`,
+          firstValue(row, 'Condition_Observed', 'Condition Observed') && `Condition observed: ${firstValue(row, 'Condition_Observed', 'Condition Observed')}`,
+          firstValue(row, 'Watering_Status', 'Watering Status') && `Watering: ${firstValue(row, 'Watering_Status', 'Watering Status')}`,
+          firstValue(row, 'Irrigation_Status', 'Irrigation Status') && `Irrigation: ${firstValue(row, 'Irrigation_Status', 'Irrigation Status')}`,
+          firstValue(row, 'Stress_Level', 'Stress Level') && `Stress level: ${firstValue(row, 'Stress_Level', 'Stress Level')}`,
           value(row, 'Notes'),
         ].filter(Boolean).join('\n'),
-        sourceRefs: [sourceRefFromWorkbookRow('Treatment or Aftercare', {
-          'Treatment_Aftercare Logs_ID': treatmentId,
+        sourceRefs: [sourceRefFromWorkbookRow('Project_Nutrient_Care', {
+          Nutrient_Care_ID: treatmentId,
         }, index)],
       } satisfies WorkOrderRecord;
     })
@@ -945,15 +985,16 @@ function mapJdtProjectFlowTreatmentAftercare(template: SheetImportTemplate, rows
 }
 
 function mapJdtProjectFlowTreePhotos(template: SheetImportTemplate, rows: string[][]): ImportTarget {
-  const { records, warnings } = objectRows(rows, template.requiredHeaders);
+  const { records, warnings } = objectRows(rows, template.requiredHeaders, template.headerAliases);
   const documents = records
     .map(({ row, index }) => {
-      const photoId = value(row, 'Tree_Photos_ID');
-      const treeAssetId = value(row, 'Tree Assets_ID');
-      const photoType = firstValue(row, 'Photo Type', 'Type', 'Category');
+      const photoId = firstValue(row, 'Tree_Photo_ID', 'Tree_Photos_ID');
+      const treeAssetId = firstValue(row, 'Tree_Asset_ID', 'Tree Assets_ID', 'Tree_Assets_ID');
+      const projectId = firstValue(row, 'Project_ID', 'Projects_ID');
+      const photoType = firstValue(row, 'Photo_Type', 'Photo Type', 'Type', 'Category');
       const caption = firstValue(row, 'Caption', 'Photo Caption', 'Description');
-      const url = firstValue(row, 'Photo', 'Photo URL', 'File URL', 'Drive URL', 'Image URL', 'URL', 'Photo Link', 'Link');
-      const photoLocation = value(row, 'Photo Location');
+      const url = firstValue(row, 'Photo_URL', 'Photo', 'Photo URL', 'File URL', 'Drive URL', 'Image URL', 'URL', 'Photo Link', 'Link');
+      const photoLocation = firstValue(row, 'Photo_Location', 'Photo Location');
 
       if (!photoId && !treeAssetId && !caption && !url) {
         warnings.push(`Row ${index} skipped: blank tree photo row`);
@@ -961,7 +1002,7 @@ function mapJdtProjectFlowTreePhotos(template: SheetImportTemplate, rows: string
       }
 
       if (!photoId || !treeAssetId) {
-        warnings.push(`Row ${index} skipped: tree photo rows need Tree_Photos_ID and Tree Assets_ID`);
+        warnings.push(`Row ${index} skipped: tree photo rows need Tree_Photo_ID and Tree_Asset_ID`);
         return null;
       }
 
@@ -969,19 +1010,20 @@ function mapJdtProjectFlowTreePhotos(template: SheetImportTemplate, rows: string
         id: photoId,
         name: caption || [photoType, photoLocation, treeAssetId].filter(Boolean).join(' ') || photoId,
         title: caption || [photoType, photoLocation, treeAssetId].filter(Boolean).join(' ') || photoId,
+        projectId,
         category: 'Tree Photo',
         treeId: treeAssetId,
         treeIds: [treeAssetId],
         photoType,
-        photoDate: firstValue(row, 'Captured Date', 'Photo Date', 'Date'),
+        photoDate: firstValue(row, 'Captured_Date', 'Captured Date', 'Photo Date', 'Date'),
         photoLocation,
-        takenBy: firstValue(row, 'Captured By', 'Taken By', 'Uploaded By', 'Completed By'),
+        takenBy: firstValue(row, 'Captured_By', 'Captured By', 'Taken By', 'Uploaded By', 'Completed By'),
         url,
         notes: value(row, 'Notes'),
-        sourceSheetName: 'Tree Photos',
+        sourceSheetName: 'Project_Tree_Photos',
         sourceRowId: photoId,
-        sourceRefs: [sourceRefFromWorkbookRow('Tree Photos', {
-          Tree_Photos_ID: photoId,
+        sourceRefs: [sourceRefFromWorkbookRow('Project_Tree_Photos', {
+          Tree_Photo_ID: photoId,
         }, index)],
       } satisfies DocumentRecord;
     })
@@ -991,14 +1033,14 @@ function mapJdtProjectFlowTreePhotos(template: SheetImportTemplate, rows: string
 }
 
 function mapJdtProjectFlowProjectMaterialItems(template: SheetImportTemplate, rows: string[][], projectContext?: ProjectImportContext | null): ImportTarget {
-  const { records, warnings } = objectRows(rows, template.requiredHeaders);
+  const { records, warnings } = objectRows(rows, template.requiredHeaders, template.headerAliases);
   const normalizedContext = normalizeProjectImportContext(projectContext);
   const contextProjectId = normalizedContext?.projectId || normalizedContext?.projectsId || '';
   const materialItems = records
     .map(({ row, index }) => {
-      const materialItemId = value(row, 'Project_Material_Items_ID');
-      const projectsId = value(row, 'Projects_ID') || contextProjectId;
-      const materialType = value(row, 'Material Type');
+      const materialItemId = firstValue(row, 'Material_Item_ID', 'Project_Material_Items_ID');
+      const projectsId = firstValue(row, 'Project_ID', 'Projects_ID') || contextProjectId;
+      const materialType = firstValue(row, 'Material_Type', 'Material Type');
 
       if (!materialItemId && !projectsId && !materialType) {
         warnings.push(`Row ${index} skipped: blank project material item row`);
@@ -1006,31 +1048,32 @@ function mapJdtProjectFlowProjectMaterialItems(template: SheetImportTemplate, ro
       }
 
       if (!projectsId || !materialType) {
-        warnings.push(`Row ${index} skipped: material rows need Projects_ID or selected project context, and Material Type`);
+        warnings.push(`Row ${index} skipped: material rows need Project_ID or selected project context, and Material_Type`);
         return null;
       }
 
-      const id = materialItemId || `material-${slugify([projectsId, value(row, 'Hole Number / Area'), materialType, value(row, 'Size / Class')].filter(Boolean).join('-') || `row-${index}`)}`;
+      const id = materialItemId || `material-${slugify([projectsId, firstValue(row, 'Area', 'Hole Number / Area'), materialType, firstValue(row, 'Size_Class', 'Size / Class')].filter(Boolean).join('-') || `row-${index}`)}`;
 
       return {
         id,
         projectMaterialItemsId: materialItemId,
         projectsId,
         projectId: projectsId,
-        projectName: value(row, 'Project Name') || normalizedContext?.projectName,
-        holeNumberOrArea: value(row, 'Hole Number / Area'),
+        clientId: firstValue(row, 'Client_ID', 'Companies_ID'),
+        projectName: firstValue(row, 'Project_Name', 'Project Name') || normalizedContext?.projectName,
+        holeNumberOrArea: firstValue(row, 'Area', 'Hole Number / Area'),
         source: value(row, 'Source'),
         materialType,
-        sizeClass: value(row, 'Size / Class'),
-        quantityRequired: numberFrom(value(row, 'Quantity Required')) ?? cleanOptional(value(row, 'Quantity Required')),
-        quantityInstalled: numberFrom(value(row, 'Quantity Installed')) ?? cleanOptional(value(row, 'Quantity Installed')),
-        unitPrice: moneyFrom(value(row, 'Unit Price')) ?? cleanOptional(value(row, 'Unit Price')),
-        installStatus: value(row, 'Install Status') || 'Needed',
+        sizeClass: firstValue(row, 'Size_Class', 'Size / Class'),
+        quantityRequired: numberFrom(firstValue(row, 'Quantity_Required', 'Quantity Required')) ?? cleanOptional(firstValue(row, 'Quantity_Required', 'Quantity Required')),
+        quantityInstalled: numberFrom(firstValue(row, 'Quantity_Installed', 'Quantity Installed')) ?? cleanOptional(firstValue(row, 'Quantity_Installed', 'Quantity Installed')),
+        unitPrice: moneyFrom(firstValue(row, 'Unit_Price', 'Unit Price')) ?? cleanOptional(firstValue(row, 'Unit_Price', 'Unit Price')),
+        installStatus: firstValue(row, 'Install_Status', 'Install Status') || 'Needed',
         notes: value(row, 'Notes'),
         sourceSheetName: 'Project_Material_Items',
         sourceRowId: materialItemId || id,
         sourceRefs: [sourceRefFromWorkbookRow('Project_Material_Items', {
-          Project_Material_Items_ID: materialItemId || id,
+          Material_Item_ID: materialItemId || id,
         }, index)],
       } satisfies ProjectMaterialItemRecord;
     })
@@ -1055,16 +1098,20 @@ function coordinatePointFromText(text: string, label: string) {
   };
 }
 
-function objectRows(rows: string[][], requiredHeaders: string[]) {
+function objectRows(rows: string[][], requiredHeaders: string[], headerAliases: Record<string, string[]> = {}) {
   const warnings: string[] = [];
-  const headerIndex = findHeaderIndex(rows, requiredHeaders);
+  const headerGroups = requiredHeaderGroups(requiredHeaders, headerAliases);
+  const headerIndex = findHeaderIndex(rows, headerGroups);
 
   if (headerIndex < 0) {
     return { headers: [], records: [], warnings: ['No matching header row found'] };
   }
 
   const headers = rows[headerIndex].map(cleanText);
-  const missing = requiredHeaders.filter((header) => !headers.some((candidate) => normalizedHeader(candidate) === normalizedHeader(header)));
+  const normalizedHeaders = new Set(headers.map(normalizedHeader));
+  const missing = headerGroups
+    .filter((group) => !group.aliases.some((alias) => normalizedHeaders.has(normalizedHeader(alias))))
+    .map((group) => group.header);
   missing.forEach((header) => warnings.push(`Missing expected header: ${header}`));
 
   const records = rows.slice(headerIndex + 1).map((row, rowIndex) => {
@@ -1079,14 +1126,21 @@ function objectRows(rows: string[][], requiredHeaders: string[]) {
   return { headers, records, warnings };
 }
 
-function findHeaderIndex(rows: string[][], requiredHeaders: string[]): number {
-  const required = requiredHeaders.map(normalizedHeader);
+function requiredHeaderGroups(requiredHeaders: string[], headerAliases: Record<string, string[]> = {}) {
+  return requiredHeaders.map((header) => ({
+    header,
+    aliases: [header, ...(headerAliases[header] || [])],
+  }));
+}
+
+function findHeaderIndex(rows: string[][], requiredHeaders: Array<{ header: string; aliases: string[] }>): number {
+  const required = requiredHeaders.map((group) => group.aliases.map(normalizedHeader));
   let bestIndex = -1;
   let bestScore = 0;
 
   rows.forEach((row, index) => {
     const headers = row.map(normalizedHeader);
-    const score = required.filter((header) => headers.includes(header)).length;
+    const score = required.filter((group) => group.some((header) => headers.includes(header))).length;
     if (score > bestScore) {
       bestIndex = index;
       bestScore = score;

@@ -758,7 +758,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
       treeNames: workOrder?.treeNames || [treeId],
       workOrderType,
       taskType: workOrder?.taskType || titlePrefix,
-      sourceSheetName: workOrder?.sourceSheetName || (workOrderType === 'tree_pruning' ? 'Tree Pruning' : 'Treatment or Aftercare'),
+      sourceSheetName: workOrder?.sourceSheetName || (workOrderType === 'tree_pruning' ? 'Project_Root_Pruning' : 'Project_Nutrient_Care'),
     };
   };
   const seedTreePhoto = (tree: TreeRelocationRecord, document?: DocumentRecord) => {
