@@ -1114,7 +1114,7 @@ export default function App() {
       case 'alerts':
         return <AlertsBoard alerts={alerts} setAlerts={setAlerts} openModal={openModal} />;
       case 'calendar':
-        return <CalendarBoard jobs={jobs} loads={loads} scheduleTasks={scheduleTasks} openDrawer={openDrawer} />;
+        return <CalendarBoard jobs={jobs} loads={loads} workOrders={workOrders} scheduleTasks={scheduleTasks} treeRelocationRecords={treeRelocationRecords} equipment={equipmentWithDefaults} openDrawer={openDrawer} />;
       case 'maps':
         return <MapsBoard jobs={jobs} ranchOaks={nurseryInventory} treeRelocationRecords={treeRelocationRecords} onUpdateTreeLocation={handleUpdateTreeLocation} openDrawer={openDrawer} />;
       case 'reports':
