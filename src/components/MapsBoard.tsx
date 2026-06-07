@@ -4,7 +4,6 @@ import {
   Compass,
   Crosshair,
   Download,
-  ExternalLink,
   Globe2,
   LocateFixed,
   MapPin,
@@ -35,6 +34,7 @@ import {
   pointFromDevicePosition,
   pointFromSavedSiteLocation,
   relocationContextForJob,
+  searchTextForSavedSiteLocation,
   updateTreeRelocationPoint,
   type SiteLocationAccessType,
   type TreeRelocationPoint,
@@ -59,6 +59,15 @@ const siteLocationAccessTypes: SiteLocationAccessType[] = [
 ];
 
 const siteLocationDivisionOptions = ['Relocation & Installation', 'Crew', 'Freight', 'Equipment', 'Nursery'];
+
+type MapViewMode = 'map' | 'earth';
+
+function applyGoogleMapViewMode(map: any, maps: any, mode: MapViewMode) {
+  if (!map || !maps) return;
+  map.setMapTypeId(mode === 'earth' ? maps.MapTypeId.SATELLITE : maps.MapTypeId.ROADMAP);
+  if (typeof map.setTilt === 'function') map.setTilt(mode === 'earth' ? 45 : 0);
+  if (typeof map.setHeading === 'function') map.setHeading(0);
+}
 
 type MapsBoardProps = {
   jobs?: any[];
@@ -91,6 +100,7 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
   const selectedJob = jobs.find(job => String(job.id || job.jobId || job.projectId) === selectedJobId);
   const mapsConfig = useMemo(() => getGoogleMapsConfig(), []);
   const [zoomLevel, setZoomLevel] = useState(17);
+  const [mapViewMode, setMapViewMode] = useState<MapViewMode>('earth');
   const [selectedTreeId, setSelectedTreeId] = useState<string | null>(() => filteredTreeRecords[0]?.treeId ?? filteredTreeRecords[0]?.id ?? null);
   const [pinMode, setPinMode] = useState<TreeRelocationPointType | null>(null);
   const [selectedPin, setSelectedPin] = useState<SelectedPin | null>(null);
@@ -159,7 +169,7 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
           googleMapInstanceRef.current = new maps.Map(googleMapRef.current, {
             center: selectedTree?.relocationMap?.source ?? defaultFieldCenter,
             zoom: zoomLevel,
-            mapTypeId: 'satellite',
+            mapTypeId: mapViewMode === 'earth' ? maps.MapTypeId.SATELLITE : maps.MapTypeId.ROADMAP,
             mapId: mapsConfig.mapId || undefined,
             streetViewControl: false,
             fullscreenControl: false,
@@ -177,6 +187,7 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
         }
 
         googleMapInstanceRef.current.setZoom(zoomLevel);
+        applyGoogleMapViewMode(googleMapInstanceRef.current, maps, mapViewMode);
         renderGoogleTreeMarkers(maps);
       } catch (error) {
         setFieldStatus(error instanceof Error ? error.message : 'Unable to load Google Maps.');
@@ -187,7 +198,14 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
     return () => {
       cancelled = true;
     };
-  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, filteredTreeRecords, scopedSavedLocations, selectedTreeId, zoomLevel]);
+  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, filteredTreeRecords, scopedSavedLocations, selectedTreeId, zoomLevel, mapViewMode]);
+
+  useEffect(() => {
+    const map = googleMapInstanceRef.current;
+    const maps = window.google?.maps;
+    if (!map || !maps) return;
+    applyGoogleMapViewMode(map, maps, mapViewMode);
+  }, [mapViewMode]);
 
   const renderGoogleTreeMarkers = (maps: any) => {
     const map = googleMapInstanceRef.current;
@@ -374,6 +392,7 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
   const focusSavedLocation = (location: any) => {
     const point = pointFromSavedSiteLocation(location);
     if (point && googleMapInstanceRef.current) {
+      setMapViewMode('earth');
       googleMapInstanceRef.current.setCenter({ lat: point.lat, lng: point.lng });
       googleMapInstanceRef.current.setZoom(Math.max(zoomLevel, 18));
       setFieldStatus(`${location.name || location.title || 'Saved location'} focused at ${formatTreeCoordinate(point)}.`);
@@ -387,13 +406,54 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
   };
 
   const openSavedLocationInGoogleMaps = (location: any) => {
+    const point = pointFromSavedSiteLocation(location);
+    const map = googleMapInstanceRef.current;
+    const maps = window.google?.maps;
+    const label = location.name || location.title || 'saved location';
+
+    if (point && map) {
+      setMapViewMode('earth');
+      map.setCenter({ lat: point.lat, lng: point.lng });
+      map.setZoom(Math.max(zoomLevel, 19));
+      setFieldStatus(`Opened ${label} in the in-app map at ${formatTreeCoordinate(point)}.`);
+      return;
+    }
+
+    const searchText = searchTextForSavedSiteLocation(location);
+    if (searchText && map && maps?.Geocoder) {
+      const geocoder = new maps.Geocoder();
+      setFieldStatus(`Searching ${searchText} inside the in-app map...`);
+      geocoder.geocode({ address: searchText }, (results: any[] = [], status: string) => {
+        const okStatus = maps.GeocoderStatus?.OK || 'OK';
+        const result = status === okStatus ? results[0] : null;
+        const resultLocation = result?.geometry?.location;
+        if (!resultLocation) {
+          setFieldStatus(`Google Maps could not locate ${searchText}. Paste exact coordinates or a Google Maps pin for map focus.`);
+          return;
+        }
+
+        setMapViewMode('earth');
+        map.setCenter(resultLocation);
+        map.setZoom(Math.max(zoomLevel, 19));
+        const marker = new maps.Marker({
+          position: resultLocation,
+          map,
+          title: label,
+          label: 'L',
+        });
+        googleMarkerRefs.current.push(marker);
+        setFieldStatus(`Opened ${label} in the in-app map. Save the exact pin coordinates if this should be reused for dispatch.`);
+      });
+      return;
+    }
+
     const url = googleMapsUrlForSavedSiteLocation(location);
     if (!url) {
       setFieldStatus('This saved location does not have a Google Maps link, coordinates, or searchable address yet.');
       return;
     }
     window.open(url, '_blank', 'noopener,noreferrer');
-    setFieldStatus(`Opened ${location.name || location.title || 'saved location'} in Google Maps.`);
+    setFieldStatus(`Opened ${label} in a Google Maps tab because the in-app map is not available.`);
   };
 
   const downloadProjectKml = () => {
@@ -415,8 +475,13 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
   };
 
   const openGoogleEarthProjectView = () => {
-    window.open(earthMapPackage.googleEarthUrl, '_blank', 'noopener,noreferrer');
-    setFieldStatus('Opened the selected project area in Google Earth. Download the KML to import project tree pins.');
+    setMapViewMode('earth');
+    const map = googleMapInstanceRef.current;
+    if (map && earthMapPackage.center) {
+      map.setCenter({ lat: earthMapPackage.center.lat, lng: earthMapPackage.center.lng });
+      map.setZoom(Math.max(zoomLevel, 18));
+    }
+    setFieldStatus('Switched to in-app Earth View. Tree and project pins stay inside JDT Command Center.');
   };
 
   const renderFallbackTreePins = () => {
@@ -494,6 +559,71 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
     );
   };
 
+  const activeTreeCard = (
+    <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-black uppercase text-zinc-400">Active Tree</p>
+          <h3 className="text-xl font-black text-jdt-text">{selectedTree?.treeId || 'Select a tree'}</h3>
+          <p className="text-xs font-bold text-zinc-500 mt-1">{mapInstruction}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => beginPinEdit('source')} className={`px-3 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 ${pinMode === 'source' ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'}`}>
+            <TreePine className="h-4 w-4" /> Source Pin
+          </button>
+          <button onClick={() => beginPinEdit('destination')} className={`px-3 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 ${pinMode === 'destination' ? 'bg-blue-700 text-white' : 'bg-blue-50 text-blue-800 border border-blue-200'}`}>
+            <Target className="h-4 w-4" /> Destination Pin
+          </button>
+          <button onClick={useDeviceLocation} className="px-3 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 bg-jdt-primary text-white">
+            <LocateFixed className="h-4 w-4" /> Use Phone GPS
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 rounded-lg border border-jdt-border bg-jdt-sand/40 px-3 py-2 text-xs font-bold text-zinc-600 flex items-center gap-2">
+        <Crosshair className="h-4 w-4 text-jdt-primary" />
+        {fieldStatus}
+      </div>
+    </div>
+  );
+
+  const googleEarthCard = (
+    <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-jdt-border bg-white">
+            <Globe2 className="h-5 w-5 text-jdt-primary" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase text-zinc-400">Google Earth Project Map</p>
+            <h3 className="text-sm font-black text-jdt-text">{earthMapPackage.documentName}</h3>
+            <p className="mt-1 text-[11px] font-bold text-zinc-500">
+              {earthMapPackage.pinnedTreeCount} pinned trees, {earthMapPackage.placemarkCount} pins, {earthMapPackage.pathCount} move paths ready for Earth.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={downloadProjectKml}
+            className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark flex items-center gap-2"
+          >
+            <Download className="h-4 w-4" /> Download KML
+          </button>
+          <button
+            type="button"
+            onClick={openGoogleEarthProjectView}
+            className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive flex items-center gap-2"
+          >
+            <Globe2 className="h-4 w-4" /> Earth View
+          </button>
+        </div>
+      </div>
+      <p className="mt-3 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[11px] font-bold text-zinc-500">
+        Use Earth View inside JDT Command Center for tree pins. Download KML only when you need a Google Earth backup file.
+      </p>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-jdt-border pb-5">
@@ -542,74 +672,10 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
             </div>
           </div>
 
-          <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              <div>
-                <p className="text-[10px] font-black uppercase text-zinc-400">Active Tree</p>
-                <h3 className="text-xl font-black text-jdt-text">{selectedTree?.treeId || 'Select a tree'}</h3>
-                <p className="text-xs font-bold text-zinc-500 mt-1">{mapInstruction}</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button onClick={() => beginPinEdit('source')} className={`px-3 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 ${pinMode === 'source' ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'}`}>
-                  <TreePine className="h-4 w-4" /> Source Pin
-                </button>
-                <button onClick={() => beginPinEdit('destination')} className={`px-3 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 ${pinMode === 'destination' ? 'bg-blue-700 text-white' : 'bg-blue-50 text-blue-800 border border-blue-200'}`}>
-                  <Target className="h-4 w-4" /> Destination Pin
-                </button>
-                <button onClick={useDeviceLocation} className="px-3 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 bg-jdt-primary text-white">
-                  <LocateFixed className="h-4 w-4" /> Use Phone GPS
-                </button>
-              </div>
-            </div>
-            <div className="mt-3 rounded-lg border border-jdt-border bg-jdt-sand/40 px-3 py-2 text-xs font-bold text-zinc-600 flex items-center gap-2">
-              <Crosshair className="h-4 w-4 text-jdt-primary" />
-              {fieldStatus}
-            </div>
-          </div>
-
-          <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-jdt-border bg-white">
-                  <Globe2 className="h-5 w-5 text-jdt-primary" />
-                </div>
-                <div>
-                  <p className="text-[10px] font-black uppercase text-zinc-400">Google Earth Project Map</p>
-                  <h3 className="text-sm font-black text-jdt-text">{earthMapPackage.documentName}</h3>
-                  <p className="mt-1 text-[11px] font-bold text-zinc-500">
-                    {earthMapPackage.pinnedTreeCount} pinned trees, {earthMapPackage.placemarkCount} pins, {earthMapPackage.pathCount} move paths ready for Earth.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={downloadProjectKml}
-                  className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark flex items-center gap-2"
-                >
-                  <Download className="h-4 w-4" /> Download KML
-                </button>
-                <button
-                  type="button"
-                  onClick={openGoogleEarthProjectView}
-                  className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive flex items-center gap-2"
-                >
-                  <ExternalLink className="h-4 w-4" /> Open Google Earth
-                </button>
-              </div>
-            </div>
-            <p className="mt-3 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[11px] font-bold text-zinc-500">
-              Import the downloaded KML into a Google Earth project to view this same project map with tree source pins, destination pins, and move paths.
-            </p>
-          </div>
-
           <div className="relative min-h-[560px] bg-zinc-950 rounded-2xl border border-jdt-border shadow-sm overflow-hidden isolate">
             {mapsConfig.isReady ? (
               <>
                 <div ref={googleMapRef} className="absolute inset-0" />
-                <div className="absolute top-4 left-4 bg-white/95 border border-jdt-border rounded-lg px-3 py-2 shadow-lg text-[10px] font-black uppercase text-jdt-text z-20">
-                  Google Maps API Active
-                </div>
               </>
             ) : (
               <div onClick={handleFallbackMapClick} className="absolute inset-0 cursor-crosshair">
@@ -619,20 +685,41 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
                   className="absolute inset-0 w-full h-full object-cover opacity-60 mix-blend-luminosity"
                 />
                 <div className="absolute inset-0 bg-jdt-dark/20" />
-                <div className="absolute top-4 left-4 bg-zinc-900/90 text-white rounded-lg px-3 py-2 border border-zinc-700 shadow-lg text-[10px] font-black uppercase z-20">
-                  Fallback Field Map - Add VITE_GOOGLE_MAPS_API_KEY for live Google Maps
-                </div>
                 {renderSelectedTreeLine()}
                 {renderFallbackTreePins()}
                 {renderFallbackSiteLocationPins()}
               </div>
             )}
 
+            <div className="absolute top-4 left-4 z-20 flex max-w-[calc(100%-2rem)] flex-col gap-2 rounded-lg border border-jdt-border bg-white/95 px-3 py-2 text-[10px] font-black uppercase text-jdt-text shadow-lg">
+              <span>{mapsConfig.isReady ? 'Google Maps API Active' : 'Fallback Field Map - Add VITE_GOOGLE_MAPS_API_KEY for live Google Maps'}</span>
+              <div className="flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={() => setMapViewMode('map')}
+                  className={`rounded-md border px-2 py-1 ${mapViewMode === 'map' ? 'border-blue-600 bg-blue-50 text-blue-800' : 'border-jdt-border bg-white text-zinc-600'}`}
+                >
+                  Map View
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMapViewMode('earth')}
+                  className={`rounded-md border px-2 py-1 ${mapViewMode === 'earth' ? 'border-emerald-700 bg-emerald-50 text-emerald-800' : 'border-jdt-border bg-white text-zinc-600'}`}
+                >
+                  Earth View
+                </button>
+              </div>
+            </div>
+
             <div className="absolute top-4 right-4 bg-zinc-900/90 text-white rounded-lg p-2.5 border border-zinc-700 flex flex-col items-center gap-1 shadow-md z-20">
               <Compass className="h-6 w-6 text-zinc-300 transform rotate-12" />
               <span className="text-[8px] font-black uppercase text-zinc-400">NORTH</span>
             </div>
           </div>
+
+          {activeTreeCard}
+
+          {googleEarthCard}
 
           <div className="grid gap-3 md:grid-cols-3">
             <SummaryTile label="Pinned Sources" value={String(filteredTreeRecords.filter(tree => tree.relocationMap?.source).length)} icon={TreePine} />

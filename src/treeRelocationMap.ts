@@ -410,6 +410,18 @@ export function googleMapsUrlForSavedSiteLocation(location: Partial<LocationReco
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
+export function searchTextForSavedSiteLocation(location: Partial<LocationRecord>): string {
+  const record = location as Partial<LocationRecord> & Record<string, unknown>;
+  return [
+    record.mainAddress,
+    record.locationAddress,
+    record.address,
+    record.sourceText,
+    record.name,
+    record.title,
+  ].map((value) => String(value || "").trim()).find((value) => Boolean(value) && !isUrl(value)) || "";
+}
+
 export function buildProjectGoogleEarthMapPackage<T extends RelocationTree = RelocationTree>(
   options: ProjectGoogleEarthMapPackageOptions<T>,
 ): ProjectGoogleEarthMapPackage {

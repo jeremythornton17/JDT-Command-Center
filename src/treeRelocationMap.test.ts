@@ -16,6 +16,7 @@ import {
   parseGoogleMapsLocationText,
   pointFromDevicePosition,
   pointFromSavedSiteLocation,
+  searchTextForSavedSiteLocation,
   updateTreeRelocationPoint,
 } from "./treeRelocationMap";
 
@@ -155,6 +156,12 @@ describe("tree relocation map helpers", () => {
       lng: -80.17126,
       sourceText: "Load pin: 26.387315, -80.1712583",
     });
+    const earthUrl = "https://earth.google.com/web/@26.85703076,-80.05794282,1.72483545a,1000d,30y,0h,0t,0r/data=CgRCAggB";
+    assert.deepEqual(parseGoogleMapsLocationText(earthUrl), {
+      lat: 26.85703,
+      lng: -80.05794,
+      sourceText: earthUrl,
+    });
     assert.equal(parseGoogleMapsLocationText("Boca Raton"), null);
   });
 
@@ -237,6 +244,7 @@ describe("tree relocation map helpers", () => {
       googleMapsUrlForSavedSiteLocation(addressOnlyLocation),
       "https://www.google.com/maps/search/?api=1&query=20583%20Boca%20West%20Dr%2C%20Boca%20Raton%2C%20FL%2033434",
     );
+    assert.equal(searchTextForSavedSiteLocation(addressOnlyLocation), "20583 Boca West Dr, Boca Raton, FL 33434");
   });
 
   it("builds a Google Earth KML package from project tree source and destination pins", () => {
