@@ -42,12 +42,14 @@ describe("tree relocation lifecycle", () => {
     assert.equal(formatRelocationCost(""), "-");
   });
 
-  it("maps relocation statuses to earthy stoplight badge classes", () => {
-    assert.match(relocationStatusBadgeClass("Not Started"), /bg-\[#F7E4DC\]/);
-    assert.match(relocationStatusBadgeClass("1st Cut Scheduled"), /bg-\[#FFF1CC\]/);
-    assert.match(relocationStatusBadgeClass("2nd Cut Complete"), /bg-\[#F7E9D6\]/);
-    assert.match(relocationStatusBadgeClass("Ready For Relocation"), /bg-\[#EAF1E2\]/);
-    assert.match(relocationStatusBadgeClass("Paid"), /bg-\[#DDEBD2\]/);
+  it("maps relocation statuses through the shared explicit stoplight palette", () => {
+    assert.match(relocationStatusBadgeClass("Not Started"), /bg-\[#FBE3DE\]/);
+    assert.match(relocationStatusBadgeClass("1st Cut Scheduled"), /bg-\[#FFF35A\]/);
+    assert.match(relocationStatusBadgeClass("2nd Cut Complete"), /bg-\[#DFF6FF\]/);
+    assert.match(relocationStatusBadgeClass("Moved To Holding Area"), /bg-\[#DFF6FF\]/);
+    assert.match(relocationStatusBadgeClass("Ready For Relocation"), /bg-\[#E4F6DA\]/);
+    assert.match(relocationStatusBadgeClass("Invoiced"), /bg-\[#E4F6DA\]/);
+    assert.match(relocationStatusBadgeClass("Paid"), /bg-\[#E4F6DA\]/);
   });
 
   it("alerts the command board to schedule the first cut for a new tree", () => {

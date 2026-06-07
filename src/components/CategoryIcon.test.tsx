@@ -10,6 +10,7 @@ import {
   operatingCategoryForRecordType,
   riskPillClass,
   statusPillClass,
+  statusToneName,
 } from "../commandCenter/visualLanguage";
 import { CategoryIcon, CategoryPill } from "./CategoryIcon";
 
@@ -38,24 +39,34 @@ describe("operating category visual language", () => {
 
   it("assigns distinct category accents with muted surfaces and brighter stoplight status tones", () => {
     assert.match(categoryPillClass("relocation"), /#0F3D2E/);
-    assert.match(categoryPillClass("crew"), /#A85418/);
+    assert.match(categoryPillClass("crew"), /#8A5A2B/);
     assert.match(categoryPillClass("freight"), /#1E7EA2/);
-    assert.match(categoryPillClass("equipment"), /#B54626/);
+    assert.match(categoryPillClass("equipment"), /#7C3AED/);
     assert.match(categoryPillClass("nursery"), /#63B52F/);
 
     assert.match(categoryAccentBorderClass("relocation"), /#0F3D2E/);
-    assert.match(categoryAccentBorderClass("crew"), /#A85418/);
+    assert.match(categoryAccentBorderClass("crew"), /#8A5A2B/);
     assert.match(categoryAccentBorderClass("freight"), /#1E7EA2/);
-    assert.match(categoryAccentBorderClass("equipment"), /#B54626/);
+    assert.match(categoryAccentBorderClass("equipment"), /#7C3AED/);
     assert.match(categoryAccentBorderClass("nursery"), /#63B52F/);
 
     assert.match(statusPillClass("Blocked"), /#8F241A/);
-    assert.match(statusPillClass("Scheduled"), /#8A6500/);
-    assert.match(statusPillClass("In Progress"), /#A44E10/);
+    assert.match(statusPillClass("Scheduled"), /#FFF35A/);
+    assert.match(statusPillClass("Scheduled"), /#5F4A00/);
+    assert.match(statusPillClass("In Progress"), /#DFF6FF/);
+    assert.match(statusPillClass("In Progress"), /#075985/);
     assert.match(statusPillClass("Ready For Relocation"), /#236B2E/);
 
     assert.match(riskPillClass("critical"), /#8F241A/);
-    assert.match(riskPillClass("watch"), /#8A6500/);
+    assert.match(riskPillClass("watch"), /#FFF35A/);
     assert.match(riskPillClass("low"), /#236B2E/);
+  });
+
+  it("uses explicit status labels before broad keyword matching", () => {
+    assert.equal(statusToneName("Invoiced"), "ready");
+    assert.equal(statusToneName("Moved To Holding Area"), "active");
+    assert.equal(statusToneName("Needs Equipment"), "caution");
+    assert.equal(statusToneName("At Pickup"), "active");
+    assert.equal(statusToneName("Not Started"), "danger");
   });
 });

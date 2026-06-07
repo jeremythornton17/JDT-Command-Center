@@ -97,18 +97,18 @@ type CategoryVisualTone = {
 
 const categoryVisualTones: Record<OperatingCategory, CategoryVisualTone> = {
   crew: {
-    pillClass: 'border-[#A85418] bg-[#FFF1E2] text-[#6F3515]',
-    surfaceClass: 'border-[#D7A063] bg-[#FFF7EE] text-[#6F3515]',
-    accentBorderClass: 'border-l-[#A85418]',
-    headerClass: 'bg-[#A85418] text-white',
-    dotClass: 'bg-[#D96F21]',
+    pillClass: 'border-[#8A5A2B] bg-[#F6EEE6] text-[#5B3518]',
+    surfaceClass: 'border-[#C8A77F] bg-[#FBF7F1] text-[#5B3518]',
+    accentBorderClass: 'border-l-[#8A5A2B]',
+    headerClass: 'bg-[#7B4A24] text-white',
+    dotClass: 'bg-[#A66A2C]',
   },
   equipment: {
-    pillClass: 'border-[#B54626] bg-[#F9E7DF] text-[#7E2D1D]',
-    surfaceClass: 'border-[#D07D5E] bg-[#FCF0E9] text-[#7E2D1D]',
-    accentBorderClass: 'border-l-[#B54626]',
-    headerClass: 'bg-[#B54626] text-white',
-    dotClass: 'bg-[#D8542A]',
+    pillClass: 'border-[#7C3AED] bg-[#F3E8FF] text-[#4C1D95]',
+    surfaceClass: 'border-[#C4B5FD] bg-[#F8F4FF] text-[#4C1D95]',
+    accentBorderClass: 'border-l-[#7C3AED]',
+    headerClass: 'bg-[#6D28D9] text-white',
+    dotClass: 'bg-[#A855F7]',
   },
   freight: {
     pillClass: 'border-[#1E7EA2] bg-[#EAF8FC] text-[#14536E]',
@@ -188,7 +188,7 @@ export function categoryDotClass(category: OperatingCategory): string {
   return categoryVisualTones[category]?.dotClass || categoryVisualTones.general.dotClass;
 }
 
-type StoplightTone = 'danger' | 'caution' | 'active' | 'ready' | 'neutral';
+export type StoplightTone = 'danger' | 'caution' | 'active' | 'ready' | 'neutral';
 
 const statusToneClasses: Record<StoplightTone, { pillClass: string; surfaceClass: string; dotClass: string }> = {
   danger: {
@@ -197,14 +197,14 @@ const statusToneClasses: Record<StoplightTone, { pillClass: string; surfaceClass
     dotClass: 'bg-[#C93624]',
   },
   caution: {
-    pillClass: 'border-[#E0B629] bg-[#FFF5BF] text-[#8A6500]',
-    surfaceClass: 'border-[#E0B629] bg-[#FFF5BF] text-[#8A6500]',
-    dotClass: 'bg-[#F2C230]',
+    pillClass: 'border-[#FFD000] bg-[#FFF35A] text-[#5F4A00]',
+    surfaceClass: 'border-[#FFD000] bg-[#FFF35A] text-[#5F4A00]',
+    dotClass: 'bg-[#FFD000]',
   },
   active: {
-    pillClass: 'border-[#E19A49] bg-[#FFE8CC] text-[#A44E10]',
-    surfaceClass: 'border-[#E19A49] bg-[#FFE8CC] text-[#A44E10]',
-    dotClass: 'bg-[#E67E22]',
+    pillClass: 'border-[#22B8E6] bg-[#DFF6FF] text-[#075985]',
+    surfaceClass: 'border-[#22B8E6] bg-[#DFF6FF] text-[#075985]',
+    dotClass: 'bg-[#0EA5E9]',
   },
   ready: {
     pillClass: 'border-[#77B65B] bg-[#E4F6DA] text-[#236B2E]',
@@ -218,6 +218,77 @@ const statusToneClasses: Record<StoplightTone, { pillClass: string; surfaceClass
   },
 };
 
+export const explicitStatusToneLabels: Record<string, StoplightTone> = {
+  critical: 'danger',
+  high: 'danger',
+  urgent: 'danger',
+  down: 'danger',
+  blocked: 'danger',
+  overdue: 'danger',
+  delayed: 'danger',
+  failed: 'danger',
+  error: 'danger',
+  'not started': 'danger',
+  'repair hold': 'danger',
+
+  'needs review': 'caution',
+  'needs crew': 'caution',
+  'needs equipment': 'caution',
+  'needs freight': 'caution',
+  'needs source pin': 'caution',
+  'needs destination pin': 'caution',
+  'needs service': 'caution',
+  'service upcoming': 'caution',
+  warning: 'caution',
+  watch: 'caution',
+  waiting: 'caution',
+  scheduled: 'caution',
+  draft: 'caution',
+  pending: 'caution',
+  maintenance: 'caution',
+  inspection: 'caution',
+  '1st cut scheduled': 'caution',
+  '2nd cut scheduled': 'caution',
+
+  active: 'active',
+  assigned: 'active',
+  'in progress': 'active',
+  'in use': 'active',
+  dispatched: 'active',
+  transit: 'active',
+  'in transit': 'active',
+  pickup: 'active',
+  'at pickup': 'active',
+  loaded: 'active',
+  started: 'active',
+  'at delivery': 'active',
+  'nutrient care': 'active',
+  'in nutrient care phase': 'active',
+  'moved to holding area': 'active',
+  'root pruning': 'active',
+  '1st cut complete': 'active',
+  '2nd cut complete': 'active',
+
+  complete: 'ready',
+  completed: 'ready',
+  delivered: 'ready',
+  ready: 'ready',
+  'ready for relocation': 'ready',
+  relocated: 'ready',
+  invoiced: 'ready',
+  paid: 'ready',
+  available: 'ready',
+  good: 'ready',
+  clear: 'ready',
+
+  closed: 'neutral',
+  archived: 'neutral',
+  inactive: 'neutral',
+  cancelled: 'neutral',
+  canceled: 'neutral',
+  skipped: 'neutral',
+};
+
 function textIncludes(value: string, terms: string[]): boolean {
   return terms.some((term) => value.includes(term));
 }
@@ -225,9 +296,11 @@ function textIncludes(value: string, terms: string[]): boolean {
 export function statusToneName(status: unknown): StoplightTone {
   const normalized = String(status || '').trim().toLowerCase();
   if (!normalized) return 'neutral';
+  const explicitTone = explicitStatusToneLabels[normalized];
+  if (explicitTone) return explicitTone;
 
   if (textIncludes(normalized, ['critical', 'high', 'urgent', 'down', 'blocked', 'overdue', 'delayed', 'failed', 'error', 'not started'])) return 'danger';
-  if (textIncludes(normalized, ['needs', 'needed', 'missing', 'warning', 'watch', 'waiting', 'scheduled', 'draft', 'pending', 'hold', 'invoiced', 'maintenance', 'inspection', 'service'])) return 'caution';
+  if (textIncludes(normalized, ['needs', 'needed', 'missing', 'warning', 'watch', 'waiting', 'scheduled', 'draft', 'pending', 'hold', 'maintenance', 'inspection', 'service'])) return 'caution';
   if (textIncludes(normalized, ['progress', 'active', 'assigned', 'in use', 'dispatched', 'transit', 'pickup', 'loaded', 'started', 'at delivery', 'at pickup', 'nutrient care'])) return 'active';
   if (textIncludes(normalized, ['complete', 'delivered', 'ready', 'relocated', 'paid', 'available', 'good'])) return 'ready';
   if (textIncludes(normalized, ['closed', 'archived', 'inactive', 'cancelled', 'canceled', 'skipped'])) return 'neutral';

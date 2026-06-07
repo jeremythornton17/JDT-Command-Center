@@ -1,5 +1,6 @@
 import type { JobRecord, TreeRelocationRecord, WorkOrderRecord } from "./records";
 import { sameProject } from "./relationships";
+import { statusPillClass } from "./visualLanguage";
 
 export const defaultRelocationStatus = "Not Started";
 
@@ -167,15 +168,7 @@ export function formatRelocationCost(value: unknown): string {
 }
 
 export function relocationStatusBadgeClass(status: unknown): string {
-  const value = normalized(status || defaultRelocationStatus);
-  if (value.includes("not started")) return "bg-[#F7E4DC] text-[#7A331F] border-[#E1B9AA]";
-  if (value.includes("scheduled")) return "bg-[#FFF1CC] text-[#7A4A12] border-[#E6C46D]";
-  if (value.includes("complete")) return "bg-[#F7E9D6] text-[#7A4A12] border-[#D5AA6E]";
-  if (value.includes("ready")) return "bg-[#EAF1E2] text-[#384521] border-[#A7BC86]";
-  if (value.includes("relocated") || value.includes("moved")) return "bg-[#DDEBD2] text-[#2F4A23] border-[#8FAC72]";
-  if (value.includes("invoiced")) return "bg-[#F3E5C7] text-[#705011] border-[#C7A657]";
-  if (value.includes("paid") || value.includes("nutrient care")) return "bg-[#DDEBD2] text-[#2F4A23] border-[#8FAC72]";
-  return "bg-jdt-sand text-jdt-text border-jdt-border";
+  return statusPillClass(status || defaultRelocationStatus);
 }
 
 export function buildTreeLifecycleAlerts(input: TreeLifecycleInput): TreeLifecycleAlert[] {
