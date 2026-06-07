@@ -157,6 +157,43 @@ test('project forms expose a default root pruning period for relocation timing',
   assert.match(html, /4/);
 });
 
+test('project and assignment forms expose clear multi-day schedule ranges', () => {
+  const projectHtml = renderToString(
+    <EntityForms
+      type="job"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{ title: "Boca West Course 1 Renovation" }}
+    />,
+  );
+  const workHtml = renderToString(
+    <EntityForms
+      type="assign_work"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{ title: "Root prune Course 1" }}
+    />,
+  );
+  const freightHtml = renderToString(
+    <EntityForms
+      type="assign_freight"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{ title: "Freight support for Boca West" }}
+    />,
+  );
+
+  assert.match(projectHtml, /Schedule Start Date/);
+  assert.match(projectHtml, /Schedule End Date/);
+  assert.match(workHtml, /Start \/ Scheduled Date/);
+  assert.match(workHtml, /End \/ Due Date/);
+  assert.match(freightHtml, /Needed Start Date/);
+  assert.match(freightHtml, /Target Completion \/ End Date/);
+});
+
 test('project tree asset forms show and require the selected project context', () => {
   const withContextHtml = renderToString(
     <EntityForms
