@@ -43,15 +43,19 @@ describe("MapsBoard relocation pin editing", () => {
     assert.match(html, /GPS accuracy/);
     assert.match(html, /Map View/);
     assert.match(html, /Earth View/);
-    assert.match(html, /Google Earth Project Map/);
-    assert.match(html, /Download KML/);
+    assert.match(html, /Map Backup \/ Earth Export/);
+    assert.match(html, /Export KML Backup/);
+    assert.match(html, /Client KML\/KMZ Import/);
+    assert.match(html, /Manual pins are the active project record/);
+    assert.doesNotMatch(html, /Google Earth Project Map/);
+    assert.doesNotMatch(html, /Download KML/);
     assert.doesNotMatch(html, /Open Google Earth/);
     assert.match(html, /Saved Site Locations/);
     assert.match(html, /Google Maps Link \/ Pin/);
     assert.match(html, /Save Site Location/);
     assert.match(html, /Load \/ Unload Pin/);
     assert.equal(html.indexOf("Fallback Field Map") < html.indexOf("Active Tree"), true);
-    assert.equal(html.indexOf("Active Tree") < html.indexOf("Google Earth Project Map"), true);
+    assert.equal(html.indexOf("Active Tree") < html.indexOf("Map Backup / Earth Export"), true);
   });
 
   it("shows imported relocation tree records as job-scoped map pins", () => {

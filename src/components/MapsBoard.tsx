@@ -11,6 +11,7 @@ import {
   Save,
   Target,
   TreePine,
+  Upload,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -471,7 +472,7 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    setFieldStatus(`Downloaded ${earthMapPackage.fileName} for Google Earth import.`);
+    setFieldStatus(`Exported ${earthMapPackage.fileName} as a KML backup from the saved JDT project pins.`);
   };
 
   const openGoogleEarthProjectView = () => {
@@ -482,6 +483,10 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
       map.setZoom(Math.max(zoomLevel, 18));
     }
     setFieldStatus('Switched to in-app Earth View. Tree and project pins stay inside JDT Command Center.');
+  };
+
+  const showClientKmlImportPath = () => {
+    setFieldStatus('Client KML/KMZ import will be used for files that already contain marked tree positions. For now, keep saving Waterford-style pins inside this project map.');
   };
 
   const renderFallbackTreePins = () => {
@@ -594,10 +599,10 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
             <Globe2 className="h-5 w-5 text-jdt-primary" />
           </div>
           <div>
-            <p className="text-[10px] font-black uppercase text-zinc-400">Google Earth Project Map</p>
+            <p className="text-[10px] font-black uppercase text-zinc-400">Map Backup / Earth Export</p>
             <h3 className="text-sm font-black text-jdt-text">{earthMapPackage.documentName}</h3>
             <p className="mt-1 text-[11px] font-bold text-zinc-500">
-              {earthMapPackage.pinnedTreeCount} pinned trees, {earthMapPackage.placemarkCount} pins, {earthMapPackage.pathCount} move paths ready for Earth.
+              Manual pins are the active project record. {earthMapPackage.pinnedTreeCount} trees, {earthMapPackage.placemarkCount} pins, and {earthMapPackage.pathCount} move paths are available for backup export.
             </p>
           </div>
         </div>
@@ -607,7 +612,14 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
             onClick={downloadProjectKml}
             className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark flex items-center gap-2"
           >
-            <Download className="h-4 w-4" /> Download KML
+            <Download className="h-4 w-4" /> Export KML Backup
+          </button>
+          <button
+            type="button"
+            onClick={showClientKmlImportPath}
+            className="rounded-lg border border-dashed border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-zinc-600 hover:border-jdt-olive flex items-center gap-2"
+          >
+            <Upload className="h-4 w-4" /> Client KML/KMZ Import
           </button>
           <button
             type="button"
@@ -619,7 +631,7 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
         </div>
       </div>
       <p className="mt-3 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[11px] font-bold text-zinc-500">
-        Use Earth View inside JDT Command Center for tree pins. Download KML only when you need a Google Earth backup file.
+        Use map click, pasted coordinates, or phone GPS to build project pins. KML is for backup, sharing, or importing client files that already have tree positions marked.
       </p>
     </div>
   );
