@@ -421,6 +421,13 @@ export type LocationRecord = CommandRecord & {
   mainAddress?: string;
   crewAccessPoint?: string;
   equipmentAccessPoint?: string;
+  accessType?: string;
+  googleMapsUrl?: string;
+  sourceText?: string;
+  latitude?: number;
+  longitude?: number;
+  coordinateText?: string;
+  divisionUse?: string[];
   sourceSheet?: string;
 };
 

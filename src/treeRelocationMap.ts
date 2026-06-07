@@ -1,4 +1,18 @@
+import type { LocationRecord } from "./commandCenter/records";
+
 export type TreeRelocationPointType = "source" | "destination";
+
+export type SiteLocationAccessType =
+  | "Main Jobsite Address"
+  | "Crew Access"
+  | "Truck / Equipment Access"
+  | "Construction / Equipment Access Pin"
+  | "Load / Unload Pin"
+  | "Additional Load / Unload Pin"
+  | "Farm"
+  | "Shop"
+  | "Holding Area"
+  | string;
 
 export interface TreeRelocationPoint {
   lat: number;
@@ -75,6 +89,22 @@ export type RelocationJobLike = {
   jobType?: string;
   workTypes?: string[];
 };
+
+export interface ParsedGoogleMapsLocation {
+  lat: number;
+  lng: number;
+  sourceText: string;
+}
+
+export interface SavedSiteLocationInput {
+  label: string;
+  accessType: SiteLocationAccessType;
+  sourceText: string;
+  job?: RelocationJobLike | null;
+  divisionUse?: string[];
+  savedBy?: string;
+  savedAt?: string;
+}
 
 export interface ProjectGoogleEarthMapPackageOptions<T extends RelocationTree = RelocationTree> {
   name?: string;
@@ -215,6 +245,107 @@ export function pointFromDevicePosition(
     accuracyMeters: typeof coords.accuracy === "number" ? Math.round(coords.accuracy) : undefined,
     label: pointType === "source" ? "GPS source pin" : "GPS destination pin",
   };
+}
+
+export function parseGoogleMapsLocationText(text: unknown): ParsedGoogleMapsLocation | null {
+  const sourceText = String(text || "").trim();
+  if (!sourceText) return null;
+
+  const decodedText = safeDecodeURIComponent(sourceText);
+  const coordinateMatches = [
+    decodedText.match(/@(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)(?:[,/?]|$)/),
+    decodedText.match(/[?&](?:q|query|ll|center)=(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)(?:&|$)/i),
+    decodedText.match(/(^|[^\d.-])(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)(?=$|[^\d.])/),
+  ].filter(Boolean) as RegExpMatchArray[];
+
+  for (const match of coordinateMatches) {
+    const latCandidate = Number(match.length === 4 ? match[2] : match[1]);
+    const lngCandidate = Number(match.length === 4 ? match[3] : match[2]);
+    if (isValidLatLng(latCandidate, lngCandidate)) {
+      return {
+        lat: roundCoordinate(latCandidate),
+        lng: roundCoordinate(lngCandidate),
+        sourceText,
+      };
+    }
+  }
+
+  return null;
+}
+
+export function buildSavedSiteLocationRecord(input: SavedSiteLocationInput): LocationRecord {
+  const label = cleanLabel(input.label) || cleanLabel(input.accessType) || "Saved site location";
+  const accessType = cleanLabel(input.accessType) || "Site Location";
+  const context = relocationContextForJob(input.job);
+  const parsed = parseGoogleMapsLocationText(input.sourceText);
+  const googleMapsUrl = isUrl(input.sourceText) ? input.sourceText.trim() : undefined;
+  const projectKey = context.projectId || context.jobId || context.clientId || "general";
+  const id = `location-${slugify([projectKey, accessType, label].filter(Boolean).join("-"))}`;
+  const coordinateText = parsed ? `${parsed.lat.toFixed(5)}, ${parsed.lng.toFixed(5)}` : "";
+  const savedAt = input.savedAt || new Date().toISOString();
+
+  return {
+    id,
+    name: label,
+    title: label,
+    locationType: accessType,
+    locationId: accessType,
+    accessType,
+    mainAddress: accessType === "Main Jobsite Address" && !googleMapsUrl ? input.sourceText.trim() : "",
+    googleMapsUrl,
+    sourceText: input.sourceText.trim(),
+    latitude: parsed?.lat,
+    longitude: parsed?.lng,
+    coordinateText,
+    divisionUse: uniqueStrings(input.divisionUse || []),
+    clientId: context.clientId,
+    clientName: context.clientName,
+    projectId: context.projectId,
+    projectName: context.projectName,
+    jobId: context.jobId,
+    jobName: context.jobName,
+    status: "Available",
+    createdAtIso: savedAt,
+    createdBy: input.savedBy,
+    updatedAtIso: savedAt,
+    updatedBy: input.savedBy,
+    notes: [
+      "Saved from Maps view.",
+      parsed ? `Coordinates: ${coordinateText}` : "",
+      googleMapsUrl ? "Source: Google Maps link" : "",
+    ].filter(Boolean).join("\n"),
+  };
+}
+
+export function filterSavedSiteLocationsForJob<T extends Partial<LocationRecord>>(
+  locations: T[] = [],
+  job?: RelocationJobLike | null,
+): T[] {
+  if (!job) return locations;
+  const context = relocationContextForJob(job);
+  const candidates = [
+    job.id,
+    job.jobId,
+    context.jobId,
+    job.projectId,
+    context.projectId,
+    job.clientId,
+    context.clientId,
+    job.clientName,
+    job.client,
+    context.clientName,
+  ].map(value => String(value || "").trim().toLowerCase()).filter(Boolean);
+
+  return locations.filter((location) => {
+    const scopedValues = [
+      location.jobId,
+      location.projectId,
+      location.clientId,
+      location.clientName,
+    ].map(value => String(value || "").trim().toLowerCase()).filter(Boolean);
+    if (!scopedValues.length) return true;
+    return scopedValues.some(value => candidates.includes(value));
+  });
 }
 
 export function buildProjectGoogleEarthMapPackage<T extends RelocationTree = RelocationTree>(
@@ -424,6 +555,30 @@ export async function loadGoogleMaps(apiKey: string): Promise<any> {
 
 function roundCoordinate(value: number): number {
   return Number(value.toFixed(5));
+}
+
+function isValidLatLng(lat: number, lng: number): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+}
+
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function cleanLabel(value: unknown): string {
+  return String(value || "").trim();
+}
+
+function isUrl(value: unknown): boolean {
+  return /^https?:\/\//i.test(String(value || "").trim());
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map(value => value.trim()).filter(Boolean)));
 }
 
 function clamp(value: number, min: number, max: number): number {

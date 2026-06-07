@@ -302,6 +302,39 @@ test('project-scoped assignment forms suggest only the selected project saved ad
   assert.doesNotMatch(html, /25 Acre Farm/);
 });
 
+test('assignment forms suggest saved Maps site locations from the location library', () => {
+  const html = renderToString(
+    <EntityForms
+      type="assign_freight"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{
+        title: 'Freight support for Boca West',
+        clientName: 'Boca West Country Club',
+        projectId: 'BWCC-060426',
+        projectName: 'Boca West Course 1 Renovation',
+      }}
+      locationsList={[
+        {
+          id: 'location-bwcc-truck-access',
+          name: 'Boca West truck access gate',
+          accessType: 'Truck / Equipment Access',
+          clientName: 'Boca West Country Club',
+          projectId: 'BWCC-060426',
+          projectName: 'Boca West Course 1 Renovation',
+          coordinateText: '26.75791, -81.04084',
+          googleMapsUrl: 'https://www.google.com/maps/@26.757913,-81.0408413,1039m/data=!3m1!1e3',
+        },
+      ]}
+    />,
+  );
+
+  assert.match(html, /Boca West truck access gate/);
+  assert.match(html, /26.75791, -81.04084/);
+  assert.match(html, /https:\/\/www\.google\.com\/maps\/@26\.757913,-81\.0408413/);
+});
+
 test('employee forms expose driver license and CDL medical card compliance fields', () => {
   const html = renderToString(
     <EntityForms

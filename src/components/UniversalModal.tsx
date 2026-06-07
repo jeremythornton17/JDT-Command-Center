@@ -16,6 +16,7 @@ export default function UniversalModal({
   equipmentList = [],
   crewsList = [],
   clientsList = [],
+  locationsList = [],
   workOrders = [],
   projectMaterialItems = []
 }: any) {
@@ -254,6 +255,7 @@ export default function UniversalModal({
                   equipmentList={equipmentList}
                   crewsList={crewsList}
                   clientsList={clientsList}
+                  locationsList={locationsList}
                   workOrders={workOrders}
                   projectMaterialItems={projectMaterialItems}
                   submitLabel={config.btn}

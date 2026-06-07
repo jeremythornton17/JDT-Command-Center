@@ -47,6 +47,7 @@ type EntityFormsProps = {
   equipmentList?: any[];
   crewsList?: any[];
   clientsList?: any[];
+  locationsList?: any[];
   workOrders?: any[];
   projectMaterialItems?: any[];
   submitLabel?: string;
@@ -784,6 +785,57 @@ function valuesFromRecords(records: any[], keys: string[]): string[] {
   return records.flatMap((record) => keys.map((key) => record?.[key]));
 }
 
+function cleanIdentity(value: unknown): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function savedLocationMatchesFormContext(location: any, data: Record<string, unknown>) {
+  const contextValues = [
+    data?.jobId,
+    data?.jobName,
+    data?.projectId,
+    data?.projectsId,
+    data?.projectName,
+    data?.clientId,
+    data?.clientName,
+    data?.client,
+  ].map(cleanIdentity).filter(Boolean);
+  if (!contextValues.length) return true;
+
+  const locationScopeValues = [
+    location?.jobId,
+    location?.jobName,
+    location?.projectId,
+    location?.projectsId,
+    location?.projectName,
+    location?.clientId,
+    location?.clientName,
+    location?.client,
+  ].map(cleanIdentity).filter(Boolean);
+
+  if (!locationScopeValues.length) return true;
+  return locationScopeValues.some((value) => contextValues.includes(value));
+}
+
+function savedLocationSuggestionValues(location: any): string[] {
+  return [
+    location?.name,
+    location?.title,
+    location?.locationName,
+    location?.mainAddress,
+    location?.locationAddress,
+    location?.address,
+    location?.crewAccessAddress,
+    location?.truckAccessAddress,
+    location?.constructionAccessPin,
+    location?.loadUnloadPin,
+    location?.secondaryLoadUnloadPin,
+    location?.coordinateText,
+    location?.googleMapsUrl,
+    location?.sourceText,
+  ].filter(Boolean).map(String);
+}
+
 function personName(person: any): string {
   return String(person?.name || person?.fullName || person?.displayName || '').trim();
 }
@@ -813,12 +865,13 @@ function enrichFieldsWithSuggestions(
   resolvedType: string,
   fields: FieldConfig[],
   data: any,
-  lists: Pick<EntityFormsProps, 'jobsList' | 'equipmentList' | 'crewsList' | 'clientsList' | 'workOrders' | 'projectMaterialItems'>,
+  lists: Pick<EntityFormsProps, 'jobsList' | 'equipmentList' | 'crewsList' | 'clientsList' | 'locationsList' | 'workOrders' | 'projectMaterialItems'>,
 ) {
   const jobsList = lists.jobsList || [];
   const equipmentList = lists.equipmentList || [];
   const crewsList = lists.crewsList || [];
   const clientsList = lists.clientsList || [];
+  const locationsList = lists.locationsList || [];
   const workOrders = lists.workOrders || [];
   const projectMaterialItems = lists.projectMaterialItems || [];
 
@@ -853,14 +906,22 @@ function enrichFieldsWithSuggestions(
   const siteContactNames = uniqueTextOptions(valuesFromRecords(siteContacts, ['name', 'contactName']));
   const siteContactPhones = uniqueTextOptions(valuesFromRecords(siteContacts, ['phone', 'mobile', 'cell']));
   const projectSiteAddressOptions = uniqueTextOptions(Array.isArray(data?.projectSiteAddressOptions) ? data.projectSiteAddressOptions : []);
+  const savedLocationOptions = uniqueTextOptions(
+    locationsList
+      .filter((location) => savedLocationMatchesFormContext(location, data || {}))
+      .flatMap(savedLocationSuggestionValues),
+  );
   const locations = uniqueTextOptions([
     ...defaultFreightLocationOptions,
+    ...savedLocationOptions,
     ...valuesFromRecords(jobsList, ['location', 'site', 'address', 'crewAccessAddress', 'truckAccessAddress', 'constructionAccessPin', 'loadUnloadPin', 'secondaryLoadUnloadPin']),
     ...valuesFromRecords(clientsList, ['billingAddress', 'address', 'siteAddress']),
     ...valuesFromRecords(equipmentList, ['currentLocationName', 'currentLocation', 'location']),
     ...valuesFromRecords(workOrders, ['origin', 'destination', 'siteArea']),
   ]);
-  const scopedLocations = projectSiteAddressOptions.length > 0 ? projectSiteAddressOptions : locations;
+  const scopedLocations = projectSiteAddressOptions.length > 0
+    ? uniqueTextOptions([...projectSiteAddressOptions, ...savedLocationOptions])
+    : locations;
 
   return fields.map((field) => {
     const currentValue = data?.[field.key];
@@ -945,6 +1006,7 @@ export default function EntityForms({
   equipmentList = [],
   crewsList = [],
   clientsList = [],
+  locationsList = [],
   workOrders = [],
   projectMaterialItems = [],
   submitLabel = 'Save Record',
@@ -963,9 +1025,9 @@ export default function EntityForms({
       resolvedType,
       fieldsForType(resolvedType, stopCount),
       formSeed || {},
-      { jobsList, equipmentList, crewsList, clientsList, workOrders, projectMaterialItems },
+      { jobsList, equipmentList, crewsList, clientsList, locationsList, workOrders, projectMaterialItems },
     ),
-    [resolvedType, stopCount, formSeed, jobsList, equipmentList, crewsList, clientsList, workOrders, projectMaterialItems],
+    [resolvedType, stopCount, formSeed, jobsList, equipmentList, crewsList, clientsList, locationsList, workOrders, projectMaterialItems],
   );
   const [formData, setFormData] = useState<any>(() => initialFormData(formSeed, fields));
   const [formError, setFormError] = useState('');

@@ -1252,6 +1252,7 @@ export default function App() {
         equipmentList={equipmentWithDefaults}
         crewsList={personnel}
         clientsList={clients}
+        locationsList={locations}
         workOrders={workOrders}
         projectMaterialItems={projectMaterialItems}
       />

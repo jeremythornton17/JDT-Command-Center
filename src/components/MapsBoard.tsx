@@ -7,16 +7,20 @@ import {
   ExternalLink,
   Globe2,
   LocateFixed,
+  MapPin,
   Route,
+  Save,
   Target,
   TreePine,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
 import {
+  buildSavedSiteLocationRecord,
   buildProjectGoogleEarthMapPackage,
   buildRelocationJobOptions,
   buildTreeRelocationTasks,
+  filterSavedSiteLocationsForJob,
   filterTreesForRelocationJob,
   formatTreeCoordinate,
   getGoogleMapsConfig,
@@ -26,9 +30,11 @@ import {
   latLngToMapPercent,
   loadGoogleMaps,
   mapPercentToLatLng,
+  parseGoogleMapsLocationText,
   pointFromDevicePosition,
   relocationContextForJob,
   updateTreeRelocationPoint,
+  type SiteLocationAccessType,
   type TreeRelocationPoint,
   type TreeRelocationPointType,
 } from '../treeRelocationMap';
@@ -37,6 +43,20 @@ import { useFirestoreSyncState } from '../useFirestoreCollection';
 import { jdtHomeBase } from '../commandCenter/equipmentFreight';
 
 const defaultFieldCenter = jdtHomeBase.coordinates;
+
+const siteLocationAccessTypes: SiteLocationAccessType[] = [
+  'Main Jobsite Address',
+  'Crew Access',
+  'Truck / Equipment Access',
+  'Construction / Equipment Access Pin',
+  'Load / Unload Pin',
+  'Additional Load / Unload Pin',
+  'Farm',
+  'Shop',
+  'Holding Area',
+];
+
+const siteLocationDivisionOptions = ['Relocation & Installation', 'Crew', 'Freight', 'Equipment', 'Nursery'];
 
 type MapsBoardProps = {
   jobs?: any[];
@@ -55,6 +75,7 @@ type SelectedPin = {
 export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords = [], onUpdateTreeLocation, openDrawer }: MapsBoardProps) {
   const { user } = useAuth();
   const [syncedRanchOaks, setSyncedRanchOaks] = useFirestoreSyncState<any>('ranchOaks', [], !!user && !ranchOaks);
+  const [savedLocations, setSavedLocations] = useFirestoreSyncState<any>('locations', [], !!user);
   const treeRecords = useMemo(
     () => mergeMapTreeRecords(ranchOaks ?? syncedRanchOaks ?? [], treeRelocationRecords),
     [ranchOaks, syncedRanchOaks, treeRelocationRecords],
@@ -105,6 +126,17 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
   const selectedPinPoint = selectedPin
     ? selectedTree?.relocationMap?.[selectedPin.pointType]
     : undefined;
+  const scopedSavedLocations = useMemo(
+    () => filterSavedSiteLocationsForJob(savedLocations, selectedJob),
+    [savedLocations, selectedJob],
+  );
+  const [siteLocationForm, setSiteLocationForm] = useState({
+    label: '',
+    accessType: 'Load / Unload Pin' as SiteLocationAccessType,
+    sourceText: '',
+    divisionUse: ['Relocation & Installation', 'Freight', 'Equipment'],
+  });
+  const parsedSiteLocation = useMemo(() => parseGoogleMapsLocationText(siteLocationForm.sourceText), [siteLocationForm.sourceText]);
 
   const mapInstruction = pinMode
     ? `Click the map to set ${pinMode === 'source' ? 'current field position' : 'relocation destination'} for ${selectedTree?.treeId || selectedTree?.id || 'selected tree'}.`
@@ -153,7 +185,7 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
     return () => {
       cancelled = true;
     };
-  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, filteredTreeRecords, selectedTreeId, zoomLevel]);
+  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, filteredTreeRecords, scopedSavedLocations, selectedTreeId, zoomLevel]);
 
   const renderGoogleTreeMarkers = (maps: any) => {
     const map = googleMapInstanceRef.current;
@@ -188,6 +220,23 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
         });
         googleMarkerRefs.current.push(marker);
       });
+    });
+
+    scopedSavedLocations.forEach((location) => {
+      const point = pointFromSavedLocation(location);
+      if (!point) return;
+
+      const marker = new maps.Marker({
+        position: { lat: point.lat, lng: point.lng },
+        map,
+        title: `${location.name || location.title || 'Saved site location'} ${location.locationType || ''}`,
+        label: 'L',
+        draggable: false,
+      });
+      marker.addListener('click', () => {
+        focusSavedLocation(location);
+      });
+      googleMarkerRefs.current.push(marker);
     });
   };
 
@@ -267,6 +316,78 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
     );
   };
 
+  const toggleSiteLocationDivision = (division: string) => {
+    setSiteLocationForm((prev) => {
+      const exists = prev.divisionUse.includes(division);
+      return {
+        ...prev,
+        divisionUse: exists
+          ? prev.divisionUse.filter((item) => item !== division)
+          : [...prev.divisionUse, division],
+      };
+    });
+  };
+
+  const saveSiteLocation = async () => {
+    const sourceText = siteLocationForm.sourceText.trim();
+    const label = siteLocationForm.label.trim();
+    if (!sourceText) {
+      setFieldStatus('Paste a Google Maps link, coordinates, or an address before saving a site location.');
+      return;
+    }
+    if (!label) {
+      setFieldStatus('Add a short label so this saved location is clear in project and dispatch dropdowns.');
+      return;
+    }
+
+    const record = buildSavedSiteLocationRecord({
+      label,
+      accessType: siteLocationForm.accessType,
+      sourceText,
+      job: selectedJob,
+      divisionUse: siteLocationForm.divisionUse,
+      savedBy: user?.email || 'Command Center',
+    });
+
+    const saved = await setSavedLocations((prev) => {
+      const existing = prev.find((item) => item.id === record.id);
+      const nextRecord = {
+        ...existing,
+        ...record,
+        createdAtIso: existing?.createdAtIso || record.createdAtIso,
+        createdBy: existing?.createdBy || record.createdBy,
+      };
+      return [...prev.filter((item) => item.id !== record.id), nextRecord];
+    });
+
+    if (!saved) {
+      setFieldStatus('Unable to save that site location. Check Firebase permissions and try again.');
+      return;
+    }
+
+    setSiteLocationForm((prev) => ({ ...prev, label: '', sourceText: '' }));
+    setFieldStatus(`Saved ${record.name} as ${record.locationType}${selectedJob ? ` for ${selectedJob.title || selectedJob.projectName || 'this project'}` : ''}.`);
+  };
+
+  const focusSavedLocation = (location: any) => {
+    const point = pointFromSavedLocation(location);
+    if (point && googleMapInstanceRef.current) {
+      googleMapInstanceRef.current.setCenter({ lat: point.lat, lng: point.lng });
+      googleMapInstanceRef.current.setZoom(Math.max(zoomLevel, 18));
+    }
+    setFieldStatus(`${location.name || location.title || 'Saved location'} selected. ${location.coordinateText || formatTreeCoordinate(point)}`);
+  };
+
+  const openSavedLocationInGoogleMaps = (location: any) => {
+    const point = pointFromSavedLocation(location);
+    const url = location.googleMapsUrl || (point ? `https://www.google.com/maps/@${point.lat},${point.lng},19z` : undefined);
+    if (!url) {
+      setFieldStatus('This saved location does not have a Google Maps link or coordinates yet.');
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   const downloadProjectKml = () => {
     if (!earthMapPackage.pinnedTreeCount) {
       setFieldStatus('Add at least one source or destination pin before exporting this project to Google Earth.');
@@ -316,6 +437,29 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
         );
       });
       return pins;
+    });
+  };
+
+  const renderFallbackSiteLocationPins = () => {
+    return scopedSavedLocations.map((location) => {
+      const point = pointFromSavedLocation(location);
+      if (!point) return null;
+      const percent = latLngToMapPercent(point);
+      return (
+        <button
+          key={location.id}
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            focusSavedLocation(location);
+          }}
+          className="absolute h-8 w-8 rounded-full border-2 border-white bg-amber-500 shadow-xl flex items-center justify-center ring-4 ring-amber-100 transition-all hover:scale-110 z-10"
+          style={{ left: `${percent.x}%`, top: `${percent.y}%` }}
+          title={`${location.name || location.title || 'Saved location'} ${location.locationType || ''}`}
+        >
+          <MapPin className="h-4 w-4 text-white" />
+        </button>
+      );
     });
   };
 
@@ -472,6 +616,7 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
                 </div>
                 {renderSelectedTreeLine()}
                 {renderFallbackTreePins()}
+                {renderFallbackSiteLocationPins()}
               </div>
             )}
 
@@ -514,6 +659,118 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
                   <p className="mt-1 text-[11px] font-bold text-zinc-500">Add tree inventory to start placing relocation pins.</p>
                 </div>
               )}
+            </div>
+          </div>
+
+          <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
+            <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5 mb-3"><MapPin className="h-4 w-4 text-amber-700" /> Saved Site Locations</h3>
+            <div className="space-y-3">
+              <label className="block">
+                <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1">Location Label</span>
+                <input
+                  value={siteLocationForm.label}
+                  onChange={(event) => setSiteLocationForm((prev) => ({ ...prev, label: event.target.value }))}
+                  placeholder="25 Acre east equipment gate"
+                  className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                />
+              </label>
+              <label className="block">
+                <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1">Location Type</span>
+                <select
+                  value={siteLocationForm.accessType}
+                  onChange={(event) => setSiteLocationForm((prev) => ({ ...prev, accessType: event.target.value }))}
+                  className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                >
+                  {siteLocationAccessTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                </select>
+              </label>
+              <div>
+                <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1">Division Use</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {siteLocationDivisionOptions.map((division) => {
+                    const selected = siteLocationForm.divisionUse.includes(division);
+                    return (
+                      <button
+                        key={division}
+                        type="button"
+                        onClick={() => toggleSiteLocationDivision(division)}
+                        className={`rounded-md border px-2 py-1 text-[9px] font-black uppercase ${selected ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-white text-zinc-600'}`}
+                      >
+                        {division}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <label className="block">
+                <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1">Google Maps Link / Pin</span>
+                <textarea
+                  value={siteLocationForm.sourceText}
+                  onChange={(event) => setSiteLocationForm((prev) => ({ ...prev, sourceText: event.target.value }))}
+                  placeholder="Paste Google Maps link, lat/long, or address"
+                  rows={3}
+                  className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                />
+              </label>
+              <div className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[11px] font-bold text-zinc-500">
+                <span className="font-black uppercase text-zinc-400">Parsed Pin: </span>
+                {parsedSiteLocation ? `${parsedSiteLocation.lat.toFixed(5)}, ${parsedSiteLocation.lng.toFixed(5)}` : 'No coordinates detected yet'}
+              </div>
+              <button
+                type="button"
+                onClick={saveSiteLocation}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark"
+              >
+                <Save className="h-4 w-4" /> Save Site Location
+              </button>
+            </div>
+
+            <div className="mt-4 border-t border-jdt-border pt-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-black uppercase text-zinc-400">Project Pins</p>
+                <span className="rounded bg-white px-2 py-0.5 text-[9px] font-black uppercase text-zinc-500">{scopedSavedLocations.length}</span>
+              </div>
+              <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                {scopedSavedLocations.length > 0 ? scopedSavedLocations.map((location) => {
+                  const point = pointFromSavedLocation(location);
+                  return (
+                    <div key={location.id} className="rounded-lg border border-jdt-border bg-white p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-black text-jdt-text">{location.name || location.title}</p>
+                          <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{location.locationType || 'Site Location'}</p>
+                        </div>
+                        <span className="shrink-0 rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase text-amber-800">{point ? 'Pinned' : 'Address'}</span>
+                      </div>
+                      <p className="mt-2 text-[11px] font-bold text-zinc-500">{location.coordinateText || (point ? formatTreeCoordinate(point) : '') || location.mainAddress || location.sourceText || '-'}</p>
+                      {Array.isArray(location.divisionUse) && location.divisionUse.length > 0 && (
+                        <p className="mt-1 text-[10px] font-bold text-zinc-400">{location.divisionUse.join(' / ')}</p>
+                      )}
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => focusSavedLocation(location)}
+                          className="flex-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                        >
+                          Focus
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openSavedLocationInGoogleMaps(location)}
+                          className="flex-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                        >
+                          Open Maps
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }) : (
+                  <div className="rounded-lg border border-dashed border-jdt-border bg-white p-4 text-center">
+                    <p className="text-xs font-black uppercase text-jdt-text">No saved locations</p>
+                    <p className="mt-1 text-[11px] font-bold text-zinc-500">Save access pins for the selected project or job.</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -612,4 +869,16 @@ function mergeMapTreeRecords(baseTrees: any[] = [], relocationTrees: any[] = [])
 function treeMapSubtitle(tree: any): string {
   const parts = [tree.farm, tree.zone, tree.ranchOakType || tree.type || tree.treeType].filter(Boolean);
   return parts.length ? parts.join(' - ') : 'Project tree asset';
+}
+
+function pointFromSavedLocation(location: any): TreeRelocationPoint | undefined {
+  const lat = Number(location.latitude);
+  const lng = Number(location.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return undefined;
+  return {
+    lat,
+    lng,
+    label: location.name || location.title || location.locationType || 'Saved site location',
+  };
 }

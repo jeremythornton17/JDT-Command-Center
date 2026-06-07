@@ -3,13 +3,16 @@ import { describe, it } from "node:test";
 import {
   buildProjectGoogleEarthMapPackage,
   buildRelocationJobOptions,
+  buildSavedSiteLocationRecord,
   buildTreeRelocationTasks,
+  filterSavedSiteLocationsForJob,
   filterTreesForRelocationJob,
   formatTreeCoordinate,
   getGoogleMapsConfig,
   relocationContextForJob,
   getTreeRelocationStatus,
   mapPercentToLatLng,
+  parseGoogleMapsLocationText,
   pointFromDevicePosition,
   updateTreeRelocationPoint,
 } from "./treeRelocationMap";
@@ -136,6 +139,65 @@ describe("tree relocation map helpers", () => {
     assert.equal(formatTreeCoordinate(point), "26.75505, -80.91809");
     assert.equal(point.accuracyMeters, 5);
     assert.equal(point.label, "GPS source pin");
+  });
+
+  it("parses pasted Google Maps links and plain lat/lng text into saved pin coordinates", () => {
+    const mapsUrl = "https://www.google.com/maps/@26.757913,-81.0408413,1039m/data=!3m1!1e3!4m2!10m1!1e1?authuser=0&entry=ttu";
+    assert.deepEqual(parseGoogleMapsLocationText(mapsUrl), {
+      lat: 26.75791,
+      lng: -81.04084,
+      sourceText: mapsUrl,
+    });
+    assert.deepEqual(parseGoogleMapsLocationText("Load pin: 26.387315, -80.1712583"), {
+      lat: 26.38732,
+      lng: -80.17126,
+      sourceText: "Load pin: 26.387315, -80.1712583",
+    });
+    assert.equal(parseGoogleMapsLocationText("Boca Raton"), null);
+  });
+
+  it("builds project-scoped saved site location records from pasted Maps pins", () => {
+    const record = buildSavedSiteLocationRecord({
+      label: "25 Acre east equipment gate",
+      accessType: "Truck / Equipment Access",
+      sourceText: "https://www.google.com/maps/@26.757913,-81.0408413,1039m/data=!3m1!1e3",
+      job: {
+        id: "job-boca",
+        title: "Boca West Course 1",
+        projectId: "project-boca",
+        projectName: "Boca West Course 1",
+        clientId: "client-boca",
+        clientName: "Boca West Country Club",
+      },
+      divisionUse: ["Relocation & Installation", "Freight", "Equipment"],
+      savedBy: "jennifer@jdtnurseries.com",
+      savedAt: "2026-06-07T12:00:00.000Z",
+    });
+
+    assert.equal(record.id, "location-project-boca-truck-equipment-access-25-acre-east-equipment-gate");
+    assert.equal(record.name, "25 Acre east equipment gate");
+    assert.equal(record.locationType, "Truck / Equipment Access");
+    assert.equal(record.projectId, "project-boca");
+    assert.equal(record.jobId, "job-boca");
+    assert.equal(record.clientName, "Boca West Country Club");
+    assert.equal(record.latitude, 26.75791);
+    assert.equal(record.longitude, -81.04084);
+    assert.equal(record.googleMapsUrl, "https://www.google.com/maps/@26.757913,-81.0408413,1039m/data=!3m1!1e3");
+    assert.deepEqual(record.divisionUse, ["Relocation & Installation", "Freight", "Equipment"]);
+    assert.match(record.notes || "", /Saved from Maps view/);
+  });
+
+  it("filters saved site locations to the selected project or job context", () => {
+    const locations = [
+      { id: "loc-boca-job", name: "Boca gate", jobId: "job-boca" },
+      { id: "loc-boca-project", name: "Boca load pin", projectId: "project-boca" },
+      { id: "loc-mcarthur", name: "McArthur gate", projectId: "project-mcarthur" },
+      { id: "loc-shared", name: "JDT Home Base", locationType: "Farm" },
+    ];
+    const job = { id: "job-boca", projectId: "project-boca", clientName: "Boca West Country Club" };
+
+    assert.deepEqual(filterSavedSiteLocationsForJob(locations, null).map(location => location.id), ["loc-boca-job", "loc-boca-project", "loc-mcarthur", "loc-shared"]);
+    assert.deepEqual(filterSavedSiteLocationsForJob(locations, job).map(location => location.id), ["loc-boca-job", "loc-boca-project", "loc-shared"]);
   });
 
   it("builds a Google Earth KML package from project tree source and destination pins", () => {
