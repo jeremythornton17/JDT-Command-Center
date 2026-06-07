@@ -10,12 +10,15 @@ import type {
 import type { OperatingCategory } from "./visualLanguage";
 
 export type CalendarView = "Today" | "Tomorrow" | "Week" | "Month";
+export type CalendarGridView = "Day" | "Week" | "Month";
 
 export type OperatingCalendarEvent = {
   id: string;
   sourceType: "job" | "freight" | "workOrder" | "scheduleTask" | "treeLifecycle" | "equipment";
   category: OperatingCategory;
   dateIso: string;
+  endDateIso: string;
+  durationDays: number;
   timeLabel: string;
   title: string;
   detail: string;
@@ -64,6 +67,13 @@ export type OperatingCalendar = {
   tomorrowReadiness: TomorrowReadinessSummary;
 };
 
+export type CalendarGridDay = {
+  dateIso: string;
+  isCurrentMonth: boolean;
+  isToday: boolean;
+  events: OperatingCalendarEvent[];
+};
+
 export type OperatingCalendarInput = {
   jobs?: JobRecord[];
   loads?: LoadRecord[];
@@ -95,6 +105,76 @@ function addDaysIso(iso: string, days: number): string {
   const date = new Date(`${iso}T00:00:00`);
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+function diffDaysInclusive(startIso: string, endIso: string): number {
+  const start = new Date(`${startIso}T00:00:00`);
+  const end = new Date(`${endIso}T00:00:00`);
+  const diffMs = end.getTime() - start.getTime();
+  if (Number.isNaN(diffMs)) return 1;
+  return Math.max(1, Math.floor(diffMs / 86_400_000) + 1);
+}
+
+function startOfWeekIso(iso: string): string {
+  const date = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return iso;
+  return addDaysIso(iso, -date.getDay());
+}
+
+function startOfMonthIso(iso: string): string {
+  return `${iso.slice(0, 7)}-01`;
+}
+
+function endOfMonthIso(iso: string): string {
+  const date = new Date(`${iso.slice(0, 7)}-01T00:00:00`);
+  date.setMonth(date.getMonth() + 1);
+  date.setDate(date.getDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function calendarGridRange(view: CalendarGridView, focusIso: string): { startIso: string; endIso: string; currentMonthPrefix: string } {
+  if (view === "Day") return { startIso: focusIso, endIso: focusIso, currentMonthPrefix: focusIso.slice(0, 7) };
+  if (view === "Week") {
+    const startIso = startOfWeekIso(focusIso);
+    return { startIso, endIso: addDaysIso(startIso, 6), currentMonthPrefix: focusIso.slice(0, 7) };
+  }
+
+  const monthStart = startOfMonthIso(focusIso);
+  const monthEnd = endOfMonthIso(focusIso);
+  const startIso = startOfWeekIso(monthStart);
+  const endDate = new Date(`${monthEnd}T00:00:00`);
+  const trailingDays = 6 - endDate.getDay();
+  return {
+    startIso,
+    endIso: addDaysIso(monthEnd, trailingDays),
+    currentMonthPrefix: focusIso.slice(0, 7),
+  };
+}
+
+function rangeForCalendarView(view: CalendarView, todayIso: string): { startIso: string; endIso: string } {
+  const tomorrowIso = addDaysIso(todayIso, 1);
+  if (view === "Today") return { startIso: todayIso, endIso: todayIso };
+  if (view === "Tomorrow") return { startIso: tomorrowIso, endIso: tomorrowIso };
+  if (view === "Month") return { startIso: startOfMonthIso(todayIso), endIso: endOfMonthIso(todayIso) };
+  return { startIso: todayIso, endIso: addDaysIso(todayIso, 6) };
+}
+
+function dateRange(startDateIso: string, endDateIso?: string): { dateIso: string; endDateIso: string; durationDays: number } {
+  const cleanEnd = dateOnly(endDateIso);
+  const normalizedEnd = cleanEnd && cleanEnd >= startDateIso ? cleanEnd : startDateIso;
+  return {
+    dateIso: startDateIso,
+    endDateIso: normalizedEnd,
+    durationDays: diffDaysInclusive(startDateIso, normalizedEnd),
+  };
+}
+
+function eventOverlapsRange(event: OperatingCalendarEvent, startIso: string, endIso: string): boolean {
+  return event.dateIso <= endIso && event.endDateIso >= startIso;
+}
+
+function eventOccursOn(event: OperatingCalendarEvent, dateIsoValue: string): boolean {
+  return event.dateIso <= dateIsoValue && event.endDateIso >= dateIsoValue;
 }
 
 function isInactive(status: unknown): boolean {
@@ -175,16 +255,23 @@ function addReadinessIssues(event: OperatingCalendarEvent): OperatingCalendarEve
   return { ...event, readinessIssues: Array.from(issues) };
 }
 
+function calendarEvent(event: Omit<OperatingCalendarEvent, "dateIso" | "endDateIso" | "durationDays">, startDateIso: string, endDateIso?: string): OperatingCalendarEvent {
+  return addReadinessIssues({
+    ...event,
+    ...dateRange(startDateIso, endDateIso),
+  });
+}
+
 function buildJobEvents(jobs: JobRecord[]): OperatingCalendarEvent[] {
   return jobs.flatMap((job) => {
-    const dateIso = firstDate(job.date, job.startDate, job.scheduledDate);
+    const dateIso = firstDate(job.startDate, job.date, job.scheduledDate);
     if (!dateIso) return [];
+    const endDateIso = firstDate(job.endDate, job.scheduledEndDate);
     const assignee = firstText(job.crew, job.pm);
-    return [addReadinessIssues({
+    return [calendarEvent({
       id: `job-${firstText(job.id, job.jobId, job.projectId, job.title)}`,
       sourceType: "job",
       category: "relocation",
-      dateIso,
       timeLabel: firstText(job.time, "Scheduled"),
       title: firstText(job.title, job.projectName, job.clientName, job.client, "Scheduled job"),
       detail: [job.clientName || job.client, job.projectName, job.location].filter(Boolean).join(" - "),
@@ -198,7 +285,7 @@ function buildJobEvents(jobs: JobRecord[]): OperatingCalendarEvent[] {
       readinessIssues: [],
       conflicts: [],
       resources: resourceList(resource("crew", job.crew)),
-    })];
+    }, dateIso, endDateIso)];
   });
 }
 
@@ -206,11 +293,11 @@ function buildLoadEvents(loads: LoadRecord[]): OperatingCalendarEvent[] {
   return loads.flatMap((load) => {
     const dateIso = firstDate(load.date, load.pickupDate, load.deliveryDate);
     if (!dateIso) return [];
-    return [addReadinessIssues({
+    const endDateIso = firstDate(load.deliveryDate);
+    return [calendarEvent({
       id: `freight-${firstText(load.id, load.loadNumber, load.title)}`,
       sourceType: "freight",
       category: "freight",
-      dateIso,
       timeLabel: firstText(load.time, load.eta, "Scheduled"),
       title: firstText(load.title, load.loadNumber, "Scheduled freight"),
       detail: [load.driver, load.truck, load.trailer, load.origin, load.delivery || load.destination].filter(Boolean).join(" - "),
@@ -224,21 +311,21 @@ function buildLoadEvents(loads: LoadRecord[]): OperatingCalendarEvent[] {
       readinessIssues: [],
       conflicts: [],
       resources: resourceList(resource("driver", load.driver), resource("truck", load.truck), resource("trailer", load.trailer)),
-    })];
+    }, dateIso, endDateIso)];
   });
 }
 
 function buildWorkOrderEvents(workOrders: WorkOrderRecord[]): OperatingCalendarEvent[] {
   return workOrders.flatMap((workOrder) => {
-    const dateIso = firstDate(workOrder.scheduledDate, workOrder.dueDate, workOrder.completedDate);
+    const dateIso = firstDate(workOrder.startDate, workOrder.scheduledDate, workOrder.dueDate, workOrder.completedDate);
     if (!dateIso) return [];
+    const endDateIso = firstDate(workOrder.endDate, workOrder.dueDate, workOrder.completedDate);
     const assignee = firstText(workOrder.crewLeadName, ...(workOrder.assignedCrewNames || []));
     const category = workOrderCategory(workOrder);
-    return [addReadinessIssues({
+    return [calendarEvent({
       id: `workOrder-${firstText(workOrder.id, workOrder.jobId, workOrder.title)}`,
       sourceType: "workOrder",
       category,
-      dateIso,
       timeLabel: firstText(workOrder.time, "Scheduled"),
       title: firstText(workOrder.title, workOrder.taskType, "Work order"),
       detail: [workOrder.clientName, workOrder.projectName, workOrder.taskType].filter(Boolean).join(" - "),
@@ -257,7 +344,7 @@ function buildWorkOrderEvents(workOrders: WorkOrderRecord[]): OperatingCalendarE
         ...((workOrder.truckNames || []).map((name) => resource("truck", name))),
         ...((workOrder.trailerNames || []).map((name) => resource("trailer", name))),
       ),
-    })];
+    }, dateIso, endDateIso)];
   });
 }
 
@@ -265,12 +352,12 @@ function buildScheduleTaskEvents(scheduleTasks: ScheduleTaskRecord[]): Operating
   return scheduleTasks.flatMap((task) => {
     const dateIso = firstDate(task.startDate, task.endDate, task.date);
     if (!dateIso) return [];
+    const endDateIso = firstDate(task.endDate);
     const category = scheduleTaskCategory(task);
-    return [addReadinessIssues({
+    return [calendarEvent({
       id: `scheduleTask-${firstText(task.id, task.jobScheduleId, task.title, task.task)}`,
       sourceType: "scheduleTask",
       category,
-      dateIso,
       timeLabel: firstText(task.time, task.jobStage, task.loadStatus, "Scheduled"),
       title: firstText(task.task, task.title, task.activityType, "Scheduled task"),
       detail: [task.clientCompany, task.locationName, task.assignee].filter(Boolean).join(" - "),
@@ -284,7 +371,7 @@ function buildScheduleTaskEvents(scheduleTasks: ScheduleTaskRecord[]): Operating
       readinessIssues: [],
       conflicts: [],
       resources: resourceList(resource("crew", task.assignee), resource("truck", task.truck), resource("trailer", task.trailer), resource("equipment", task.equipment)),
-    })];
+    }, dateIso, endDateIso)];
   });
 }
 
@@ -293,11 +380,10 @@ function buildEquipmentEvents(equipment: EquipmentRecord[]): OperatingCalendarEv
     const dateIso = firstDate(item.nextServiceDue, item.serviceDueDate);
     if (!dateIso) return [];
     const title = firstText(item.name, item.asset, item.model, item.id, "Equipment");
-    return [addReadinessIssues({
+    return [calendarEvent({
       id: `equipment-${firstText(item.id, item.assetId, title)}`,
       sourceType: "equipment",
       category: "equipment",
-      dateIso,
       timeLabel: "Service due",
       title: `Service: ${title}`,
       detail: [item.serviceStatus, item.currentLocationName || item.location, item.operator].filter(Boolean).join(" - "),
@@ -309,7 +395,7 @@ function buildEquipmentEvents(equipment: EquipmentRecord[]): OperatingCalendarEv
       readinessIssues: ["Service due"],
       conflicts: [],
       resources: resourceList(resource("equipment", title), resource("crew", item.operator || item.assignedCrewName)),
-    })];
+    }, dateIso)];
   });
 }
 
@@ -319,11 +405,10 @@ function buildTreeLifecycleEvents(input: OperatingCalendarInput): OperatingCalen
     jobs: input.jobs || [],
     workOrders: input.workOrders || [],
     todayIso: input.todayIso,
-  }).map((alert) => addReadinessIssues({
+  }).map((alert) => calendarEvent({
     id: `treeLifecycle-${alert.id}`,
     sourceType: "treeLifecycle",
     category: "nursery",
-    dateIso: dateOnly(alert.dueDate) || dateOnly(input.todayIso) || new Date().toISOString().slice(0, 10),
     timeLabel: "Action due",
     title: alert.title,
     detail: alert.detail,
@@ -336,7 +421,7 @@ function buildTreeLifecycleEvents(input: OperatingCalendarInput): OperatingCalen
     readinessIssues: ["Tree action due"],
     conflicts: [],
     resources: [],
-  }));
+  }, dateOnly(alert.dueDate) || dateOnly(input.todayIso) || new Date().toISOString().slice(0, 10)));
 }
 
 function applyConflicts(events: OperatingCalendarEvent[]): { events: OperatingCalendarEvent[]; conflicts: OperatingCalendarConflict[] } {
@@ -344,10 +429,12 @@ function applyConflicts(events: OperatingCalendarEvent[]): { events: OperatingCa
   const grouped = new Map<string, OperatingCalendarEvent[]>();
 
   activeEvents.forEach((event) => {
-    event.resources.forEach((item) => {
-      const key = `${event.dateIso}|${item.key}`;
-      grouped.set(key, [...(grouped.get(key) || []), event]);
-    });
+    for (let dateIsoValue = event.dateIso; dateIsoValue <= event.endDateIso; dateIsoValue = addDaysIso(dateIsoValue, 1)) {
+      event.resources.forEach((item) => {
+        const key = `${dateIsoValue}|${item.key}`;
+        grouped.set(key, [...(grouped.get(key) || []), event]);
+      });
+    }
   });
 
   const conflicts: OperatingCalendarConflict[] = [];
@@ -379,7 +466,7 @@ function applyConflicts(events: OperatingCalendarEvent[]): { events: OperatingCa
 }
 
 function buildTomorrowReadiness(events: OperatingCalendarEvent[], conflicts: OperatingCalendarConflict[], tomorrowIso: string): TomorrowReadinessSummary {
-  const tomorrowEvents = events.filter((event) => event.dateIso === tomorrowIso);
+  const tomorrowEvents = events.filter((event) => eventOccursOn(event, tomorrowIso));
   const tomorrowConflictCount = conflicts.filter((conflict) => conflict.dateIso === tomorrowIso).length;
   const hasIssue = (event: OperatingCalendarEvent, issue: string) => event.readinessIssues.some((item) => item.toLowerCase().includes(issue.toLowerCase()));
 
@@ -423,12 +510,24 @@ export function buildOperatingCalendar(input: OperatingCalendarInput): Operating
 }
 
 export function eventsForCalendarView(events: OperatingCalendarEvent[], view: CalendarView, todayIso: string): OperatingCalendarEvent[] {
-  const tomorrowIso = addDaysIso(todayIso, 1);
-  const weekEndIso = addDaysIso(todayIso, 6);
-  const monthPrefix = todayIso.slice(0, 7);
+  const { startIso, endIso } = rangeForCalendarView(view, todayIso);
+  return events.filter((event) => eventOverlapsRange(event, startIso, endIso));
+}
 
-  if (view === "Today") return events.filter((event) => event.dateIso === todayIso);
-  if (view === "Tomorrow") return events.filter((event) => event.dateIso === tomorrowIso);
-  if (view === "Month") return events.filter((event) => event.dateIso.startsWith(monthPrefix));
-  return events.filter((event) => event.dateIso >= todayIso && event.dateIso <= weekEndIso);
+export function buildCalendarGridDays(events: OperatingCalendarEvent[], view: CalendarGridView, focusIso: string, todayIso = focusIso): CalendarGridDay[] {
+  const cleanFocus = dateOnly(focusIso) || dateOnly(todayIso) || new Date().toISOString().slice(0, 10);
+  const cleanToday = dateOnly(todayIso) || cleanFocus;
+  const { startIso, endIso, currentMonthPrefix } = calendarGridRange(view, cleanFocus);
+  const days: CalendarGridDay[] = [];
+
+  for (let dateIsoValue = startIso; dateIsoValue <= endIso; dateIsoValue = addDaysIso(dateIsoValue, 1)) {
+    days.push({
+      dateIso: dateIsoValue,
+      isCurrentMonth: dateIsoValue.startsWith(currentMonthPrefix),
+      isToday: dateIsoValue === cleanToday,
+      events: events.filter((event) => eventOccursOn(event, dateIsoValue)),
+    });
+  }
+
+  return days;
 }

@@ -48,7 +48,10 @@ describe("CalendarBoard operations planner", () => {
       />,
     );
 
-    assert.match(html, /Week Operations Planner/);
+    assert.match(html, /Week.*Operations.*Planner/);
+    assert.match(html, /Planner/);
+    assert.match(html, /Calendar Grid/);
+    assert.match(html, /Day/);
     assert.match(html, /Today/);
     assert.match(html, /Tomorrow/);
     assert.match(html, /Week/);
@@ -64,5 +67,40 @@ describe("CalendarBoard operations planner", () => {
     assert.match(html, /data-category="nursery"/);
     assert.match(html, /data-category="equipment"/);
     assert.match(html, /data-category="relocation"/);
+  });
+
+  it("renders multi-day schedule context and calendar grid controls", () => {
+    const jobs: JobRecord[] = [{
+      id: "job-week-window",
+      title: "Boca West root pruning window",
+      clientName: "Boca West Country Club",
+      projectName: "Boca West Course 1 Renovation",
+      startDate: "2026-06-08",
+      endDate: "2026-06-12",
+      crew: "Carlos Reyes",
+      location: "Boca West",
+      status: "Scheduled",
+    }];
+
+    const html = renderToString(
+      <CalendarBoard
+        jobs={jobs}
+        loads={[]}
+        workOrders={[]}
+        equipment={[]}
+        scheduleTasks={[]}
+        treeRelocationRecords={[]}
+        todayIso="2026-06-07"
+        initialDisplayMode="Calendar Grid"
+        openDrawer={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Blocks 5 days/);
+    assert.match(html, /Jun 8 - Jun 12/);
+    assert.match(html, /Calendar Grid/);
+    assert.match(html, /Sun/);
+    assert.match(html, /Mon/);
+    assert.match(html, /Sat/);
   });
 });

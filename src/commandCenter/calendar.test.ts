@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { EquipmentRecord, JobRecord, LoadRecord, ScheduleTaskRecord, TreeRelocationRecord, WorkOrderRecord } from "./records";
-import { buildOperatingCalendar } from "./calendar";
+import { buildCalendarGridDays, buildOperatingCalendar, eventsForCalendarView } from "./calendar";
 
 describe("operating calendar planner", () => {
   const job: JobRecord = {
@@ -104,5 +104,103 @@ describe("operating calendar planner", () => {
     assert.equal(calendar.conflicts.some((conflict) => conflict.resourceLabel === "Christian Crespo"), true);
     assert.equal(calendar.conflicts.some((conflict) => conflict.resourceLabel === "Semi #1"), true);
     assert.equal(calendar.events.find((event) => event.id === "workOrder-wo-root-prune")?.readinessIssues.includes("Missing crew"), true);
+  });
+
+  it("keeps multi-day jobs and assignments visible across every blocked day", () => {
+    const multiDayJob: JobRecord = {
+      id: "job-boca-root-pruning-window",
+      title: "Boca West root pruning window",
+      clientName: "Boca West Country Club",
+      projectName: "Boca West Course 1 Renovation",
+      startDate: "2026-06-08",
+      endDate: "2026-06-12",
+      crew: "Carlos Reyes",
+      location: "Boca West",
+      status: "Scheduled",
+    };
+    const multiDayTask: ScheduleTaskRecord = {
+      id: "schedule-task-waterford-nutrient",
+      task: "Waterford nutrient care follow-up",
+      activityType: "Nutrient Care",
+      startDate: "2026-06-10",
+      endDate: "2026-06-24",
+      assignee: "Carlos Reyes",
+      locationName: "Waterford",
+      status: "Scheduled",
+    };
+
+    const calendar = buildOperatingCalendar({
+      jobs: [multiDayJob],
+      scheduleTasks: [multiDayTask],
+      todayIso: "2026-06-07",
+    });
+    const jobEvent = calendar.events.find((event) => event.id === "job-job-boca-root-pruning-window");
+    const taskEvent = calendar.events.find((event) => event.id === "scheduleTask-schedule-task-waterford-nutrient");
+
+    assert.equal(jobEvent?.dateIso, "2026-06-08");
+    assert.equal(jobEvent?.endDateIso, "2026-06-12");
+    assert.equal(jobEvent?.durationDays, 5);
+    assert.equal(taskEvent?.endDateIso, "2026-06-24");
+    assert.equal(eventsForCalendarView(calendar.events, "Week", "2026-06-12").some((event) => event.id === jobEvent?.id), true);
+
+    const monthDays = buildCalendarGridDays(calendar.events, "Month", "2026-06-10");
+    const june12 = monthDays.find((day) => day.dateIso === "2026-06-12");
+    const june24 = monthDays.find((day) => day.dateIso === "2026-06-24");
+    assert.equal(june12?.events.some((event) => event.id === jobEvent?.id), true);
+    assert.equal(june24?.events.some((event) => event.id === taskEvent?.id), true);
+  });
+
+  it("flags resource conflicts on every day covered by a multi-day assignment", () => {
+    const multiDayJob: JobRecord = {
+      id: "job-boca-root-pruning-window",
+      title: "Boca West root pruning window",
+      startDate: "2026-06-08",
+      endDate: "2026-06-12",
+      crew: "Carlos Reyes",
+      status: "Scheduled",
+      location: "Boca West",
+    };
+    const overlappingTask: ScheduleTaskRecord = {
+      id: "schedule-task-carlos-nutrient",
+      task: "Waterford nutrient care follow-up",
+      activityType: "Nutrient Care",
+      startDate: "2026-06-10",
+      assignee: "Carlos Reyes",
+      locationName: "Waterford",
+      status: "Scheduled",
+    };
+
+    const calendar = buildOperatingCalendar({
+      jobs: [multiDayJob],
+      scheduleTasks: [overlappingTask],
+      todayIso: "2026-06-07",
+    });
+
+    assert.equal(calendar.conflicts.some((conflict) => (
+      conflict.dateIso === "2026-06-10"
+      && conflict.resourceLabel === "Carlos Reyes"
+      && conflict.eventTitles.includes("Boca West root pruning window")
+      && conflict.eventTitles.includes("Waterford nutrient care follow-up")
+    )), true);
+  });
+
+  it("includes ongoing multi-day work in tomorrow readiness", () => {
+    const multiDayJob: JobRecord = {
+      id: "job-boca-root-pruning-window",
+      title: "Boca West root pruning window",
+      startDate: "2026-06-08",
+      endDate: "2026-06-12",
+      crew: "Carlos Reyes",
+      status: "Scheduled",
+      location: "Boca West",
+    };
+
+    const calendar = buildOperatingCalendar({
+      jobs: [multiDayJob],
+      todayIso: "2026-06-09",
+    });
+
+    assert.equal(calendar.tomorrowReadiness.total, 1);
+    assert.equal(calendar.tomorrowReadiness.ready, 1);
   });
 });

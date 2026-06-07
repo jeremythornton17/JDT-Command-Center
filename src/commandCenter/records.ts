@@ -49,7 +49,9 @@ export type JobRecord = CommandRecord & {
   siteAccessNotes?: string;
   date?: string;
   startDate?: string;
+  endDate?: string;
   scheduledDate?: string;
+  scheduledEndDate?: string;
   crew?: string;
   pm?: string;
 };
@@ -76,7 +78,9 @@ export type ProjectRecord = CommandRecord & {
   siteAccessNotes?: string;
   date?: string;
   startDate?: string;
+  endDate?: string;
   scheduledDate?: string;
+  scheduledEndDate?: string;
   crew?: string;
   pm?: string;
 };
@@ -92,7 +96,9 @@ export type WorkOrderRecord = CommandRecord & {
   division?: string;
   taskType?: string;
   priority?: WorkOrderPriority | string;
+  startDate?: string;
   scheduledDate?: string;
+  endDate?: string;
   dueDate?: string;
   completedDate?: string;
   crewLeadId?: string;

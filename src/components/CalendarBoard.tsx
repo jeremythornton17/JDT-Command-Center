@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, Calendar as CalendarIcon, Clock, Filter, MapPin } from 'lucide-react';
+import { AlertTriangle, Calendar as CalendarIcon, CalendarDays, ChevronLeft, ChevronRight, Clock, Filter, ListChecks, MapPin } from 'lucide-react';
 import {
+  buildCalendarGridDays,
   buildOperatingCalendar,
-  eventsForCalendarView,
-  type CalendarView,
+  type CalendarGridDay,
+  type CalendarGridView,
   type OperatingCalendarEvent,
 } from '../commandCenter/calendar';
 import type { EquipmentRecord, JobRecord, LoadRecord, ScheduleTaskRecord, TreeRelocationRecord, WorkOrderRecord } from '../commandCenter/records';
@@ -18,10 +19,16 @@ type CalendarBoardProps = {
   treeRelocationRecords?: TreeRelocationRecord[];
   equipment?: EquipmentRecord[];
   todayIso?: string;
+  initialDisplayMode?: CalendarDisplayMode;
+  initialRangeView?: CalendarGridView;
+  initialFocusDateIso?: string;
   openDrawer: (type: string, id: string) => void;
 };
 
-const calendarViews: CalendarView[] = ['Today', 'Tomorrow', 'Week', 'Month'];
+type CalendarDisplayMode = 'Planner' | 'Calendar Grid';
+
+const displayModes: CalendarDisplayMode[] = ['Planner', 'Calendar Grid'];
+const rangeViews: CalendarGridView[] = ['Day', 'Week', 'Month'];
 const categoryFilters: Array<'All' | OperatingCategory> = ['All', 'relocation', 'crew', 'freight', 'equipment', 'nursery'];
 const statusFilters = ['All', 'Needs Review', 'Scheduled', 'Active', 'Complete'];
 
@@ -35,6 +42,51 @@ function formatShortDate(value: string): string {
   const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value || '-';
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatDayNumber(value: string): string {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value || '-';
+  return date.toLocaleDateString('en-US', { day: 'numeric' });
+}
+
+function formatWeekday(value: string, style: 'short' | 'long' = 'short'): string {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value || '-';
+  return date.toLocaleDateString('en-US', { weekday: style });
+}
+
+function formatRangeLabel(event: OperatingCalendarEvent): string {
+  if (event.durationDays <= 1) return formatShortDate(event.dateIso);
+  return `${formatShortDate(event.dateIso)} - ${formatShortDate(event.endDateIso)}`;
+}
+
+function addDaysIso(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function addMonthsIso(value: string, months: number): string {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  date.setMonth(date.getMonth() + months);
+  return date.toISOString().slice(0, 10);
+}
+
+function rangeLabel(view: CalendarGridView, focusIso: string): string {
+  if (view === 'Day') return new Date(`${focusIso}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  if (view === 'Month') return new Date(`${focusIso}T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const days = buildCalendarGridDays([], 'Week', focusIso, focusIso);
+  const first = days[0]?.dateIso || focusIso;
+  const last = days[6]?.dateIso || focusIso;
+  return `${formatShortDate(first)} - ${formatShortDate(last)}`;
+}
+
+function shiftFocusDate(value: string, view: CalendarGridView, direction: -1 | 1): string {
+  if (view === 'Month') return addMonthsIso(value, direction);
+  return addDaysIso(value, direction * (view === 'Week' ? 7 : 1));
 }
 
 function statusClass(event: OperatingCalendarEvent): string {
@@ -80,7 +132,10 @@ function EventCard({ event, openDrawer }: { event: OperatingCalendarEvent; openD
             <p className="mt-1 line-clamp-2 text-xs font-bold text-zinc-500">{event.detail || event.projectName || event.clientName || categoryLabel(event.category)}</p>
           </div>
         </div>
-        <p className="shrink-0 text-right text-[10px] font-black uppercase text-zinc-400">{formatShortDate(event.dateIso)}</p>
+        <div className="shrink-0 text-right">
+          <p className="text-[10px] font-black uppercase text-zinc-400">{formatRangeLabel(event)}</p>
+          {event.durationDays > 1 && <p className="mt-1 text-[9px] font-black uppercase text-jdt-olive">Blocks {event.durationDays} days</p>}
+        </div>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] font-bold text-zinc-500">
@@ -120,6 +175,103 @@ function EventCard({ event, openDrawer }: { event: OperatingCalendarEvent; openD
   );
 }
 
+function CalendarGridEvent({ event, openDrawer }: { event: OperatingCalendarEvent; openDrawer: CalendarBoardProps['openDrawer'] }) {
+  const drawerType = eventDrawerType(event);
+  const actionable = Boolean(drawerType && event.recordId);
+  const rangeSummary = event.durationDays > 1 ? `${formatRangeLabel(event)} - Blocks ${event.durationDays} days` : formatRangeLabel(event);
+  const content = (
+    <>
+      <div className="flex min-w-0 items-center gap-2">
+        <CategoryIcon category={event.category} size="xs" />
+        <span className="truncate text-[11px] font-black text-jdt-text">{event.title}</span>
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <span className="truncate text-[9px] font-bold uppercase text-zinc-500">{event.assignee || event.timeLabel}</span>
+        {event.durationDays > 1 && <span title={`Blocks ${event.durationDays} days`} className="shrink-0 rounded bg-jdt-sand px-1.5 py-0.5 text-[8px] font-black uppercase text-jdt-olive">{event.durationDays}d</span>}
+      </div>
+    </>
+  );
+
+  if (!actionable) {
+    return <article title={rangeSummary} aria-label={`${event.title} ${rangeSummary}`} className={`rounded-md border px-2 py-1.5 ${statusClass(event)}`}>{content}</article>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => openDrawer(drawerType!, event.recordId!)}
+      title={rangeSummary}
+      aria-label={`${event.title} ${rangeSummary}`}
+      className={`w-full rounded-md border px-2 py-1.5 text-left transition-colors hover:border-jdt-olive ${statusClass(event)}`}
+    >
+      {content}
+    </button>
+  );
+}
+
+function CalendarGrid({ days, view, openDrawer }: { days: CalendarGridDay[]; view: CalendarGridView; openDrawer: CalendarBoardProps['openDrawer'] }) {
+  if (view === 'Day') {
+    const day = days[0];
+    return (
+      <section className="rounded-xl border border-jdt-border bg-white p-4 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase text-jdt-olive">{formatWeekday(day.dateIso, 'long')}</p>
+            <h3 className="mt-1 text-xl font-black text-jdt-primary">{formatShortDate(day.dateIso)}</h3>
+          </div>
+          <span className="rounded-lg border border-jdt-border bg-jdt-panel px-3 py-2 text-[10px] font-black uppercase text-zinc-500">{day.events.length} items</span>
+        </div>
+        {day.events.length > 0 ? (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {day.events.map((event) => <EventCard key={`${day.dateIso}-${event.id}`} event={event} openDrawer={openDrawer} />)}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-jdt-border bg-jdt-panel p-8 text-center">
+            <CalendarIcon className="mx-auto mb-2 h-8 w-8 text-zinc-300" />
+            <p className="text-sm font-black text-jdt-text">No scheduled work on this date</p>
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-xl border border-jdt-border bg-white shadow-sm">
+      <div className="grid grid-cols-7 border-b border-jdt-border bg-jdt-panel">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((weekday) => (
+          <div key={weekday} className="border-r border-jdt-border px-3 py-2 text-center text-[10px] font-black uppercase text-zinc-500 last:border-r-0">
+            {weekday}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7">
+        {days.map((day) => {
+          const visibleEvents = day.events.slice(0, view === 'Month' ? 4 : 7);
+          const overflow = Math.max(0, day.events.length - visibleEvents.length);
+          return (
+            <div
+              key={day.dateIso}
+              className={`min-h-[160px] border-r border-b border-jdt-border p-2 last:border-r-0 ${day.isCurrentMonth ? 'bg-white' : 'bg-zinc-50/80'} ${day.isToday ? 'ring-2 ring-inset ring-jdt-olive' : ''}`}
+            >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div>
+                  <p className={`text-sm font-black ${day.isCurrentMonth ? 'text-jdt-primary' : 'text-zinc-400'}`}>{formatDayNumber(day.dateIso)}</p>
+                  <p className="text-[9px] font-bold uppercase text-zinc-400">{formatShortDate(day.dateIso)}</p>
+                </div>
+                {day.events.length > 0 && <span className="rounded bg-jdt-panel px-1.5 py-0.5 text-[8px] font-black uppercase text-zinc-500">{day.events.length}</span>}
+              </div>
+              <div className="space-y-1.5">
+                {visibleEvents.map((event) => <CalendarGridEvent key={`${day.dateIso}-${event.id}`} event={event} openDrawer={openDrawer} />)}
+                {overflow > 0 && <div className="rounded-md border border-dashed border-jdt-border bg-jdt-panel px-2 py-1.5 text-center text-[9px] font-black uppercase text-zinc-500">+{overflow} more</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export default function CalendarBoard({
   jobs,
   loads,
@@ -128,9 +280,14 @@ export default function CalendarBoard({
   treeRelocationRecords = [],
   equipment = [],
   todayIso,
+  initialDisplayMode = 'Planner',
+  initialRangeView = 'Week',
+  initialFocusDateIso,
   openDrawer,
 }: CalendarBoardProps) {
-  const [activeView, setActiveView] = useState<CalendarView>('Week');
+  const [displayMode, setDisplayMode] = useState<CalendarDisplayMode>(initialDisplayMode);
+  const [rangeView, setRangeView] = useState<CalendarGridView>(initialRangeView);
+  const [focusDateIso, setFocusDateIso] = useState(initialFocusDateIso || todayIso || new Date().toISOString().slice(0, 10));
   const [categoryFilter, setCategoryFilter] = useState<'All' | OperatingCategory>('All');
   const [statusFilter, setStatusFilter] = useState('All');
 
@@ -144,25 +301,74 @@ export default function CalendarBoard({
     todayIso,
   }), [jobs, loads, workOrders, scheduleTasks, treeRelocationRecords, equipment, todayIso]);
 
-  const visibleEvents = useMemo(() => (
-    eventsForCalendarView(calendar.events, activeView, calendar.todayIso)
+  const filteredEvents = useMemo(() => (
+    calendar.events
       .filter((event) => categoryFilter === 'All' || event.category === categoryFilter)
       .filter((event) => matchesStatusFilter(event, statusFilter))
-  ), [activeView, calendar.events, calendar.todayIso, categoryFilter, statusFilter]);
+  ), [calendar.events, categoryFilter, statusFilter]);
 
-  const groupedEvents = visibleEvents.reduce<Array<{ dateIso: string; events: OperatingCalendarEvent[] }>>((groups, event) => {
-    const existing = groups.find((group) => group.dateIso === event.dateIso);
-    if (existing) {
-      existing.events.push(event);
-      return groups;
-    }
-    groups.push({ dateIso: event.dateIso, events: [event] });
-    return groups;
-  }, []);
+  const gridDays = useMemo(() => (
+    buildCalendarGridDays(filteredEvents, rangeView, focusDateIso, calendar.todayIso)
+  ), [filteredEvents, rangeView, focusDateIso, calendar.todayIso]);
+
+  const groupedEvents = gridDays
+    .filter((day) => day.events.length > 0)
+    .map((day) => ({ dateIso: day.dateIso, events: day.events }));
 
   const monthLabel = new Date(`${calendar.todayIso}T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const readiness = calendar.tomorrowReadiness;
   const activeCategoryFilters = categoryFilters.filter((category) => category === 'All' || calendar.events.some((event) => event.category === category));
+  const todayCount = buildCalendarGridDays(calendar.events, 'Day', calendar.todayIso, calendar.todayIso)[0]?.events.length || 0;
+  const selectedRangeCount = gridDays.reduce((total, day) => total + day.events.length, 0);
+
+  const readinessPanel = (
+    <section className="rounded-xl border border-jdt-border bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-black uppercase text-jdt-text">Tomorrow Readiness</h3>
+          <p className="mt-1 text-[11px] font-bold text-zinc-500">{formatShortDate(calendar.tomorrowIso)}</p>
+        </div>
+        <CategoryPill category="schedule" compact />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {[
+          ['Ready', readiness.ready, 'border-emerald-200 bg-emerald-50 text-emerald-800'],
+          ['Needs Review', readiness.needsReview, readinessMetricTone(readiness.needsReview)],
+          ['Missing Crew', readiness.missingCrew, readinessMetricTone(readiness.missingCrew)],
+          ['Missing Equipment', readiness.missingEquipment, readinessMetricTone(readiness.missingEquipment)],
+          ['Missing Freight', readiness.missingFreight, readinessMetricTone(readiness.missingFreight)],
+          ['Missing Location', readiness.missingLocation, readinessMetricTone(readiness.missingLocation)],
+        ].map(([label, value, tone]) => (
+          <div key={String(label)} className={`rounded-lg border p-3 ${tone}`}>
+            <p className="text-[9px] font-black uppercase opacity-75">{label}</p>
+            <p className="mt-1 text-xl font-black">{value}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+
+  const conflictPanel = (
+    <section className="rounded-xl border border-jdt-border bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center gap-2">
+        <AlertTriangle className="h-4 w-4 text-amber-700" />
+        <h3 className="text-sm font-black uppercase text-jdt-text">Conflict Watch</h3>
+      </div>
+      {calendar.conflicts.length > 0 ? (
+        <div className="space-y-2">
+          {calendar.conflicts.slice(0, 8).map((conflict) => (
+            <div key={conflict.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-xs font-black uppercase text-amber-900">{conflict.resourceLabel}</p>
+              <p className="mt-1 text-[10px] font-bold uppercase text-amber-800">{formatShortDate(conflict.dateIso)} - {conflict.resourceKind}</p>
+              <p className="mt-2 line-clamp-2 text-[11px] font-bold text-amber-950">{conflict.eventTitles.join(' / ')}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-lg border border-dashed border-jdt-border bg-jdt-panel p-4 text-xs font-bold text-zinc-500">No double-booked crew, drivers, trucks, trailers, or equipment in this range.</p>
+      )}
+    </section>
+  );
 
   return (
     <div className="space-y-6">
@@ -171,8 +377,8 @@ export default function CalendarBoard({
           <CategoryIcon category="schedule" size="md" />
           <div>
             <p className="text-xs font-black uppercase text-jdt-olive">Operations Calendar</p>
-            <h2 className="mt-1 text-2xl font-black text-jdt-primary">Week Operations Planner</h2>
-            <p className="mt-1 text-sm font-bold text-zinc-500">Crew work, freight, equipment, project dates, and tree-care timing from the live workspace.</p>
+            <h2 className="mt-1 text-2xl font-black text-jdt-primary">{rangeView} Operations {displayMode === 'Planner' ? 'Planner' : 'Calendar'}</h2>
+            <p className="mt-1 text-sm font-bold text-zinc-500">Crew work, freight, equipment, project dates, tree-care timing, and multi-day blocked-out assignments from the live workspace.</p>
           </div>
         </div>
         <div className="flex items-center gap-2 rounded-lg border border-jdt-border bg-jdt-panel px-4 py-2 shadow-sm">
@@ -181,10 +387,11 @@ export default function CalendarBoard({
         </div>
       </div>
 
-      <section className="grid gap-3 md:grid-cols-4">
+      <section className="grid gap-3 md:grid-cols-5">
         {[
-          { label: 'Today', value: calendar.events.filter((event) => event.dateIso === calendar.todayIso).length, tone: 'border-jdt-border bg-white text-jdt-primary' },
+          { label: 'Today', value: todayCount, tone: 'border-jdt-border bg-white text-jdt-primary' },
           { label: 'Tomorrow', value: readiness.total, tone: 'border-jdt-border bg-white text-jdt-primary' },
+          { label: `${rangeView} Items`, value: selectedRangeCount, tone: 'border-jdt-border bg-white text-jdt-primary' },
           { label: 'Ready', value: readiness.ready, tone: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
           { label: 'Conflicts', value: readiness.conflicts, tone: readinessMetricTone(readiness.conflicts) },
         ].map((metric) => (
@@ -197,17 +404,44 @@ export default function CalendarBoard({
 
       <section className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
         <div className="flex flex-col gap-3 border-b border-jdt-border p-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex flex-wrap gap-2">
-            {calendarViews.map((view) => (
-              <button
-                key={view}
-                type="button"
-                onClick={() => setActiveView(view)}
-                className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${activeView === view ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-white text-zinc-600 hover:border-jdt-olive'}`}
-              >
-                {view}
-              </button>
-            ))}
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2">
+              {displayModes.map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setDisplayMode(mode)}
+                  className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${displayMode === mode ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-white text-zinc-600 hover:border-jdt-olive'}`}
+                >
+                  {mode === 'Planner' ? <ListChecks className="h-3.5 w-3.5" /> : <CalendarDays className="h-3.5 w-3.5" />}
+                  {mode}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {rangeViews.map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  onClick={() => setRangeView(view)}
+                  className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${rangeView === view ? 'border-jdt-olive bg-jdt-olive text-white' : 'border-jdt-border bg-white text-zinc-600 hover:border-jdt-olive'}`}
+                >
+                  {view}
+                </button>
+              ))}
+              <div className="ml-0 flex items-center gap-1 rounded-lg border border-jdt-border bg-white p-1 lg:ml-2">
+                <button type="button" onClick={() => setFocusDateIso((value) => shiftFocusDate(value, rangeView, -1))} className="rounded-md p-1.5 text-zinc-600 hover:bg-jdt-sand" aria-label="Previous calendar range">
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button type="button" onClick={() => setFocusDateIso(calendar.todayIso)} className="rounded-md px-2 py-1.5 text-[10px] font-black uppercase text-jdt-text hover:bg-jdt-sand">
+                  Today
+                </button>
+                <button type="button" onClick={() => setFocusDateIso((value) => shiftFocusDate(value, rangeView, 1))} className="rounded-md p-1.5 text-zinc-600 hover:bg-jdt-sand" aria-label="Next calendar range">
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+              <span className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-zinc-600">{rangeLabel(rangeView, focusDateIso)}</span>
+            </div>
           </div>
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
             <div className="flex flex-wrap items-center gap-2">
@@ -233,9 +467,11 @@ export default function CalendarBoard({
           </div>
         </div>
 
-        <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className={`grid gap-4 p-4 ${displayMode === 'Planner' ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : ''}`}>
           <div className="space-y-4">
-            {groupedEvents.length > 0 ? (
+            {displayMode === 'Calendar Grid' ? (
+              <CalendarGrid days={gridDays} view={rangeView} openDrawer={openDrawer} />
+            ) : groupedEvents.length > 0 ? (
               groupedEvents.map((group) => (
                 <section key={group.dateIso} className="rounded-xl border border-jdt-border bg-jdt-sand/30 p-3">
                   <div className="mb-3 flex items-center justify-between gap-3">
@@ -256,52 +492,20 @@ export default function CalendarBoard({
             )}
           </div>
 
-          <aside className="space-y-4">
-            <section className="rounded-xl border border-jdt-border bg-white p-4 shadow-sm">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-black uppercase text-jdt-text">Tomorrow Readiness</h3>
-                  <p className="mt-1 text-[11px] font-bold text-zinc-500">{formatShortDate(calendar.tomorrowIso)}</p>
-                </div>
-                <CategoryPill category="schedule" compact />
+          {displayMode === 'Planner' ? (
+            <aside className="space-y-4">
+              {readinessPanel}
+              {conflictPanel}
+            </aside>
+          ) : (
+            <details className="rounded-xl border border-jdt-border bg-white p-4 shadow-sm">
+              <summary className="cursor-pointer text-sm font-black uppercase text-jdt-text">Readiness & Conflict Check</summary>
+              <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                {readinessPanel}
+                {conflictPanel}
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  ['Ready', readiness.ready, 'border-emerald-200 bg-emerald-50 text-emerald-800'],
-                  ['Needs Review', readiness.needsReview, readinessMetricTone(readiness.needsReview)],
-                  ['Missing Crew', readiness.missingCrew, readinessMetricTone(readiness.missingCrew)],
-                  ['Missing Equipment', readiness.missingEquipment, readinessMetricTone(readiness.missingEquipment)],
-                  ['Missing Freight', readiness.missingFreight, readinessMetricTone(readiness.missingFreight)],
-                  ['Missing Location', readiness.missingLocation, readinessMetricTone(readiness.missingLocation)],
-                ].map(([label, value, tone]) => (
-                  <div key={String(label)} className={`rounded-lg border p-3 ${tone}`}>
-                    <p className="text-[9px] font-black uppercase opacity-75">{label}</p>
-                    <p className="mt-1 text-xl font-black">{value}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="rounded-xl border border-jdt-border bg-white p-4 shadow-sm">
-              <div className="mb-3 flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-amber-700" />
-                <h3 className="text-sm font-black uppercase text-jdt-text">Conflict Watch</h3>
-              </div>
-              {calendar.conflicts.length > 0 ? (
-                <div className="space-y-2">
-                  {calendar.conflicts.slice(0, 8).map((conflict) => (
-                    <div key={conflict.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                      <p className="text-xs font-black uppercase text-amber-900">{conflict.resourceLabel}</p>
-                      <p className="mt-1 text-[10px] font-bold uppercase text-amber-800">{formatShortDate(conflict.dateIso)} - {conflict.resourceKind}</p>
-                      <p className="mt-2 line-clamp-2 text-[11px] font-bold text-amber-950">{conflict.eventTitles.join(' / ')}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="rounded-lg border border-dashed border-jdt-border bg-jdt-panel p-4 text-xs font-bold text-zinc-500">No double-booked crew, drivers, trucks, trailers, or equipment in this range.</p>
-              )}
-            </section>
-          </aside>
+            </details>
+          )}
         </div>
       </section>
     </div>
