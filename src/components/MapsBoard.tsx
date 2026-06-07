@@ -24,6 +24,7 @@ import {
   filterTreesForRelocationJob,
   formatTreeCoordinate,
   getGoogleMapsConfig,
+  googleMapsUrlForSavedSiteLocation,
   getRelocationStatusTone,
   getTaskStatusTone,
   getTreeRelocationStatus,
@@ -32,6 +33,7 @@ import {
   mapPercentToLatLng,
   parseGoogleMapsLocationText,
   pointFromDevicePosition,
+  pointFromSavedSiteLocation,
   relocationContextForJob,
   updateTreeRelocationPoint,
   type SiteLocationAccessType,
@@ -223,7 +225,7 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
     });
 
     scopedSavedLocations.forEach((location) => {
-      const point = pointFromSavedLocation(location);
+      const point = pointFromSavedSiteLocation(location);
       if (!point) return;
 
       const marker = new maps.Marker({
@@ -370,22 +372,28 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
   };
 
   const focusSavedLocation = (location: any) => {
-    const point = pointFromSavedLocation(location);
+    const point = pointFromSavedSiteLocation(location);
     if (point && googleMapInstanceRef.current) {
       googleMapInstanceRef.current.setCenter({ lat: point.lat, lng: point.lng });
       googleMapInstanceRef.current.setZoom(Math.max(zoomLevel, 18));
+      setFieldStatus(`${location.name || location.title || 'Saved location'} focused at ${formatTreeCoordinate(point)}.`);
+      return;
     }
-    setFieldStatus(`${location.name || location.title || 'Saved location'} selected. ${location.coordinateText || formatTreeCoordinate(point)}`);
+    if (point) {
+      setFieldStatus(`${location.name || location.title || 'Saved location'} selected at ${formatTreeCoordinate(point)}.`);
+      return;
+    }
+    setFieldStatus(`${location.name || location.title || 'Saved location'} has an address but no coordinate pin yet. Use Open Maps, then save the exact pin coordinates if this needs map focus.`);
   };
 
   const openSavedLocationInGoogleMaps = (location: any) => {
-    const point = pointFromSavedLocation(location);
-    const url = location.googleMapsUrl || (point ? `https://www.google.com/maps/@${point.lat},${point.lng},19z` : undefined);
+    const url = googleMapsUrlForSavedSiteLocation(location);
     if (!url) {
-      setFieldStatus('This saved location does not have a Google Maps link or coordinates yet.');
+      setFieldStatus('This saved location does not have a Google Maps link, coordinates, or searchable address yet.');
       return;
     }
     window.open(url, '_blank', 'noopener,noreferrer');
+    setFieldStatus(`Opened ${location.name || location.title || 'saved location'} in Google Maps.`);
   };
 
   const downloadProjectKml = () => {
@@ -442,7 +450,7 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
 
   const renderFallbackSiteLocationPins = () => {
     return scopedSavedLocations.map((location) => {
-      const point = pointFromSavedLocation(location);
+      const point = pointFromSavedSiteLocation(location);
       if (!point) return null;
       const percent = latLngToMapPercent(point);
       return (
@@ -732,7 +740,7 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
               </div>
               <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
                 {scopedSavedLocations.length > 0 ? scopedSavedLocations.map((location) => {
-                  const point = pointFromSavedLocation(location);
+                  const point = pointFromSavedSiteLocation(location);
                   return (
                     <div key={location.id} className="rounded-lg border border-jdt-border bg-white p-3">
                       <div className="flex items-start justify-between gap-2">
@@ -749,14 +757,20 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
                       <div className="mt-3 flex gap-2">
                         <button
                           type="button"
-                          onClick={() => focusSavedLocation(location)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            focusSavedLocation(location);
+                          }}
                           className="flex-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
                         >
                           Focus
                         </button>
                         <button
                           type="button"
-                          onClick={() => openSavedLocationInGoogleMaps(location)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openSavedLocationInGoogleMaps(location);
+                          }}
                           className="flex-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
                         >
                           Open Maps
@@ -869,16 +883,4 @@ function mergeMapTreeRecords(baseTrees: any[] = [], relocationTrees: any[] = [])
 function treeMapSubtitle(tree: any): string {
   const parts = [tree.farm, tree.zone, tree.ranchOakType || tree.type || tree.treeType].filter(Boolean);
   return parts.length ? parts.join(' - ') : 'Project tree asset';
-}
-
-function pointFromSavedLocation(location: any): TreeRelocationPoint | undefined {
-  const lat = Number(location.latitude);
-  const lng = Number(location.longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
-  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return undefined;
-  return {
-    lat,
-    lng,
-    label: location.name || location.title || location.locationType || 'Saved site location',
-  };
 }

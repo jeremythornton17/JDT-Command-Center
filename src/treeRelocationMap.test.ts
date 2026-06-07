@@ -9,11 +9,13 @@ import {
   filterTreesForRelocationJob,
   formatTreeCoordinate,
   getGoogleMapsConfig,
+  googleMapsUrlForSavedSiteLocation,
   relocationContextForJob,
   getTreeRelocationStatus,
   mapPercentToLatLng,
   parseGoogleMapsLocationText,
   pointFromDevicePosition,
+  pointFromSavedSiteLocation,
   updateTreeRelocationPoint,
 } from "./treeRelocationMap";
 
@@ -198,6 +200,43 @@ describe("tree relocation map helpers", () => {
 
     assert.deepEqual(filterSavedSiteLocationsForJob(locations, null).map(location => location.id), ["loc-boca-job", "loc-boca-project", "loc-mcarthur", "loc-shared"]);
     assert.deepEqual(filterSavedSiteLocationsForJob(locations, job).map(location => location.id), ["loc-boca-job", "loc-boca-project", "loc-shared"]);
+  });
+
+  it("keeps project pin action buttons useful when records only have Maps links or addresses", () => {
+    const linkedLocation = {
+      id: "loc-boca-truck-access",
+      name: "Boca West truck access",
+      googleMapsUrl: "https://www.google.com/maps/@26.757913,-81.0408413,1039m/data=!3m1!1e3",
+    };
+    const coordinateOnlyLocation = {
+      id: "loc-boca-load-pin",
+      name: "Boca West load pin",
+      coordinateText: "26.387315, -80.1712583",
+    };
+    const addressOnlyLocation = {
+      id: "loc-boca-main",
+      name: "Boca West clubhouse",
+      mainAddress: "20583 Boca West Dr, Boca Raton, FL 33434",
+    };
+
+    assert.deepEqual(pointFromSavedSiteLocation(linkedLocation), {
+      lat: 26.75791,
+      lng: -81.04084,
+      label: "Boca West truck access",
+    });
+    assert.deepEqual(pointFromSavedSiteLocation(coordinateOnlyLocation), {
+      lat: 26.38732,
+      lng: -80.17126,
+      label: "Boca West load pin",
+    });
+    assert.equal(
+      googleMapsUrlForSavedSiteLocation(coordinateOnlyLocation),
+      "https://www.google.com/maps/@26.38732,-80.17126,19z",
+    );
+    assert.equal(
+      googleMapsUrlForSavedSiteLocation(addressOnlyLocation),
+      "https://www.google.com/maps/search/?api=1&query=20583%20Boca%20West%20Dr%2C%20Boca%20Raton%2C%20FL%2033434",
+    );
   });
 
   it("builds a Google Earth KML package from project tree source and destination pins", () => {

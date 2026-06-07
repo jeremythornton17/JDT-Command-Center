@@ -348,6 +348,68 @@ export function filterSavedSiteLocationsForJob<T extends Partial<LocationRecord>
   });
 }
 
+export function pointFromSavedSiteLocation(location: Partial<LocationRecord>): TreeRelocationPoint | undefined {
+  const record = location as Partial<LocationRecord> & Record<string, unknown>;
+  const directLat = Number(record.latitude ?? record.lat);
+  const directLng = Number(record.longitude ?? record.lng);
+  const label = String(record.name || record.title || record.locationType || record.accessType || "Saved site location").trim();
+
+  if (isValidLatLng(directLat, directLng)) {
+    return {
+      lat: roundCoordinate(directLat),
+      lng: roundCoordinate(directLng),
+      label,
+    };
+  }
+
+  const parsed = [
+    record.coordinateText,
+    record.googleMapsUrl,
+    record.sourceText,
+    record.mainAddress,
+    record.locationAddress,
+    record.address,
+    record.crewAccessPoint,
+    record.equipmentAccessPoint,
+    record.crewAccessAddress,
+    record.truckAccessAddress,
+    record.constructionAccessPin,
+    record.loadUnloadPin,
+    record.secondaryLoadUnloadPin,
+  ].map(parseGoogleMapsLocationText).find(Boolean);
+
+  if (!parsed) return undefined;
+
+  return {
+    lat: parsed.lat,
+    lng: parsed.lng,
+    label,
+  };
+}
+
+export function googleMapsUrlForSavedSiteLocation(location: Partial<LocationRecord>): string | undefined {
+  const record = location as Partial<LocationRecord> & Record<string, unknown>;
+  const explicitUrl = [record.googleMapsUrl, record.sourceText, record.url]
+    .map((value) => String(value || "").trim())
+    .find((value) => isUrl(value));
+  if (explicitUrl) return explicitUrl;
+
+  const point = pointFromSavedSiteLocation(location);
+  if (point) return `https://www.google.com/maps/@${point.lat},${point.lng},19z`;
+
+  const query = [
+    record.mainAddress,
+    record.locationAddress,
+    record.address,
+    record.sourceText,
+    record.name,
+    record.title,
+  ].map((value) => String(value || "").trim()).find(Boolean);
+  if (!query) return undefined;
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
 export function buildProjectGoogleEarthMapPackage<T extends RelocationTree = RelocationTree>(
   options: ProjectGoogleEarthMapPackageOptions<T>,
 ): ProjectGoogleEarthMapPackage {
