@@ -1,20 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Plus, Edit2, QrCode, MapPin, Trash2, X, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
+import { Search, Plus, Edit2, QrCode, MapPin, Trash2, X, ChevronLeft, ChevronRight, Image as ImageIcon, Sprout, Droplets } from 'lucide-react';
 import { IconButton } from './IconBadge';
 import { CategoryIcon } from './CategoryIcon';
 import type { RanchOakRecord } from '../commandCenter/records';
 import {
   isRanchOakInventoryRecord,
+  isPropagationInventoryRecord,
   nurseryInventoryCardTitle,
   nurseryInventorySearchText,
   nurseryInventoryTableTitle,
+  propagationHealthName,
+  propagationLocationName,
+  propagationSourceName,
+  propagationStageName,
   ranchOakLocationName,
   ranchOakRowPosition,
   ranchOakStatusCounts,
   ranchOakTypeName,
 } from '../commandCenter/nurseryDisplay';
 
-type InventoryTab = 'all' | 'ranchOaks';
+type InventoryTab = 'all' | 'ranchOaks' | 'propagation';
 type ViewMode = 'cards' | 'table';
 
 type NurseryBoardProps = {
@@ -28,6 +33,9 @@ type NurseryBoardProps = {
 
 const allOption = 'All';
 const ranchOakTypeOptions = ['Single trunk', 'Multi trunk', 'Split trunk'];
+const propagationSourceOptions = ['Seed', 'Cutting', 'Liner', 'Air Layer', 'Purchased Starter'];
+const propagationStageOptions = ['Shade House', 'Seed Cell', 'Quart', '1G', '3G', '7G', '15G', '25G', '45G', 'Ready for Field', 'Field Planted'];
+const propagationHealthOptions = ['Rooting', 'Healthy', 'Needs Water', 'Needs Nutrient Care', 'Pest Watch', 'Disease Watch', 'Stressed', 'Ready to Move Up', 'Ready for Field'];
 
 function cleanText(value: unknown): string {
   return String(value ?? '').replace(/\u00a0/g, ' ').trim();
@@ -69,6 +77,26 @@ function statusColor(status: string) {
   }
 }
 
+function propagationHealthColor(status: string) {
+  switch (status) {
+    case 'Healthy':
+    case 'Ready to Move Up':
+    case 'Ready for Field':
+      return 'bg-emerald-100 text-emerald-800';
+    case 'Rooting':
+      return 'bg-sky-100 text-sky-800';
+    case 'Needs Water':
+    case 'Needs Nutrient Care':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'Pest Watch':
+    case 'Disease Watch':
+    case 'Stressed':
+      return 'bg-red-100 text-red-800';
+    default:
+      return 'bg-jdt-sand text-zinc-800';
+  }
+}
+
 function formatMoney(value: unknown): string {
   if (value === null || value === undefined || value === '') return '-';
   const amount = Number(String(value).replace(/[$,]/g, ''));
@@ -106,8 +134,40 @@ function ranchOakFormSeed(): Partial<RanchOakRecord> {
   };
 }
 
+function propagationFormSeed(): Partial<RanchOakRecord> {
+  return {
+    treeId: 'PROP-',
+    propagationBatchId: 'PROP-',
+    propagationSource: 'Cutting',
+    propagationStage: 'Shade House',
+    plantHealthStatus: 'Rooting',
+    quantity: 1,
+    farm: 'Main Office',
+    fieldLocation: 'Shade House',
+    sourceCollection: 'inventoryItems',
+    inventoryClass: 'Propagation',
+    internalUseOnly: true,
+  };
+}
+
 function editTreeType(record: RanchOakRecord): string {
+  if (isPropagationInventoryRecord(record)) return 'propagation';
   return isRanchOakInventoryRecord(record) ? 'ranch_oak' : 'tree';
+}
+
+function propagationBatchId(record: RanchOakRecord): string {
+  return cleanText(record.propagationBatchId || record.treeId || record.id || record.name || record.title);
+}
+
+function propagationName(record: RanchOakRecord): string {
+  return cleanText(record.commonName || record.species || record.ranchOakType || record.treeType || record.name || record.title || 'Propagation Batch');
+}
+
+function propagationStageCounts(records: RanchOakRecord[]): Array<{ label: string; value: number }> {
+  return propagationStageOptions.slice(0, 5).map((label) => ({
+    label,
+    value: records.filter((record) => propagationStageName(record) === label).length,
+  }));
 }
 
 function AllInventoryCards({ records, openDrawer, openModal }: { records: RanchOakRecord[]; openDrawer: NurseryBoardProps['openDrawer']; openModal: NurseryBoardProps['openModal'] }) {
@@ -377,6 +437,138 @@ function RanchOakTable({ records, openModal }: { records: RanchOakRecord[]; open
   );
 }
 
+function PropagationCards({ records, openModal }: { records: RanchOakRecord[]; openModal: NurseryBoardProps['openModal'] }) {
+  if (records.length === 0) {
+    return (
+      <div className="py-12 text-center">
+        <p className="text-sm font-bold text-zinc-400">No propagation batches found matching criteria.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+      {records.map((record) => {
+        const batchId = propagationBatchId(record);
+        const health = propagationHealthName(record);
+        return (
+          <article key={record.id || batchId} className="rounded-lg border border-jdt-border bg-jdt-panel p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3 border-b border-zinc-100 pb-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-wide text-lime-700">Internal Only</p>
+                <h3 className="break-words text-xl font-black leading-tight text-jdt-primary">{propagationName(record)}</h3>
+                <p className="mt-1 text-[10px] font-black uppercase tracking-wide text-zinc-400">{batchId || 'No batch ID'}</p>
+              </div>
+              <span className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-black uppercase tracking-wider ${propagationHealthColor(health)}`}>
+                {health}
+              </span>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="text-[10px] font-black uppercase text-zinc-500">Source</p>
+                <p className="mt-1 font-bold text-zinc-800">{propagationSourceName(record)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase text-zinc-500">Stage</p>
+                <p className="mt-1 font-bold text-zinc-800">{propagationStageName(record)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase text-zinc-500">Quantity</p>
+                <p className="mt-1 font-bold text-zinc-800">{record.quantity ?? '-'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase text-zinc-500">Location</p>
+                <p className="mt-1 font-bold text-zinc-800">{propagationLocationName(record)}</p>
+                <p className="text-xs font-bold text-zinc-500">{record.zone || '-'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase text-zinc-500">Started</p>
+                <p className="mt-1 font-bold text-zinc-800">{record.startDate || '-'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase text-zinc-500">Move-Up Target</p>
+                <p className="mt-1 font-bold text-zinc-800">{record.targetMoveUpDate || '-'}</p>
+              </div>
+            </div>
+
+            <div className="mt-3 grid gap-2">
+              <div className="rounded border border-jdt-border bg-white p-2">
+                <p className="flex items-center gap-1.5 text-[10px] font-black uppercase text-zinc-500"><Droplets className="h-3.5 w-3.5 text-sky-600" /> Water Needs</p>
+                <p className="mt-1 text-xs font-bold text-zinc-700">{record.waterNeeds || '-'}</p>
+              </div>
+              <div className="rounded border border-jdt-border bg-white p-2">
+                <p className="flex items-center gap-1.5 text-[10px] font-black uppercase text-zinc-500"><Sprout className="h-3.5 w-3.5 text-lime-700" /> Nutrient Care</p>
+                <p className="mt-1 text-xs font-bold text-zinc-700">{record.nutrientNeeds || '-'}</p>
+              </div>
+            </div>
+
+            {record.notes && <p className="mt-3 rounded bg-jdt-sand px-3 py-2 text-xs font-bold text-zinc-700">{record.notes}</p>}
+
+            <div className="mt-4 flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
+              <button type="button" onClick={() => openModal('propagation', record)} className="rounded bg-white px-3 py-1.5 text-[10px] font-black uppercase text-zinc-700 ring-1 ring-jdt-border hover:ring-jdt-olive">Edit</button>
+              <button type="button" onClick={() => openModal('delete_tree', record)} className="rounded bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase text-red-700 ring-1 ring-red-100 hover:ring-red-300">Delete</button>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function PropagationTable({ records, openModal }: { records: RanchOakRecord[]; openModal: NurseryBoardProps['openModal'] }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-jdt-border bg-jdt-panel">
+      <table className="w-full whitespace-nowrap text-left text-sm">
+        <thead className="border-b border-jdt-border bg-jdt-sand text-zinc-500">
+          <tr>
+            <th className="px-4 py-3 text-[10px] font-black uppercase tracking-wide">Batch</th>
+            <th className="px-4 py-3 text-[10px] font-black uppercase tracking-wide">Source / Stage</th>
+            <th className="px-4 py-3 text-[10px] font-black uppercase tracking-wide">Quantity</th>
+            <th className="px-4 py-3 text-[10px] font-black uppercase tracking-wide">Location</th>
+            <th className="px-4 py-3 text-[10px] font-black uppercase tracking-wide">Care</th>
+            <th className="px-4 py-3 text-right text-[10px] font-black uppercase tracking-wide">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-200">
+          {records.map((record) => {
+            const health = propagationHealthName(record);
+            return (
+              <tr key={record.id || propagationBatchId(record)} className="align-top transition-colors hover:bg-jdt-panel">
+                <td className="px-4 py-3">
+                  <p className="font-black text-jdt-text">{propagationName(record)}</p>
+                  <p className="mt-1 text-[10px] font-black uppercase tracking-wide text-zinc-400">{propagationBatchId(record)}</p>
+                  <span className="mt-2 inline-flex rounded bg-lime-50 px-2 py-0.5 text-[10px] font-black uppercase text-lime-800">Internal Only</span>
+                </td>
+                <td className="px-4 py-3">
+                  <p className="font-bold text-zinc-700">{propagationSourceName(record)}</p>
+                  <p className="mt-1 text-[11px] font-bold text-zinc-500">{propagationStageName(record)}</p>
+                  <span className={`mt-2 inline-flex rounded-md px-2 py-0.5 text-[10px] font-black uppercase ${propagationHealthColor(health)}`}>{health}</span>
+                </td>
+                <td className="px-4 py-3"><p className="font-bold text-zinc-700">{record.quantity ?? '-'}</p></td>
+                <td className="px-4 py-3">
+                  <p className="font-bold text-zinc-700">{propagationLocationName(record)}</p>
+                  <p className="mt-1 text-[11px] font-bold text-zinc-500">{record.zone || '-'}</p>
+                </td>
+                <td className="px-4 py-3">
+                  <p className="font-bold text-zinc-700">{record.waterNeeds || '-'}</p>
+                  <p className="mt-1 text-[11px] font-bold text-zinc-500">{record.nutrientNeeds || '-'}</p>
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <div className="flex items-center justify-end gap-1.5">
+                    <IconButton onClick={() => openModal('delete_tree', record)} icon={Trash2} title="Delete Propagation Batch" colorClass="text-red-600" />
+                    <IconButton onClick={() => openModal('propagation', record)} icon={Edit2} title="Edit Propagation Batch" colorClass="text-zinc-500" />
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function NurseryBoard({
   starterRanchOaks = [],
   inventoryItems,
@@ -392,13 +584,23 @@ export default function NurseryBoard({
   const [ranchLocation, setRanchLocation] = useState(allOption);
   const [ranchType, setRanchType] = useState(allOption);
   const [ranchStatus, setRanchStatus] = useState(allOption);
+  const [propagationLocation, setPropagationLocation] = useState(allOption);
+  const [propagationSource, setPropagationSource] = useState(allOption);
+  const [propagationStage, setPropagationStage] = useState(allOption);
+  const [propagationHealth, setPropagationHealth] = useState(allOption);
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [gallerySelection, setGallerySelection] = useState<{ record: RanchOakRecord; index: number } | null>(null);
 
+  const propagationInventory = useMemo(() => (
+    inventoryItems
+      ? inventoryItems.filter(isPropagationInventoryRecord)
+      : starterRanchOaks.filter(isPropagationInventoryRecord)
+  ), [inventoryItems, starterRanchOaks]);
+
   const genericInventory = useMemo(() => (
     inventoryItems
-      ? inventoryItems
-      : starterRanchOaks.filter((item) => !isRanchOakInventoryRecord(item))
+      ? inventoryItems.filter((item) => !isPropagationInventoryRecord(item))
+      : starterRanchOaks.filter((item) => !isRanchOakInventoryRecord(item) && !isPropagationInventoryRecord(item))
   ), [inventoryItems, starterRanchOaks]);
 
   const ranchOakInventory = useMemo(() => (
@@ -413,6 +615,10 @@ export default function NurseryBoard({
   const ranchLocations = useMemo(() => [allOption, ...uniqueText(ranchOakInventory.map(ranchOakLocationName))], [ranchOakInventory]);
   const ranchTypes = useMemo(() => [allOption, ...uniqueText([...ranchOakTypeOptions, ...ranchOakInventory.map(ranchOakTypeName)])], [ranchOakInventory]);
   const ranchStatuses = useMemo(() => [allOption, ...uniqueText(['Available', 'Sold', 'On Hold', 'Dig Queue', 'Harvested', ...ranchOakInventory.map((item) => item.status || 'Available')])], [ranchOakInventory]);
+  const propagationLocations = useMemo(() => [allOption, ...uniqueText(propagationInventory.map(propagationLocationName))], [propagationInventory]);
+  const propagationSources = useMemo(() => [allOption, ...uniqueText([...propagationSourceOptions, ...propagationInventory.map(propagationSourceName)])], [propagationInventory]);
+  const propagationStages = useMemo(() => [allOption, ...uniqueText([...propagationStageOptions, ...propagationInventory.map(propagationStageName)])], [propagationInventory]);
+  const propagationHealthStatuses = useMemo(() => [allOption, ...uniqueText([...propagationHealthOptions, ...propagationInventory.map(propagationHealthName)])], [propagationInventory]);
 
   useEffect(() => {
     if (!inventoryFarms.includes(inventoryFarm)) {
@@ -429,6 +635,10 @@ export default function NurseryBoard({
     if (!ranchLocations.includes(ranchLocation)) setRanchLocation(allOption);
   }, [ranchLocations, ranchLocation]);
 
+  useEffect(() => {
+    if (!propagationLocations.includes(propagationLocation)) setPropagationLocation(allOption);
+  }, [propagationLocations, propagationLocation]);
+
   const filteredInventory = allInventory.filter((item) => (
     (inventoryFarm === allOption || item.farm === inventoryFarm || item.fieldLocation === inventoryFarm)
     && (inventoryZone === allOption || item.zone === inventoryZone)
@@ -441,7 +651,15 @@ export default function NurseryBoard({
     && (ranchStatus === allOption || cleanText(item.status || 'Available') === ranchStatus)
     && nurseryInventorySearchText(item).toLowerCase().includes(inventoryQuery.toLowerCase())
   ));
+  const filteredPropagation = propagationInventory.filter((item) => (
+    (propagationLocation === allOption || propagationLocationName(item) === propagationLocation)
+    && (propagationSource === allOption || propagationSourceName(item) === propagationSource)
+    && (propagationStage === allOption || propagationStageName(item) === propagationStage)
+    && (propagationHealth === allOption || propagationHealthName(item) === propagationHealth)
+    && nurseryInventorySearchText(item).toLowerCase().includes(inventoryQuery.toLowerCase())
+  ));
   const isRanchOakTab = activeInventoryTab === 'ranchOaks';
+  const isPropagationTab = activeInventoryTab === 'propagation';
   const galleryImages = gallerySelection ? ranchOakImages(gallerySelection.record) : [];
   const galleryIndex = galleryImages.length > 0 ? Math.min(gallerySelection?.index || 0, galleryImages.length - 1) : 0;
   const galleryRecordId = gallerySelection ? recordId(gallerySelection.record) : '';
@@ -456,8 +674,12 @@ export default function NurseryBoard({
             <p className="mt-1 text-sm font-bold text-zinc-500">Production board, stock tracking, and Ranch Oaks inventory</p>
           </div>
         </div>
-        <button type="button" onClick={() => openModal(isRanchOakTab ? 'ranch_oak' : 'tree', isRanchOakTab ? ranchOakFormSeed() : undefined)} className="inline-flex items-center gap-2 rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white hover:bg-jdt-dark">
-          <Plus className="h-4 w-4" /> {isRanchOakTab ? 'Add Ranch Oak' : 'Add Tree'}
+        <button
+          type="button"
+          onClick={() => openModal(isPropagationTab ? 'propagation' : isRanchOakTab ? 'ranch_oak' : 'tree', isPropagationTab ? propagationFormSeed() : isRanchOakTab ? ranchOakFormSeed() : undefined)}
+          className="inline-flex items-center gap-2 rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white hover:bg-jdt-dark"
+        >
+          <Plus className="h-4 w-4" /> {isPropagationTab ? 'Add Propagation Batch' : isRanchOakTab ? 'Add Ranch Oak' : 'Add Tree'}
         </button>
       </div>
 
@@ -466,6 +688,7 @@ export default function NurseryBoard({
           {[
             { id: 'all' as const, label: 'All Nursery Inventory', count: allInventory.length },
             { id: 'ranchOaks' as const, label: 'Ranch Oaks', count: ranchOakInventory.length },
+            { id: 'propagation' as const, label: 'Propagation', count: propagationInventory.length },
           ].map((tab) => (
             <button
               type="button"
@@ -483,7 +706,58 @@ export default function NurseryBoard({
         </div>
       </div>
 
-      {activeInventoryTab === 'ranchOaks' ? (
+      {activeInventoryTab === 'propagation' ? (
+        <section className="overflow-hidden rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
+          <div className="border-b border-jdt-border bg-jdt-panel/50 p-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-lime-700">Propagation</p>
+                <h3 className="text-2xl font-black text-jdt-text">Propagation Inventory</h3>
+                <p className="mt-1 text-xs font-bold text-zinc-500">Internal nursery stock for shade house, starter material, pot step-ups, and field-ready plantings.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                {propagationStageCounts(propagationInventory).map((item) => (
+                  <div key={item.label} className="rounded-lg border border-jdt-border bg-white px-3 py-2">
+                    <p className="text-[9px] font-black uppercase text-zinc-400">{item.label}</p>
+                    <p className="text-lg font-black text-jdt-primary">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-5">
+              <select value={propagationLocation} onChange={(event) => setPropagationLocation(event.target.value)} className="rounded-md border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text focus:border-zinc-500 focus:outline-none">
+                {propagationLocations.map((location) => <option key={location} value={location}>{location === allOption ? 'All Locations' : location}</option>)}
+              </select>
+              <select value={propagationSource} onChange={(event) => setPropagationSource(event.target.value)} className="rounded-md border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text focus:border-zinc-500 focus:outline-none">
+                {propagationSources.map((source) => <option key={source} value={source}>{source === allOption ? 'All Sources' : source}</option>)}
+              </select>
+              <select value={propagationStage} onChange={(event) => setPropagationStage(event.target.value)} className="rounded-md border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text focus:border-zinc-500 focus:outline-none">
+                {propagationStages.map((stage) => <option key={stage} value={stage}>{stage === allOption ? 'All Stages' : stage}</option>)}
+              </select>
+              <select value={propagationHealth} onChange={(event) => setPropagationHealth(event.target.value)} className="rounded-md border border-jdt-border bg-jdt-panel px-3 py-2 text-sm font-bold text-jdt-text focus:border-zinc-500 focus:outline-none">
+                {propagationHealthStatuses.map((health) => <option key={health} value={health}>{health === allOption ? 'All Health' : health}</option>)}
+              </select>
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                <input
+                  type="text"
+                  placeholder="Search propagation..."
+                  className="w-full rounded-md border border-jdt-border bg-jdt-panel py-2 pl-9 pr-4 text-sm font-bold text-jdt-text focus:border-zinc-500 focus:outline-none"
+                  value={inventoryQuery}
+                  onChange={(event) => setInventoryQuery(event.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-jdt-sand/50 p-4">
+            {viewMode === 'cards'
+              ? <PropagationCards records={filteredPropagation} openModal={openModal} />
+              : <PropagationTable records={filteredPropagation} openModal={openModal} />}
+          </div>
+        </section>
+      ) : activeInventoryTab === 'ranchOaks' ? (
         <section className="overflow-hidden rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
           <div className="border-b border-jdt-border bg-jdt-panel/50 p-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

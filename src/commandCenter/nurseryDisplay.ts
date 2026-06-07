@@ -20,6 +20,12 @@ type NurseryDisplayRecord = {
   sourceCollection?: unknown;
   collectionName?: unknown;
   inventoryClass?: unknown;
+  propagationBatchId?: unknown;
+  propagationSource?: unknown;
+  propagationStage?: unknown;
+  waterNeeds?: unknown;
+  nutrientNeeds?: unknown;
+  plantHealthStatus?: unknown;
 };
 
 const ranchOakTypes = new Set(['single trunk', 'multi trunk', 'split trunk']);
@@ -67,6 +73,12 @@ export function nurseryInventorySearchText(record: NurseryDisplayRecord): string
     record.height,
     record.spread,
     record.rootballSize,
+    record.propagationBatchId,
+    record.propagationSource,
+    record.propagationStage,
+    record.waterNeeds,
+    record.nutrientNeeds,
+    record.plantHealthStatus,
   ].map(cleanText).filter(Boolean).join(' ');
 }
 
@@ -82,6 +94,34 @@ export function isRanchOakInventoryRecord(record: NurseryDisplayRecord): boolean
     || /^ro[-_\s]?\d+/i.test(id)
     || ranchOakTypes.has(type)
     || commonName.includes('ranch oak');
+}
+
+export function isPropagationInventoryRecord(record: NurseryDisplayRecord): boolean {
+  const id = cleanText(record.treeId || record.id || record.propagationBatchId);
+  const collection = cleanText(record.sourceCollection || record.collectionName || record.inventoryClass).toLowerCase();
+  const source = cleanText(record.propagationSource).toLowerCase();
+  const stage = cleanText(record.propagationStage).toLowerCase();
+
+  return collection.includes('propagation')
+    || /^prop[-_\s]?\d*/i.test(id)
+    || Boolean(source)
+    || Boolean(stage);
+}
+
+export function propagationLocationName(record: NurseryDisplayRecord): string {
+  return firstValue(record.fieldLocation, record.farm) || 'Unlocated';
+}
+
+export function propagationStageName(record: NurseryDisplayRecord): string {
+  return firstValue(record.propagationStage, record.status) || 'Unstaged';
+}
+
+export function propagationSourceName(record: NurseryDisplayRecord): string {
+  return firstValue(record.propagationSource) || 'Starter Material';
+}
+
+export function propagationHealthName(record: NurseryDisplayRecord): string {
+  return firstValue(record.plantHealthStatus, record.status) || 'Needs Review';
 }
 
 export function ranchOakLocationName(record: NurseryDisplayRecord): string {

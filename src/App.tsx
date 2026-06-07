@@ -814,6 +814,21 @@ export default function App() {
       case 'assign_tree':
         setRanchOaks((prev) => upsertRecordWithAudit(prev, recordData, 'tree', user?.email, normalizedType, (item) => item.id === recordData.id || item.treeId === recordData.treeId));
         break;
+      case 'propagation':
+        setInventoryItems((prev) => upsertRecordWithAudit(
+          prev,
+          {
+            ...recordData,
+            inventoryClass: 'Propagation',
+            sourceCollection: 'inventoryItems',
+            internalUseOnly: true,
+          },
+          'tree',
+          user?.email,
+          normalizedType,
+          (item) => item.id === recordData.id || item.treeId === recordData.treeId || item.propagationBatchId === recordData.propagationBatchId,
+        ));
+        break;
       case 'project_tree_asset':
         {
           const enrichedRecord = enrichProjectTreeAssetRecord(recordData as TreeRelocationRecord);

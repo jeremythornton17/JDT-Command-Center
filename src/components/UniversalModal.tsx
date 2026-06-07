@@ -47,6 +47,7 @@ export default function UniversalModal({
     'contact': { title: 'New Contact', desc: 'Add a new person connected to a company', btn: 'Save Contact' },
     'tree': { title: 'New Tree / Plant Asset', desc: 'Enter a new tree into inventory', btn: 'Save Tree' },
     'ranch_oak': { title: 'New Ranch Oak', desc: 'Enter a Ranch Oak into special nursery inventory', btn: 'Save Ranch Oak' },
+    'propagation': { title: 'New Propagation Batch', desc: 'Track internal shade house, starter material, and container step-up inventory', btn: 'Save Propagation Batch' },
     'load': { title: 'New Freight Load', desc: 'Dispatch a new load', btn: 'Dispatch Load' },
     'equipment': { title: 'New Equipment Asset', desc: 'Add new equipment to fleet', btn: 'Save Equipment' },
     'maintenance': { title: 'New Maintenance Issue', desc: 'Report equipment issue', btn: 'Submit Ticket' },
@@ -104,7 +105,7 @@ export default function UniversalModal({
   };
 
   const isEntityForm = [
-    'add_new', 'job', 'client', 'contact', 'tree', 'ranch_oak', 'load', 'equipment', 'maintenance', 'employee', 'document', 'sync_source', 'sync_mapping', 'task', 'change_order', 
+    'add_new', 'job', 'client', 'contact', 'tree', 'ranch_oak', 'propagation', 'load', 'equipment', 'maintenance', 'employee', 'document', 'sync_source', 'sync_mapping', 'task', 'change_order', 
     'delay', 'assign_crew', 'assign_work', 'assign_equipment', 'assign_freight', 'work_order', 'project_material_item', 'create_move', 'complete_job', 'complete', 'log_issue', 'set_eq_status', 'schedule_disruption', 
     'move_unfinished', 'edit_project', 'print_packet', 'import_csv', 'export_csv', 'closeout', 'sync_all', 'connect_source', 
     'add_mapping', 'apply_sync', 'save_profile', 'review_errors', 'set_freight_status', 'edit_freight', 'edit_equipment',
@@ -165,6 +166,10 @@ export default function UniversalModal({
       config.title = `Edit Ranch Oak: ${data.treeId || dataId || ''}`;
       config.desc = 'Update Ranch Oak field location, status, or customer details';
       config.btn = 'Save Ranch Oak';
+    } else if (typeLower === 'propagation') {
+      config.title = `Edit Propagation Batch: ${data.propagationBatchId || data.treeId || dataId || ''}`;
+      config.desc = 'Update propagation stage, quantity, location, or care details';
+      config.btn = 'Save Propagation Batch';
     } else if (typeLower === 'tree' || typeLower === 'edit_tree') {
       config.title = `Edit Tree Profile: ${data.treeId || dataId || ''}`;
       config.desc = 'Update species, zone, or status details';

@@ -71,6 +71,31 @@ const ranchOaks = [
   },
 ];
 
+const propagationItems = [
+  {
+    id: 'propagation-podocarpus-cuttings-001',
+    treeId: 'PROP-001',
+    species: 'Podocarpus',
+    commonName: 'Podocarpus Cuttings',
+    propagationSource: 'Cutting',
+    propagationStage: 'Shade House',
+    propagationBatchId: 'PROP-20260607-PODO',
+    quantity: 240,
+    farm: 'Main Office',
+    fieldLocation: 'Shade House',
+    zone: 'Bench 4',
+    startDate: '2026-06-07',
+    targetMoveUpDate: '2026-07-15',
+    waterNeeds: 'Mist twice daily',
+    nutrientNeeds: 'Light feed after rooting',
+    plantHealthStatus: 'Rooting',
+    internalUseOnly: true,
+    inventoryClass: 'Propagation',
+    sourceCollection: 'inventoryItems',
+    notes: 'Hold for field planting only',
+  },
+];
+
 test('NurseryBoard separates general inventory from the Ranch Oaks subtab', () => {
   const html = renderToString(
     <NurseryBoard
@@ -91,6 +116,33 @@ test('NurseryBoard separates general inventory from the Ranch Oaks subtab', () =
   assert.match(html, /RO-1002/);
   assert.match(html, /Edit/);
   assert.match(html, /Delete/);
+});
+
+test('NurseryBoard renders Propagation as an internal nursery workflow', () => {
+  const html = renderToString(
+    <NurseryBoard
+      starterRanchOaks={[...inventoryItems, ...ranchOaks, ...propagationItems]}
+      inventoryItems={[...inventoryItems, ...propagationItems]}
+      ranchOaks={ranchOaks}
+      defaultInventoryTab="propagation"
+      openDrawer={() => undefined}
+      openModal={() => undefined}
+    />,
+  );
+
+  assert.match(html, /Propagation/);
+  assert.match(html, /Propagation Inventory/);
+  assert.match(html, /Internal nursery stock for shade house, starter material, pot step-ups, and field-ready plantings/);
+  assert.match(html, /Add Propagation Batch/);
+  assert.match(html, /Podocarpus Cuttings/);
+  assert.match(html, /PROP-20260607-PODO/);
+  assert.match(html, /Cutting/);
+  assert.match(html, /Shade House/);
+  assert.match(html, /Mist twice daily/);
+  assert.match(html, /Light feed after rooting/);
+  assert.match(html, /Rooting/);
+  assert.match(html, /Internal Only/);
+  assert.doesNotMatch(html, /Boca West Country Club/);
 });
 
 test('NurseryBoard renders Ranch Oaks as a dedicated location and type workflow', () => {

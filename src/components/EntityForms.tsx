@@ -74,6 +74,9 @@ const defaultFreightLocationOptions = [
 ];
 const ranchOakTypeOptions = ['Single trunk', 'Multi trunk', 'Split trunk'];
 const ranchOakStatusOptions = ['Available', 'Sold', 'On Hold', 'Dig Queue', 'Harvested', 'Assigned'];
+const propagationSourceOptions = ['Seed', 'Cutting', 'Liner', 'Air Layer', 'Purchased Starter'];
+const propagationStageOptions = ['Shade House', 'Seed Cell', 'Quart', '1G', '3G', '7G', '15G', '25G', '45G', 'Ready for Field', 'Field Planted'];
+const propagationHealthOptions = ['Rooting', 'Healthy', 'Needs Water', 'Needs Nutrient Care', 'Pest Watch', 'Disease Watch', 'Stressed', 'Ready to Move Up', 'Ready for Field'];
 const divisionOptions = [relocationInstallationDivisionLabel, 'Nursery', 'Freight', 'Maintenance / Equipment', 'Administration'];
 const workOrderStatusOptions = ['Draft', 'Ready', 'Scheduled', 'Active', 'Blocked', 'Complete', 'Cancelled'];
 const workOrderPriorityOptions = ['Low', 'Normal', 'High', 'Urgent', 'Critical'];
@@ -250,6 +253,25 @@ const fieldSets: Record<string, FieldConfig[]> = {
     { key: 'imageUrl3', label: 'Additional Image 2 URL', type: 'url', wide: true },
     { key: 'imageUrl4', label: 'Additional Image 3 URL', type: 'url', wide: true },
     { key: 'imageUrl5', label: 'Additional Image 4 URL', type: 'url', wide: true },
+    { key: 'notes', label: 'Notes', type: 'textarea' },
+  ],
+  propagation: [
+    { key: 'propagationBatchId', label: 'Propagation Batch ID', required: true, section: 'Propagation Identity' },
+    { key: 'treeId', label: 'Plant / Batch Code' },
+    { key: 'commonName', label: 'Plant / Species', required: true },
+    { key: 'species', label: 'Botanical / Species Name' },
+    { key: 'propagationSource', label: 'Propagation Source', type: 'select', options: propagationSourceOptions, defaultValue: 'Cutting' },
+    { key: 'propagationStage', label: 'Current Stage', type: 'select', options: propagationStageOptions, defaultValue: 'Shade House' },
+    { key: 'quantity', label: 'Quantity', type: 'number', defaultValue: 1, section: 'Quantity & Location' },
+    { key: 'fieldLocation', label: 'Location' },
+    { key: 'farm', label: 'Farm / Holding Area' },
+    { key: 'zone', label: 'Bench / Zone' },
+    { key: 'startDate', label: 'Start Date', type: 'date', section: 'Timing' },
+    { key: 'targetMoveUpDate', label: 'Target Move-Up Date', type: 'date' },
+    { key: 'waterNeeds', label: 'Water Needs', type: 'textarea', rows: 2, section: 'Care Requirements' },
+    { key: 'nutrientNeeds', label: 'Nutrient Care Needs', type: 'textarea', rows: 2 },
+    { key: 'plantHealthStatus', label: 'Plant Health Status', type: 'select', options: propagationHealthOptions, defaultValue: 'Rooting' },
+    { key: 'internalUseOnly', label: 'Internal Use Only', type: 'checkbox', defaultValue: true },
     { key: 'notes', label: 'Notes', type: 'textarea' },
   ],
   project_tree_asset: [
@@ -579,6 +601,7 @@ function canonicalType(type: string) {
   if (['report_vehicle_issue'].includes(normalized)) return 'vehicleIssue';
   if (['freight', 'create_move', 'set_freight_status', 'complete'].includes(normalized)) return 'load';
   if (['ranch_oak', 'edit_tree'].includes(normalized)) return 'ranchOak';
+  if (['propagation', 'edit_propagation'].includes(normalized)) return 'propagation';
   if (['add_tree', 'log_prune', 'treatment', 'move_check', 'assign_tree'].includes(normalized)) return 'tree';
   if (['project_tree_asset', 'project_tree_pruning', 'project_tree_aftercare', 'project_tree_photo'].includes(normalized)) return normalized;
   if (['maintenance', 'log_issue', 'set_eq_status'].includes(normalized)) return 'equipment';
@@ -964,6 +987,12 @@ export default function EntityForms({
         imageUrls: ['imageUrl2', 'imageUrl3', 'imageUrl4', 'imageUrl5']
           .map((key) => String(formData[key] || '').trim())
           .filter(Boolean),
+      } : {}),
+      ...(resolvedType === 'propagation' ? {
+        inventoryClass: 'Propagation',
+        sourceCollection: 'inventoryItems',
+        internalUseOnly: true,
+        status: formData.status || formData.plantHealthStatus || 'Rooting',
       } : {}),
       ...normalizeListFields(formData, [
         'assignedCrewNames',

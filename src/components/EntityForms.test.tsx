@@ -389,6 +389,47 @@ test('ranch oak forms expose editable field inventory details', () => {
   assert.match(editHtml, /40 Acre/);
 });
 
+test('propagation forms expose internal nursery batch details', () => {
+  const html = renderToString(
+    <EntityForms
+      type="propagation"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{
+        treeId: 'PROP-001',
+        propagationBatchId: 'PROP-20260607-PODO',
+        commonName: 'Podocarpus Cuttings',
+        propagationSource: 'Cutting',
+        propagationStage: 'Shade House',
+        fieldLocation: 'Shade House',
+        waterNeeds: 'Mist twice daily',
+        nutrientNeeds: 'Light feed after rooting',
+        plantHealthStatus: 'Rooting',
+        internalUseOnly: true,
+        inventoryClass: 'Propagation',
+      }}
+    />,
+  );
+
+  assert.match(html, /Propagation Batch ID/);
+  assert.match(html, /Plant \/ Species/);
+  assert.match(html, /Propagation Source/);
+  assert.match(html, /Cutting/);
+  assert.match(html, /Air Layer/);
+  assert.match(html, /Current Stage/);
+  assert.match(html, /Shade House/);
+  assert.match(html, /3G/);
+  assert.match(html, /Ready for Field/);
+  assert.match(html, /Target Move-Up Date/);
+  assert.match(html, /Water Needs/);
+  assert.match(html, /Nutrient Care Needs/);
+  assert.match(html, /Plant Health Status/);
+  assert.match(html, /Internal Use Only/);
+  assert.match(html, /Podocarpus Cuttings/);
+  assert.match(html, /Mist twice daily/);
+});
+
 test('equipment change requests offer JD Thornton and rental equipment options', () => {
   const html = renderToString(
     <EntityForms

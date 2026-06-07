@@ -267,6 +267,15 @@ export type RanchOakRecord = CommandRecord & {
   condition?: string;
   customerName?: string;
   projectId?: string;
+  propagationBatchId?: string;
+  propagationSource?: 'Seed' | 'Cutting' | 'Liner' | 'Air Layer' | 'Purchased Starter' | string;
+  propagationStage?: 'Shade House' | 'Seed Cell' | 'Quart' | '1G' | '3G' | '7G' | '15G' | '25G' | '45G' | 'Ready for Field' | 'Field Planted' | string;
+  startDate?: string;
+  targetMoveUpDate?: string;
+  waterNeeds?: string;
+  nutrientNeeds?: string;
+  plantHealthStatus?: string;
+  internalUseOnly?: boolean;
   photoUrl?: string;
   mainImageUrl?: string;
   imageUrls?: string[];
