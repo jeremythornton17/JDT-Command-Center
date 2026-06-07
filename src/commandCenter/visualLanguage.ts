@@ -197,9 +197,9 @@ const statusToneClasses: Record<StoplightTone, { pillClass: string; surfaceClass
     dotClass: 'bg-[#C93624]',
   },
   caution: {
-    pillClass: 'border-[#FFD000] bg-[#FFF35A] text-[#5F4A00]',
-    surfaceClass: 'border-[#FFD000] bg-[#FFF35A] text-[#5F4A00]',
-    dotClass: 'bg-[#FFD000]',
+    pillClass: 'border-[#EAB308] bg-[#FFF4C2] text-[#6B5200]',
+    surfaceClass: 'border-[#EAB308] bg-[#FFF4C2] text-[#6B5200]',
+    dotClass: 'bg-[#FACC15]',
   },
   active: {
     pillClass: 'border-[#22B8E6] bg-[#DFF6FF] text-[#075985]',

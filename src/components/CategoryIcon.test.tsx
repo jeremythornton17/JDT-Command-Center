@@ -51,14 +51,14 @@ describe("operating category visual language", () => {
     assert.match(categoryAccentBorderClass("nursery"), /#63B52F/);
 
     assert.match(statusPillClass("Blocked"), /#8F241A/);
-    assert.match(statusPillClass("Scheduled"), /#FFF35A/);
-    assert.match(statusPillClass("Scheduled"), /#5F4A00/);
+    assert.match(statusPillClass("Scheduled"), /#FFF4C2/);
+    assert.match(statusPillClass("Scheduled"), /#6B5200/);
     assert.match(statusPillClass("In Progress"), /#DFF6FF/);
     assert.match(statusPillClass("In Progress"), /#075985/);
     assert.match(statusPillClass("Ready For Relocation"), /#236B2E/);
 
     assert.match(riskPillClass("critical"), /#8F241A/);
-    assert.match(riskPillClass("watch"), /#FFF35A/);
+    assert.match(riskPillClass("watch"), /#FFF4C2/);
     assert.match(riskPillClass("low"), /#236B2E/);
   });
 

@@ -44,7 +44,7 @@ describe("tree relocation lifecycle", () => {
 
   it("maps relocation statuses through the shared explicit stoplight palette", () => {
     assert.match(relocationStatusBadgeClass("Not Started"), /bg-\[#FBE3DE\]/);
-    assert.match(relocationStatusBadgeClass("1st Cut Scheduled"), /bg-\[#FFF35A\]/);
+    assert.match(relocationStatusBadgeClass("1st Cut Scheduled"), /bg-\[#FFF4C2\]/);
     assert.match(relocationStatusBadgeClass("2nd Cut Complete"), /bg-\[#DFF6FF\]/);
     assert.match(relocationStatusBadgeClass("Moved To Holding Area"), /bg-\[#DFF6FF\]/);
     assert.match(relocationStatusBadgeClass("Ready For Relocation"), /bg-\[#E4F6DA\]/);
