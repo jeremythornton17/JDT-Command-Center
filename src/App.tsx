@@ -102,7 +102,18 @@ import {
   relocationInstallationJobTypeTone,
   type RelocationInstallationJobFilter,
 } from './commandCenter/relocationInstallation';
-import { categoryForWorkItemTone, operatingCategoryForRecordType } from './commandCenter/visualLanguage';
+import {
+  categoryAccentBorderClass,
+  categoryForWorkItemTone,
+  categoryHeaderClass,
+  categorySurfaceClass,
+  operatingCategoryForRecordType,
+  riskPillClass,
+  riskSurfaceClass,
+  relocationInstallationJobTypeAccentClass,
+  statusDotClass as visualStatusDotClass,
+  statusPillClass,
+} from './commandCenter/visualLanguage';
 
 const mainNav = [
   { id: 'board', label: 'Command Board', icon: LayoutGrid },
@@ -1281,26 +1292,18 @@ const operationIconMap: Record<FeaturedOperation['id'], typeof MapPin> = {
 };
 
 const operationToneMap: Record<FeaturedOperation['id'], string> = {
-  relocation: 'bg-jdt-dark',
-  freight: 'bg-jdt-olive',
-  nursery: 'bg-[#6B7C4B]',
-  equipment: 'bg-[#935231]',
+  relocation: categoryHeaderClass('relocation'),
+  freight: categoryHeaderClass('freight'),
+  nursery: categoryHeaderClass('nursery'),
+  equipment: categoryHeaderClass('equipment'),
 };
 
 function statusDotClass(status: string) {
-  const normalized = status.toLowerCase();
-  if (normalized.includes('urgent') || normalized.includes('down') || normalized.includes('service')) return 'bg-[#935231]';
-  if (normalized.includes('idle')) return 'bg-zinc-400';
-  if (normalized.includes('complete') || normalized.includes('ready')) return 'bg-[#82995D]';
-  return 'bg-[#384521]';
+  return visualStatusDotClass(status);
 }
 
 function riskLevelClass(level: string) {
-  const normalized = String(level || '').toLowerCase();
-  if (normalized === 'critical') return 'bg-[#F5E7DD] text-[#7A331F]';
-  if (normalized === 'high') return 'bg-[#F7E9D6] text-[#7A4A12]';
-  if (normalized === 'watch') return 'bg-[#FFF6CC] text-[#705B00]';
-  return 'bg-[#EAF1E2] text-[#384521]';
+  return riskPillClass(level);
 }
 
 const commandAlertIconMap: Record<DashboardCommandAlert['id'], typeof MapPin> = {
@@ -1315,17 +1318,10 @@ const commandAlertIconMap: Record<DashboardCommandAlert['id'], typeof MapPin> = 
 
 const commandAlertToneMap: Record<DashboardCommandAlert['tone'], string> = {
   context: 'border-jdt-primary bg-jdt-primary text-white',
-  bad: 'border-l-4 border-l-[#935231] bg-white text-jdt-text',
-  ready: 'border-l-4 border-l-[#82995D] bg-white text-jdt-text',
-  warn: 'border-l-4 border-l-[#B98138] bg-white text-jdt-text',
-  blue: 'border-l-4 border-l-[#345B6B] bg-white text-jdt-text',
-};
-
-const workItemToneMap: Record<DashboardWorkItem['tone'], string> = {
-  relocation: 'border-l-[#384521] bg-[#F7F3EA]',
-  freight: 'border-l-[#345B6B] bg-[#F2F7F8]',
-  task: 'border-l-[#82995D] bg-[#F7F3EA]',
-  equipment: 'border-l-[#935231] bg-[#FBF1E7]',
+  bad: `border-l-4 ${riskSurfaceClass('critical')} ${categoryAccentBorderClass('alert')}`,
+  ready: `border-l-4 ${riskSurfaceClass('low')} ${categoryAccentBorderClass('crew')}`,
+  warn: `border-l-4 ${riskSurfaceClass('watch')} ${categoryAccentBorderClass('alert')}`,
+  blue: `border-l-4 ${categorySurfaceClass('freight')} ${categoryAccentBorderClass('freight')}`,
 };
 
 const drawerBackedTypes = new Set(['job', 'project', 'freight', 'load', 'tree', 'equipment', 'employee', 'client']);
@@ -1482,13 +1478,13 @@ function Dashboard({ recentRecords, dashboardSummary, openModal, openDrawer, set
               {dashboardSummary.todaySchedule.map((item: DashboardWorkItem) => {
                 const category = categoryForWorkItemTone(item.tone);
                 return (
-                  <button key={`${item.drawerType}-${item.id}`} type="button" onClick={() => openWorkItem(item)} className={`min-h-[130px] rounded-lg border border-jdt-border border-l-4 p-4 text-left shadow-sm transition-colors hover:border-jdt-olive ${workItemToneMap[item.tone]}`}>
+                  <button key={`${item.drawerType}-${item.id}`} type="button" onClick={() => openWorkItem(item)} className={`min-h-[130px] rounded-lg border border-jdt-border border-l-4 p-4 text-left shadow-sm transition-colors hover:border-jdt-olive ${categorySurfaceClass(category)} ${categoryAccentBorderClass(category)}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-2">
                         <CategoryIcon category={category} size="xs" />
                         <p className="truncate text-[10px] font-black uppercase text-zinc-500">{item.assignee}</p>
                       </div>
-                      <span className="shrink-0 rounded bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-text shadow-sm">{item.status}</span>
+                      <span className={`shrink-0 rounded border px-2 py-1 text-[9px] font-black uppercase shadow-sm ${statusPillClass(item.status)}`}>{item.status}</span>
                     </div>
                     <p className="mt-3 line-clamp-2 text-sm font-black uppercase text-jdt-text">{item.title}</p>
                     <p className="mt-2 line-clamp-2 text-[11px] font-bold text-zinc-500">{item.detail}</p>
@@ -1687,7 +1683,7 @@ function WorkItemStack({ items, emptyTitle, emptyDetail, onOpen }: { items: Dash
       {items.map((item) => {
         const category = categoryForWorkItemTone(item.tone);
         return (
-          <button key={`${item.drawerType}-${item.id}`} type="button" onClick={() => onOpen(item)} className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-jdt-sand/50">
+          <button key={`${item.drawerType}-${item.id}`} type="button" onClick={() => onOpen(item)} className={`flex w-full items-start justify-between gap-3 border-l-4 px-4 py-3 text-left hover:bg-jdt-sand/50 ${categoryAccentBorderClass(category)}`}>
             <div className="flex min-w-0 items-start gap-3">
               <CategoryIcon category={category} size="xs" className="mt-0.5" />
               <div className="min-w-0">
@@ -1696,7 +1692,7 @@ function WorkItemStack({ items, emptyTitle, emptyDetail, onOpen }: { items: Dash
                 <p className="mt-2 text-[10px] font-black uppercase text-jdt-olive">{item.assignee}</p>
               </div>
             </div>
-            <span className="shrink-0 rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{item.status}</span>
+            <span className={`shrink-0 rounded border px-2 py-1 text-[9px] font-black uppercase ${statusPillClass(item.status)}`}>{item.status}</span>
           </button>
         );
       })}
@@ -1880,7 +1876,7 @@ export function TrackerBoard({ projects = [], jobs = [], workOrders = [], projec
                     return (
                       <div
                         key={project.id || project.projectId || project.title}
-                        className="cursor-pointer p-4 transition-colors hover:bg-jdt-sand/40"
+                        className={`cursor-pointer border-l-4 p-4 transition-colors hover:bg-jdt-sand/40 ${relocationInstallationJobTypeAccentClass(jobType)}`}
                         onClick={() => openDrawer(project.drawerType || 'project', project.id || project.projectId || project.title)}
                       >
                         <div className="grid gap-4 xl:grid-cols-[minmax(260px,1.15fr)_minmax(220px,0.85fr)_minmax(260px,1fr)]">
@@ -1991,10 +1987,10 @@ export function TrackerBoard({ projects = [], jobs = [], workOrders = [], projec
                           <div>
                             <p className="text-[9px] font-black uppercase text-zinc-400">Needs</p>
                             <div className="mt-1 flex flex-wrap gap-1">
-                              {!nextWorkOrder?.assignedCrewNames?.length && <CategoryPill category="crew" label="Needs crew" className="border-amber-200 bg-amber-50 text-amber-800" />}
-                              {!linkedEquipmentNames.length && <CategoryPill category="equipment" label="Needs equipment" className="border-amber-200 bg-amber-50 text-amber-800" />}
-                              {!linkedLoadNames.length && <CategoryPill category="freight" label="Needs freight" className="border-amber-200 bg-amber-50 text-amber-800" />}
-                              {requiredMaterialCount > installedMaterialCount && <span className="rounded bg-green-50 px-2 py-1 text-[9px] font-black uppercase text-green-700">{installedMaterialCount}/{requiredMaterialCount} material</span>}
+                              {!nextWorkOrder?.assignedCrewNames?.length && <CategoryPill category="crew" label="Needs crew" className={riskPillClass('watch')} />}
+                              {!linkedEquipmentNames.length && <CategoryPill category="equipment" label="Needs equipment" className={riskPillClass('watch')} />}
+                              {!linkedLoadNames.length && <CategoryPill category="freight" label="Needs freight" className={riskPillClass('watch')} />}
+                              {requiredMaterialCount > installedMaterialCount && <span className={`rounded border px-2 py-1 text-[9px] font-black uppercase ${riskPillClass('watch')}`}>{installedMaterialCount}/{requiredMaterialCount} material</span>}
                             </div>
                           </div>
                         </div>

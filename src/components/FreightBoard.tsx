@@ -6,6 +6,7 @@ import { complianceBadgeClass, vehicleComplianceSummary, type ComplianceStatus }
 import type { EquipmentRecord, WorkOrderRecord } from '../commandCenter/records';
 import { equipmentCategory, equipmentDisplayName, isFreightVehicle, withHomeBaseEquipmentDefaults } from '../commandCenter/equipmentFreight';
 import { vehicleLocationHistory } from '../commandCenter/freightWorkflow';
+import { categoryAccentBorderClass, riskPillClass, riskSurfaceClass, statusDotClass, statusPillClass } from '../commandCenter/visualLanguage';
 
 export function InfoTag({ icon: Icon, label, value, bg = "bg-jdt-sand/50" }: any) {
   return (
@@ -20,19 +21,8 @@ export function InfoTag({ icon: Icon, label, value, bg = "bg-jdt-sand/50" }: any
 }
 
 export function StatusBadge({ status }: { status: string }) {
-  let colors = "bg-zinc-200 text-zinc-800";
-  if (status === "Scheduled") colors = "bg-jdt-sand text-jdt-primary";
-  if (status === "Dispatched") colors = "bg-blue-600 text-white";
-  else if (status === "At Pickup") colors = "bg-yellow-400 text-black";
-  else if (status === "Loaded") colors = "bg-sky-500 text-white";
-  else if (status === "In Transit") colors = "bg-sky-500 text-white";
-  else if (status === "At Delivery") colors = "bg-indigo-600 text-white";
-  else if (status === "Delivered") colors = "bg-emerald-600 text-white";
-  else if (status === "Completed") colors = "bg-emerald-600 text-white";
-  else if (status === "Delayed") colors = "bg-red-600 text-white";
-
   return (
-    <span className={`inline-flex rounded-md px-2.5 py-1 text-xs font-black uppercase ${colors}`}>
+    <span className={`inline-flex rounded-md border px-2.5 py-1 text-xs font-black uppercase ${statusPillClass(status)}`}>
       {status}
     </span>
   );
@@ -122,11 +112,7 @@ function sortedRouteSteps(load: any) {
 }
 
 function routeStepTone(status: string) {
-  if (status === 'Complete') return 'bg-emerald-100 text-emerald-800';
-  if (status === 'In Progress') return 'bg-blue-100 text-blue-800';
-  if (status === 'Delayed') return 'bg-red-100 text-red-800';
-  if (status === 'Skipped') return 'bg-zinc-100 text-zinc-600';
-  return 'bg-amber-100 text-amber-900';
+  return statusPillClass(status);
 }
 
 export default function FreightBoard({
@@ -208,7 +194,7 @@ export default function FreightBoard({
               const compliance = vehicleComplianceSummary(vehicle);
 
               return (
-                <article key={vehicle.id || equipmentDisplayName(vehicle)} className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm overflow-hidden">
+                <article key={vehicle.id || equipmentDisplayName(vehicle)} className={`rounded-xl border border-jdt-border border-l-4 bg-jdt-panel shadow-sm overflow-hidden ${categoryAccentBorderClass('freight')}`}>
                   <div
                     className="border-b border-jdt-border bg-jdt-panel/60 p-4 cursor-pointer hover:bg-jdt-sand"
                     onClick={() => openDrawer('equipment', vehicle.id || vehicle.assetId || equipmentDisplayName(vehicle))}
@@ -366,7 +352,7 @@ export default function FreightBoard({
            const notes = notesForLoad(load);
            const routeSteps = sortedRouteSteps(load);
            return (
-           <article key={load.id} className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm overflow-hidden flex flex-col group hover:shadow-md transition-shadow">
+           <article key={load.id} className={`rounded-xl border border-jdt-border border-l-4 bg-jdt-panel shadow-sm overflow-hidden flex flex-col group hover:shadow-md transition-shadow ${categoryAccentBorderClass('freight')}`}>
              <div 
                className="flex items-center justify-between gap-3 border-b border-jdt-border p-4 bg-jdt-panel/50 cursor-pointer hover:bg-jdt-sand"
                onClick={() => openDrawer('freight', load.id || load.loadNumber || load.title)}
@@ -396,7 +382,7 @@ export default function FreightBoard({
                     <div className="space-y-2 relative before:absolute before:inset-0 before:ml-2 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-zinc-200 before:to-transparent">
                       {load.stops?.map((stop: any, idx: number) => (
                         <div key={stop.id} className="relative flex items-center gap-3">
-                           <div className={`w-4 h-4 rounded-full flex-shrink-0 border-2 z-10 ${stop.completed || stop.status === 'Completed' ? 'bg-emerald-500 border-emerald-600' : stop.status === 'InProgress' ? 'bg-amber-400 border-amber-500' : 'bg-jdt-panel border-jdt-border'}`} />
+                           <div className={`w-4 h-4 rounded-full flex-shrink-0 border-2 border-white z-10 ${statusDotClass(stop.completed || stop.status === 'Completed' ? 'Complete' : stop.status === 'InProgress' ? 'In Progress' : stop.status || 'Pending')}`} />
                            <div className={`flex-1 rounded-lg border p-2 ${stop.completed ? 'bg-jdt-panel border-jdt-border' : 'bg-jdt-panel border-jdt-border shadow-sm'}`}>
                              <div className="flex justify-between items-center">
                                <span className={`text-[11px] font-black uppercase ${stop.completed ? 'text-zinc-500' : 'text-jdt-text'}`}>{stop.label}</span>
@@ -411,8 +397,8 @@ export default function FreightBoard({
                              )}
                              {(stop.requiredPhotos || stop.requiredSignature) && (
                                <div className="mt-2 flex flex-wrap gap-1.5">
-                                 {stop.requiredPhotos && <span className="rounded bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase text-amber-800">Photo Required</span>}
-                                 {stop.requiredSignature && <span className="rounded bg-blue-100 px-2 py-0.5 text-[9px] font-black uppercase text-blue-800">Signature Required</span>}
+                                 {stop.requiredPhotos && <span className={`rounded border px-2 py-0.5 text-[9px] font-black uppercase ${riskPillClass('watch')}`}>Photo Required</span>}
+                                 {stop.requiredSignature && <span className={`rounded border px-2 py-0.5 text-[9px] font-black uppercase ${riskPillClass('watch')}`}>Signature Required</span>}
                                </div>
                              )}
                              <button
@@ -456,7 +442,7 @@ export default function FreightBoard({
                                </div>
                                <p className="mt-1 text-[11px] font-bold text-zinc-600">{step.label || step.notes || 'Driver instruction'}</p>
                              </div>
-                             <span className={`rounded px-2 py-1 text-[9px] font-black uppercase ${routeStepTone(step.status || 'Pending')}`}>{step.status || 'Pending'}</span>
+                             <span className={`rounded border px-2 py-1 text-[9px] font-black uppercase ${routeStepTone(step.status || 'Pending')}`}>{step.status || 'Pending'}</span>
                            </div>
                            <div className="mt-2 grid gap-2 text-[10px] font-bold text-zinc-500 sm:grid-cols-2">
                              {(step.origin || step.destination) && (
@@ -504,7 +490,7 @@ export default function FreightBoard({
                         <p className="text-xs font-bold text-zinc-400">No notes</p>
                       )}
                       {load.escortRequired && (
-                        <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-amber-100 text-amber-800 px-2 py-1 text-[10px] font-black uppercase">
+                        <div className={`mt-2 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-black uppercase ${riskPillClass('watch')}`}>
                            <AlertTriangle className="h-3 w-3" />
                            Escort Required
                         </div>
@@ -546,13 +532,13 @@ export default function FreightBoard({
                       )}
                       
                       {load.pod && (
-                          <div className="mt-4 border border-emerald-200 bg-emerald-50 rounded-lg p-3">
-                             <div className="flex items-center gap-2 text-emerald-800 mb-1">
+                          <div className={`mt-4 rounded-lg border p-3 ${riskSurfaceClass('low')}`}>
+                             <div className="flex items-center gap-2 mb-1">
                                 <CheckCircle2 className="h-4 w-4" />
                                 <span className="text-[11px] font-black uppercase">Proof of Delivery</span>
                              </div>
-                             <p className="text-xs font-bold text-emerald-700">Signed by: {load.pod.receiverName}</p>
-                             <p className="text-[10px] font-bold text-emerald-600 mt-0.5">{load.pod.completedAt}</p>
+                             <p className="text-xs font-bold">Signed by: {load.pod.receiverName}</p>
+                             <p className="text-[10px] font-bold mt-0.5 opacity-75">{load.pod.completedAt}</p>
                           </div>
                       )}
                    </div>

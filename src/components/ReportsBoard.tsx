@@ -3,6 +3,7 @@ import { BarChart3, FileDown, Loader2, Printer } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { buildOperatingKpis } from '../commandCenter/operatingIntelligence';
 import type { AlertRecord, ClientRecord, DocumentRecord, EquipmentRecord, FieldUpdateRecord, ImportBatchRecord, JobRecord, LoadRecord, ProjectRecord, RanchOakRecord, ScheduleTaskRecord, TreeRelocationRecord, WorkOrderRecord } from '../commandCenter/records';
+import { riskSurfaceClass } from '../commandCenter/visualLanguage';
 
 type ReportsBoardProps = {
   jobs: JobRecord[];
@@ -21,9 +22,9 @@ type ReportsBoardProps = {
 };
 
 const metricToneClass = {
-  ready: 'border-[#82995D] bg-[#F1F6EA] text-[#384521]',
-  watch: 'border-[#D9B85E] bg-[#FFF8DD] text-[#725B11]',
-  bad: 'border-[#C68B64] bg-[#F8EDE5] text-[#7A331F]',
+  ready: riskSurfaceClass('low'),
+  watch: riskSurfaceClass('watch'),
+  bad: riskSurfaceClass('critical'),
   context: 'border-jdt-border bg-white text-jdt-text',
 };
 

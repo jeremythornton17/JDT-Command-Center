@@ -8,7 +8,15 @@ import {
   type OperatingCalendarEvent,
 } from '../commandCenter/calendar';
 import type { EquipmentRecord, JobRecord, LoadRecord, ScheduleTaskRecord, TreeRelocationRecord, WorkOrderRecord } from '../commandCenter/records';
-import { categoryLabel, type OperatingCategory } from '../commandCenter/visualLanguage';
+import {
+  categoryAccentBorderClass,
+  categoryLabel,
+  riskPillClass,
+  riskSurfaceClass,
+  statusPillClass,
+  statusSurfaceClass,
+  type OperatingCategory,
+} from '../commandCenter/visualLanguage';
 import { CategoryIcon, CategoryPill } from './CategoryIcon';
 
 type CalendarBoardProps = {
@@ -90,11 +98,8 @@ function shiftFocusDate(value: string, view: CalendarGridView, direction: -1 | 1
 }
 
 function statusClass(event: OperatingCalendarEvent): string {
-  const status = String(event.status || '').toLowerCase();
-  if (event.conflicts.length || event.readinessIssues.length || status.includes('blocked') || status.includes('delayed')) return 'border-amber-200 bg-amber-50 text-amber-900';
-  if (status.includes('complete') || status.includes('delivered')) return 'border-emerald-200 bg-emerald-50 text-emerald-800';
-  if (status.includes('active') || status.includes('progress') || status.includes('dispatched')) return 'border-blue-200 bg-blue-50 text-blue-800';
-  return 'border-jdt-border bg-jdt-sand text-jdt-text';
+  if (event.conflicts.length || event.readinessIssues.length) return riskSurfaceClass('watch');
+  return statusSurfaceClass(event.status);
 }
 
 function matchesStatusFilter(event: OperatingCalendarEvent, filter: string): boolean {
@@ -113,7 +118,68 @@ function eventDrawerType(event: OperatingCalendarEvent): string | null {
 }
 
 function readinessMetricTone(value: number): string {
-  return value > 0 ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-800';
+  return value > 0 ? riskSurfaceClass('watch') : riskSurfaceClass('low');
+}
+
+function eventClientProjectLabel(event: OperatingCalendarEvent) {
+  return {
+    clientName: event.clientName || 'Internal Operations',
+    projectName: event.projectName || event.detail || categoryLabel(event.category),
+  };
+}
+
+function groupEventsByClientProject(events: OperatingCalendarEvent[]) {
+  return events.reduce<Array<{ key: string; clientName: string; projectName: string; events: OperatingCalendarEvent[] }>>((groups, event) => {
+    const labels = eventClientProjectLabel(event);
+    const key = `${labels.clientName}::${labels.projectName}`;
+    const existing = groups.find((group) => group.key === key);
+    if (existing) {
+      existing.events.push(event);
+      return groups;
+    }
+    groups.push({ key, ...labels, events: [event] });
+    return groups;
+  }, []);
+}
+
+function VisualLegend() {
+  const categories: OperatingCategory[] = ['relocation', 'crew', 'freight', 'equipment', 'nursery'];
+  const statuses = [
+    ['Stop / Blocked', 'Blocked'],
+    ['Caution / Scheduled', 'Scheduled'],
+    ['Active Work', 'In Progress'],
+    ['Ready / Complete', 'Ready'],
+  ];
+
+  return (
+    <section className="rounded-xl border border-jdt-border bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-black uppercase text-jdt-text">Visual Legend</h3>
+          <p className="mt-1 text-[11px] font-bold text-zinc-500">Icons and category colors show what it is. Status colors show what condition it is in.</p>
+        </div>
+        <CategoryPill category="schedule" label="Calendar" compact />
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-1">
+        <div>
+          <p className="mb-2 text-[10px] font-black uppercase text-zinc-400">Categories</p>
+          <div className="flex flex-wrap gap-1.5">
+            {categories.map((category) => <CategoryPill key={category} category={category} />)}
+          </div>
+        </div>
+        <div>
+          <p className="mb-2 text-[10px] font-black uppercase text-zinc-400">Status / Risk</p>
+          <div className="flex flex-wrap gap-1.5">
+            {statuses.map(([label, status]) => (
+              <span key={label} className={`rounded-md border px-2 py-1 text-[9px] font-black uppercase ${statusPillClass(status)}`}>
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function EventCard({ event, openDrawer }: { event: OperatingCalendarEvent; openDrawer: CalendarBoardProps['openDrawer'] }) {
@@ -127,7 +193,7 @@ function EventCard({ event, openDrawer }: { event: OperatingCalendarEvent; openD
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <p className="truncate text-sm font-black text-jdt-text">{event.title}</p>
-              <span className={`rounded border px-2 py-0.5 text-[9px] font-black uppercase ${statusClass(event)}`}>{event.status}</span>
+              <span className={`rounded border px-2 py-0.5 text-[9px] font-black uppercase ${statusPillClass(event.status)}`}>{event.status}</span>
             </div>
             <p className="mt-1 line-clamp-2 text-xs font-bold text-zinc-500">{event.detail || event.projectName || event.clientName || categoryLabel(event.category)}</p>
           </div>
@@ -148,7 +214,7 @@ function EventCard({ event, openDrawer }: { event: OperatingCalendarEvent; openD
       {(event.readinessIssues.length > 0 || event.conflicts.length > 0) && (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {event.conflicts.map((issue) => (
-            <span key={issue} className="inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-900">
+            <span key={issue} className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[9px] font-black uppercase ${riskPillClass('watch')}`}>
               <AlertTriangle className="h-3 w-3" /> {issue}
             </span>
           ))}
@@ -161,14 +227,14 @@ function EventCard({ event, openDrawer }: { event: OperatingCalendarEvent; openD
   );
 
   if (!actionable) {
-    return <article className="rounded-lg border border-jdt-border bg-white p-4 shadow-sm">{content}</article>;
+    return <article className={`rounded-lg border border-jdt-border border-l-4 bg-white p-4 shadow-sm ${categoryAccentBorderClass(event.category)}`}>{content}</article>;
   }
 
   return (
     <button
       type="button"
       onClick={() => openDrawer(drawerType!, event.recordId!)}
-      className="w-full rounded-lg border border-jdt-border bg-white p-4 text-left shadow-sm transition-colors hover:border-jdt-olive"
+      className={`w-full rounded-lg border border-jdt-border border-l-4 bg-white p-4 text-left shadow-sm transition-colors hover:border-jdt-olive ${categoryAccentBorderClass(event.category)}`}
     >
       {content}
     </button>
@@ -193,7 +259,7 @@ function CalendarGridEvent({ event, openDrawer }: { event: OperatingCalendarEven
   );
 
   if (!actionable) {
-    return <article title={rangeSummary} aria-label={`${event.title} ${rangeSummary}`} className={`rounded-md border px-2 py-1.5 ${statusClass(event)}`}>{content}</article>;
+    return <article title={rangeSummary} aria-label={`${event.title} ${rangeSummary}`} className={`rounded-md border border-l-4 px-2 py-1.5 ${statusClass(event)} ${categoryAccentBorderClass(event.category)}`}>{content}</article>;
   }
 
   return (
@@ -202,7 +268,7 @@ function CalendarGridEvent({ event, openDrawer }: { event: OperatingCalendarEven
       onClick={() => openDrawer(drawerType!, event.recordId!)}
       title={rangeSummary}
       aria-label={`${event.title} ${rangeSummary}`}
-      className={`w-full rounded-md border px-2 py-1.5 text-left transition-colors hover:border-jdt-olive ${statusClass(event)}`}
+      className={`w-full rounded-md border border-l-4 px-2 py-1.5 text-left transition-colors hover:border-jdt-olive ${statusClass(event)} ${categoryAccentBorderClass(event.category)}`}
     >
       {content}
     </button>
@@ -332,7 +398,7 @@ export default function CalendarBoard({
       </div>
       <div className="grid grid-cols-2 gap-2">
         {[
-          ['Ready', readiness.ready, 'border-emerald-200 bg-emerald-50 text-emerald-800'],
+          ['Ready', readiness.ready, riskSurfaceClass('low')],
           ['Needs Review', readiness.needsReview, readinessMetricTone(readiness.needsReview)],
           ['Missing Crew', readiness.missingCrew, readinessMetricTone(readiness.missingCrew)],
           ['Missing Equipment', readiness.missingEquipment, readinessMetricTone(readiness.missingEquipment)],
@@ -355,12 +421,12 @@ export default function CalendarBoard({
         <h3 className="text-sm font-black uppercase text-jdt-text">Conflict Watch</h3>
       </div>
       {calendar.conflicts.length > 0 ? (
-        <div className="space-y-2">
-          {calendar.conflicts.slice(0, 8).map((conflict) => (
-            <div key={conflict.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <p className="text-xs font-black uppercase text-amber-900">{conflict.resourceLabel}</p>
-              <p className="mt-1 text-[10px] font-bold uppercase text-amber-800">{formatShortDate(conflict.dateIso)} - {conflict.resourceKind}</p>
-              <p className="mt-2 line-clamp-2 text-[11px] font-bold text-amber-950">{conflict.eventTitles.join(' / ')}</p>
+              <div className="space-y-2">
+                {calendar.conflicts.slice(0, 8).map((conflict) => (
+            <div key={conflict.id} className={`rounded-lg border p-3 ${riskSurfaceClass('watch')}`}>
+              <p className="text-xs font-black uppercase">{conflict.resourceLabel}</p>
+              <p className="mt-1 text-[10px] font-bold uppercase opacity-80">{formatShortDate(conflict.dateIso)} - {conflict.resourceKind}</p>
+              <p className="mt-2 line-clamp-2 text-[11px] font-bold opacity-90">{conflict.eventTitles.join(' / ')}</p>
             </div>
           ))}
         </div>
@@ -392,7 +458,7 @@ export default function CalendarBoard({
           { label: 'Today', value: todayCount, tone: 'border-jdt-border bg-white text-jdt-primary' },
           { label: 'Tomorrow', value: readiness.total, tone: 'border-jdt-border bg-white text-jdt-primary' },
           { label: `${rangeView} Items`, value: selectedRangeCount, tone: 'border-jdt-border bg-white text-jdt-primary' },
-          { label: 'Ready', value: readiness.ready, tone: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
+          { label: 'Ready', value: readiness.ready, tone: riskSurfaceClass('low') },
           { label: 'Conflicts', value: readiness.conflicts, tone: readinessMetricTone(readiness.conflicts) },
         ].map((metric) => (
           <div key={metric.label} className={`rounded-lg border p-4 shadow-sm ${metric.tone}`}>
@@ -478,8 +544,22 @@ export default function CalendarBoard({
                     <h3 className="text-xs font-black uppercase text-jdt-primary">{formatDate(group.dateIso)}</h3>
                     <span className="rounded bg-white px-2 py-1 text-[9px] font-black uppercase text-zinc-500">{group.events.length} items</span>
                   </div>
-                  <div className="grid gap-3 2xl:grid-cols-2">
-                    {group.events.map((event) => <EventCard key={event.id} event={event} openDrawer={openDrawer} />)}
+                  <div className="space-y-3">
+                    {groupEventsByClientProject(group.events).map((projectGroup) => (
+                      <div key={`${group.dateIso}-${projectGroup.key}`} className="rounded-lg border border-jdt-border bg-white/70 p-3">
+                        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-wide text-zinc-400">Client / Project</p>
+                            <h4 className="text-xs font-black uppercase text-jdt-primary">{projectGroup.clientName}</h4>
+                            <p className="text-[10px] font-bold uppercase text-zinc-500">{projectGroup.projectName}</p>
+                          </div>
+                          <span className="rounded-md border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-zinc-500">{projectGroup.events.length} assignments</span>
+                        </div>
+                        <div className="grid gap-3 2xl:grid-cols-2">
+                          {projectGroup.events.map((event) => <EventCard key={event.id} event={event} openDrawer={openDrawer} />)}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </section>
               ))
@@ -494,6 +574,7 @@ export default function CalendarBoard({
 
           {displayMode === 'Planner' ? (
             <aside className="space-y-4">
+              <VisualLegend />
               {readinessPanel}
               {conflictPanel}
             </aside>
@@ -501,6 +582,7 @@ export default function CalendarBoard({
             <details className="rounded-xl border border-jdt-border bg-white p-4 shadow-sm">
               <summary className="cursor-pointer text-sm font-black uppercase text-jdt-text">Readiness & Conflict Check</summary>
               <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                <VisualLegend />
                 {readinessPanel}
                 {conflictPanel}
               </div>

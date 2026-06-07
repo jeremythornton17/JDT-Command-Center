@@ -1,3 +1,5 @@
+import { relocationInstallationJobTypePillClass } from './visualLanguage';
+
 export const relocationInstallationDivisionLabel = 'Relocation & Installation';
 
 export const relocationInstallationJobTypes = [
@@ -73,9 +75,7 @@ export function isRelocationInstallationJob(job: JobLike): boolean {
 }
 
 export function relocationInstallationJobTypeTone(type: RelocationInstallationJobType): string {
-  if (type === 'Installation Job') return 'bg-lime-100 text-lime-900 border-lime-200';
-  if (type === 'Mixed Job') return 'bg-amber-100 text-amber-950 border-amber-200';
-  return 'bg-emerald-100 text-emerald-900 border-emerald-200';
+  return relocationInstallationJobTypePillClass(type);
 }
 
 function detectTypeFromValues(...values: unknown[]): RelocationInstallationJobType | '' {

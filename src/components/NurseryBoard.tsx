@@ -3,6 +3,7 @@ import { Search, Plus, Edit2, QrCode, MapPin, Trash2, X, ChevronLeft, ChevronRig
 import { IconButton } from './IconBadge';
 import { CategoryIcon } from './CategoryIcon';
 import type { RanchOakRecord } from '../commandCenter/records';
+import { statusPillClass } from '../commandCenter/visualLanguage';
 import {
   isRanchOakInventoryRecord,
   isPropagationInventoryRecord,
@@ -67,13 +68,12 @@ function uniqueText(values: unknown[]): string[] {
 
 function statusColor(status: string) {
   switch (status) {
-    case 'Available': return 'bg-emerald-100 text-emerald-800';
-    case 'Sold': return 'bg-blue-100 text-blue-800';
-    case 'On Hold': return 'bg-yellow-100 text-yellow-800';
-    case 'Dig Queue': return 'bg-orange-100 text-orange-800';
-    case 'Harvested': return 'bg-zinc-200 text-zinc-800';
-    case 'Assigned': return 'bg-purple-100 text-purple-800';
-    default: return 'bg-jdt-sand text-zinc-800';
+    case 'Sold': return `border ${statusPillClass('Complete')}`;
+    case 'On Hold': return `border ${statusPillClass('Scheduled')}`;
+    case 'Dig Queue': return `border ${statusPillClass('In Progress')}`;
+    case 'Harvested': return `border ${statusPillClass('Closed')}`;
+    case 'Assigned': return `border ${statusPillClass('Active')}`;
+    default: return `border ${statusPillClass(status || 'Available')}`;
   }
 }
 
@@ -82,18 +82,18 @@ function propagationHealthColor(status: string) {
     case 'Healthy':
     case 'Ready to Move Up':
     case 'Ready for Field':
-      return 'bg-emerald-100 text-emerald-800';
+      return `border ${statusPillClass('Ready')}`;
     case 'Rooting':
-      return 'bg-sky-100 text-sky-800';
+      return `border ${statusPillClass('In Progress')}`;
     case 'Needs Water':
     case 'Needs Nutrient Care':
-      return 'bg-yellow-100 text-yellow-800';
+      return `border ${statusPillClass('Scheduled')}`;
     case 'Pest Watch':
     case 'Disease Watch':
     case 'Stressed':
-      return 'bg-red-100 text-red-800';
+      return `border ${statusPillClass('Blocked')}`;
     default:
-      return 'bg-jdt-sand text-zinc-800';
+      return `border ${statusPillClass(status)}`;
   }
 }
 

@@ -3,6 +3,7 @@ import { Users, Globe, Award, ClipboardCheck, Phone, Plus, AlertCircle, Star, Ma
 import { complianceBadgeClass, driverComplianceSummary, type ComplianceStatus } from '../commandCenter/compliance';
 import { defaultJdtPersonnelRoster, mergePersonnelRecords, personnelRoleOptions } from '../commandCenter/personnel';
 import type { CrewRecord, WorkOrderRecord } from '../commandCenter/records';
+import { categoryAccentBorderClass, statusPillClass } from '../commandCenter/visualLanguage';
 import { CategoryIcon } from './CategoryIcon';
 
 function primarySkillFor(member: CrewRecord) {
@@ -61,16 +62,6 @@ export default function CrewsBoard({ crews, workOrders = [], openModal, openDraw
     const matchesStatus = statusFilter === 'All' || (c.availability || 'Available') === statusFilter;
     return matchesRole && matchesStatus;
   });
-
-  const getStatusBadgeColor = (status: string) => {
-    switch (status) {
-      case 'Available': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      case 'Active': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'Sidelined': return 'bg-red-100 text-red-800 border-red-200';
-      case 'Off Duty': return 'bg-zinc-100 text-zinc-800 border-zinc-200';
-      default: return 'bg-jdt-sand text-zinc-700 border-jdt-border';
-    }
-  };
 
   const getAccessBadge = (access: CrewRecord['appAccess']) => {
     switch (access) {
@@ -147,7 +138,7 @@ export default function CrewsBoard({ crews, workOrders = [], openModal, openDraw
           return (
           <article 
             key={member.id} 
-            className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm overflow-hidden flex flex-col group hover:border-zinc-400 hover:shadow-md transition-all"
+            className={`rounded-xl border border-jdt-border border-l-4 bg-jdt-panel shadow-sm overflow-hidden flex flex-col group hover:border-zinc-400 hover:shadow-md transition-all ${categoryAccentBorderClass('crew')}`}
           >
             <div className="p-4 border-b border-jdt-border bg-jdt-panel/50 flex justify-between items-start gap-4">
               <div className="flex min-w-0 items-start gap-3">
@@ -164,7 +155,7 @@ export default function CrewsBoard({ crews, workOrders = [], openModal, openDraw
                 </div>
               </div>
               <div className="flex flex-col items-end gap-1">
-                <span className={`inline-flex rounded border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide self-start mt-1 ${getStatusBadgeColor(member.availability || 'Available')}`}>
+                <span className={`inline-flex rounded border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide self-start mt-1 ${statusPillClass(member.availability || 'Available')}`}>
                   {member.availability || 'Available'}
                 </span>
                 {accessBadge && (

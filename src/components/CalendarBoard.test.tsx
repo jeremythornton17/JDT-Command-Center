@@ -58,6 +58,8 @@ describe("CalendarBoard operations planner", () => {
     assert.match(html, /Month/);
     assert.match(html, /Tomorrow Readiness/);
     assert.match(html, /Conflict Watch/);
+    assert.match(html, /Visual Legend/);
+    assert.match(html, /Client \/ Project/);
     assert.match(html, /Missing crew/);
     assert.match(html, /Christian Crespo/);
     assert.match(html, /Semi #1/);

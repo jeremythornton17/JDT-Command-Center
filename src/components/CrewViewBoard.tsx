@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ClipboardList, Clock, MapPin, MessageSquare, Truck, UserCheck, Wrench } from 'lucide-react';
 import { equipmentDisplayName } from '../commandCenter/equipmentFreight';
 import type { CrewRecord, EquipmentRecord, FieldUpdateRecord, JobRecord, LoadRecord, WorkOrderRecord } from '../commandCenter/records';
+import { categoryAccentBorderClass, riskSurfaceClass, statusPillClass } from '../commandCenter/visualLanguage';
 
 type AssignmentRecord = {
   id: string;
@@ -74,6 +75,12 @@ function assignmentEquipmentNames(load: LoadRecord, equipment: EquipmentRecord[]
 
 function statusNeedsAdmin(status: string) {
   return ['Delayed', 'Need Help', 'Issue'].includes(status);
+}
+
+function statusForFieldAction(status: string): string {
+  if (status === 'Need Help' || status === 'Issue') return 'Blocked';
+  if (status === 'Arrived' || status === 'Started') return 'In Progress';
+  return status;
 }
 
 export default function CrewViewBoard({
@@ -192,7 +199,7 @@ export default function CrewViewBoard({
                   <h3 className="mt-1 text-xl font-black text-jdt-primary">{displayName(selectedCrew)}</h3>
                   <p className="text-xs font-bold text-zinc-500">{selectedCrew.role || 'Crew'} {selectedCrew.skill ? `- ${selectedCrew.skill}` : ''}</p>
                 </div>
-                <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-800">
+                <span className={`rounded-md border px-2.5 py-1 text-[10px] font-black uppercase ${canSubmitFieldUpdates ? statusPillClass('Ready') : statusPillClass('Closed')}`}>
                   {canSubmitFieldUpdates ? 'Field Updates Enabled' : 'Read Only'}
                 </span>
               </div>
@@ -216,7 +223,7 @@ export default function CrewViewBoard({
               {assignments.map((assignment) => {
                 const relatedEquipment = assignment.type === 'load' ? assignmentEquipmentNames(assignment.source as LoadRecord, equipment) : [];
                 return (
-                  <article key={`${assignment.type}-${assignment.id}`} className="rounded-xl border border-jdt-border bg-jdt-panel p-4 shadow-sm">
+                  <article key={`${assignment.type}-${assignment.id}`} className={`rounded-xl border border-jdt-border border-l-4 bg-jdt-panel p-4 shadow-sm ${categoryAccentBorderClass(assignment.type === 'load' ? 'freight' : 'crew')}`}>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-zinc-500">
@@ -275,11 +282,7 @@ export default function CrewViewBoard({
                             type="button"
                             disabled={!canSubmitFieldUpdates}
                             onClick={() => submitUpdate(assignment, status)}
-                            className={`rounded-lg px-2 py-2 text-[10px] font-black uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                              statusNeedsAdmin(status)
-                                ? 'border border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100'
-                                : 'border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                            }`}
+                            className={`rounded-lg border px-2 py-2 text-[10px] font-black uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-50 hover:brightness-95 ${statusPillClass(statusForFieldAction(status))}`}
                           >
                             {status}
                           </button>
@@ -308,7 +311,7 @@ export default function CrewViewBoard({
                   <div key={update.id || update.title} className="rounded-lg border border-jdt-border bg-white p-3">
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-sm font-black text-jdt-primary">{update.relatedTitle || update.title || 'Field update'}</p>
-                      <span className={`rounded px-2 py-0.5 text-[9px] font-black uppercase ${statusNeedsAdmin(update.fieldStatus || update.updateType || '') ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-800'}`}>
+                      <span className={`rounded border px-2 py-0.5 text-[9px] font-black uppercase ${statusPillClass(statusForFieldAction(update.fieldStatus || update.updateType || update.status || 'Submitted'))}`}>
                         {update.fieldStatus || update.updateType || update.status || 'Submitted'}
                       </span>
                     </div>
@@ -320,14 +323,14 @@ export default function CrewViewBoard({
               </div>
             </div>
 
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-wide text-amber-900"><AlertTriangle className="h-4 w-4" /> Escalation Rules</h3>
-              <p className="mt-2 text-xs font-bold text-amber-900">Delayed, Need Help, and Issue updates are routed to the admin dashboard for review. Arrived, Started, and Complete updates create a status history without requiring an owner decision.</p>
+            <div className={`rounded-xl border p-4 ${riskSurfaceClass('watch')}`}>
+              <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-wide"><AlertTriangle className="h-4 w-4" /> Escalation Rules</h3>
+              <p className="mt-2 text-xs font-bold">Delayed, Need Help, and Issue updates are routed to the admin dashboard for review. Arrived, Started, and Complete updates create a status history without requiring an owner decision.</p>
             </div>
 
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-              <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-wide text-emerald-900"><CheckCircle2 className="h-4 w-4" /> Field Workflow</h3>
-              <p className="mt-2 text-xs font-bold text-emerald-900">This view is built for phone use later: current assignment, route steps, quick status buttons, notes, and service issue reporting in one place.</p>
+            <div className={`rounded-xl border p-4 ${riskSurfaceClass('low')}`}>
+              <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-wide"><CheckCircle2 className="h-4 w-4" /> Field Workflow</h3>
+              <p className="mt-2 text-xs font-bold">This view is built for phone use later: current assignment, route steps, quick status buttons, notes, and service issue reporting in one place.</p>
             </div>
           </aside>
         </section>

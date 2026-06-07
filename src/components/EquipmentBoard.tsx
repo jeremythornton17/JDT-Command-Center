@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Wrench, MapPin, UserCheck, AlertTriangle, Clock, Activity, QrCode, ClipboardList, PenTool } from 'lucide-react';
 import { complianceBadgeClass, vehicleComplianceSummary, type ComplianceStatus } from '../commandCenter/compliance';
 import { equipmentCategory, equipmentDisplayName } from '../commandCenter/equipmentFreight';
+import { categoryAccentBorderClass, riskSurfaceClass, statusPillClass } from '../commandCenter/visualLanguage';
 import { CategoryIcon } from './CategoryIcon';
 import { IconButton } from './IconBadge';
 
@@ -27,19 +28,6 @@ function showVehicleCompliance(eq: any) {
 }
 
 export default function EquipmentBoard({ starterEquipment, openDrawer, openModal }: { starterEquipment: any[], openDrawer: (type: string, id: string) => void, openModal: (type: string, data?: any) => void }) {
-
-  const StatusColor = (status: string) => {
-    switch (status) {
-      case 'Available': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      case 'Assigned': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'In Use': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'Maintenance': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'Needs Service': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'Down': return 'bg-red-100 text-red-800 border-red-200';
-      case 'Inspection': return 'bg-orange-100 text-orange-800 border-orange-200';
-      default: return 'bg-jdt-sand text-zinc-800 border-jdt-border';
-    }
-  };
 
   const grouped = starterEquipment.reduce((acc: any, eq: any) => {
     const status = eq.status || 'Available';
@@ -92,9 +80,9 @@ export default function EquipmentBoard({ starterEquipment, openDrawer, openModal
                    {items.map((eq: any) => {
                      const compliance = vehicleComplianceSummary(eq);
                      return (
-                     <article key={eq.id} className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm overflow-hidden flex flex-col pt-1 group hover:border-zinc-400 transition-colors">
+                     <article key={eq.id} className={`rounded-xl border border-jdt-border border-l-4 bg-jdt-panel shadow-sm overflow-hidden flex flex-col pt-1 group hover:border-zinc-400 transition-colors ${categoryAccentBorderClass('equipment')}`}>
                         {(eq.status === 'Down' || eq.status === 'Inspection' || Number(eq.serviceDueHours ?? Number.POSITIVE_INFINITY) < 100) && (
-                          <div className={`px-4 py-2 text-xs font-black uppercase tracking-wide flex items-center justify-center gap-1.5 ${eq.status === 'Down' ? 'bg-red-600 text-white' : 'bg-orange-600 text-white'}`}>
+                          <div className={`px-4 py-2 text-xs font-black uppercase tracking-wide flex items-center justify-center gap-1.5 ${eq.status === 'Down' ? 'bg-[#A6402D] text-white' : 'bg-[#B98138] text-white'}`}>
                             <AlertTriangle className="h-4 w-4" /> 
                             {eq.status === 'Down' ? 'Critical Action Required' : (eq.issue ? eq.issue : 'Service Due Soon')}
                           </div>
@@ -112,7 +100,7 @@ export default function EquipmentBoard({ starterEquipment, openDrawer, openModal
                                </div>
                              </div>
                            </div>
-                           <span className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-black uppercase tracking-wider ${StatusColor(eq.status || 'Available')}`}>
+                           <span className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-black uppercase tracking-wider ${statusPillClass(eq.status || 'Available')}`}>
                              {eq.status || 'Available'}
                            </span>
                         </div>
@@ -136,14 +124,14 @@ export default function EquipmentBoard({ starterEquipment, openDrawer, openModal
                                   </div>
                                 )}
                               </div>
-                              <div className="space-y-4 bg-orange-50/50 p-3 rounded-lg border border-orange-100">
+                              <div className={`space-y-4 rounded-lg border p-3 ${Number(eq.serviceDueHours ?? Number.POSITIVE_INFINITY) < 100 ? riskSurfaceClass('watch') : 'border-[#D5AA6E] bg-[#FBF1E7] text-[#7A4A12]'}`}>
                                 <div>
-                                  <p className="text-[10px] font-black uppercase text-orange-800 mb-1 flex items-center gap-1"><Activity className="h-3.5 w-3.5"/> Engine Hours</p>
-                                  <p className="text-3xl font-black text-orange-950">{typeof eq.hours === 'number' ? eq.hours.toLocaleString() : (eq.hours || '-')}</p>
+                                  <p className="text-[10px] font-black uppercase opacity-75 mb-1 flex items-center gap-1"><Activity className="h-3.5 w-3.5"/> Engine Hours</p>
+                                  <p className="text-3xl font-black">{typeof eq.hours === 'number' ? eq.hours.toLocaleString() : (eq.hours || '-')}</p>
                                 </div>
                                 <div>
-                                  <p className="text-[10px] font-black uppercase text-orange-800 mb-1 flex items-center gap-1"><Clock className="h-3.5 w-3.5"/> Service Due In</p>
-                                  <p className={`text-xl font-black ${Number(eq.serviceDueHours ?? Number.POSITIVE_INFINITY) < 100 ? 'text-red-600' : 'text-orange-900'}`}>{eq.serviceDueHours ?? eq.nextServiceDue ?? '-'}{eq.serviceDueHours ? ' hrs' : ''}</p>
+                                  <p className="text-[10px] font-black uppercase opacity-75 mb-1 flex items-center gap-1"><Clock className="h-3.5 w-3.5"/> Service Due In</p>
+                                  <p className="text-xl font-black">{eq.serviceDueHours ?? eq.nextServiceDue ?? '-'}{eq.serviceDueHours ? ' hrs' : ''}</p>
                                 </div>
                               </div>
                            </div>
@@ -179,8 +167,8 @@ export default function EquipmentBoard({ starterEquipment, openDrawer, openModal
                            )}
                            
                            {eq.issue && eq.status !== 'Down' && eq.status !== 'Inspection' && (
-                              <div className="mt-4 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm font-bold text-yellow-900 flex gap-2 items-start">
-                                 <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-yellow-600" />
+                              <div className={`mt-4 flex gap-2 rounded border p-2 text-sm font-bold ${riskSurfaceClass('watch')}`}>
+                                 <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
                                  {eq.issue}
                               </div>
                            )}

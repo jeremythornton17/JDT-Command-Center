@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AlertTriangle, MapPin, Clock, Check, Plus, AlertCircle, RefreshCw } from 'lucide-react';
+import { riskPillClass, riskSurfaceClass, statusDotClass } from '../commandCenter/visualLanguage';
 
 export default function AlertsBoard({ alerts, setAlerts, openModal }: { alerts: any[], setAlerts: React.Dispatch<React.SetStateAction<any[]>>, openModal: (type: string, data?: any) => void }) {
   const [filter, setFilter] = useState<'All' | 'High' | 'Warning' | 'Notice'>('All');
@@ -15,18 +16,18 @@ export default function AlertsBoard({ alerts, setAlerts, openModal }: { alerts: 
 
   const getAlertStyle = (severity: string) => {
     switch (severity) {
-      case 'High': return 'border-red-300 bg-red-50 text-red-900 shadow-sm';
-      case 'Warning': return 'border-amber-200 bg-amber-50 text-amber-900 shadow-sm';
-      case 'Notice': return 'border-blue-200 bg-blue-50 text-blue-900 shadow-sm';
+      case 'High': return `${riskSurfaceClass('critical')} shadow-sm`;
+      case 'Warning': return `${riskSurfaceClass('watch')} shadow-sm`;
+      case 'Notice': return 'border-jdt-border bg-jdt-panel text-jdt-text shadow-sm';
       default: return 'border-zinc-200 bg-zinc-50 text-zinc-900 shadow-sm';
     }
   };
 
   const getUrgentDot = (severity: string) => {
     switch (severity) {
-      case 'High': return 'bg-red-600 animate-pulse';
-      case 'Warning': return 'bg-amber-500';
-      case 'Notice': return 'bg-blue-500';
+      case 'High': return `${statusDotClass('critical')} animate-pulse`;
+      case 'Warning': return statusDotClass('scheduled');
+      case 'Notice': return 'bg-jdt-olive';
       default: return 'bg-zinc-400';
     }
   };
@@ -80,7 +81,7 @@ export default function AlertsBoard({ alerts, setAlerts, openModal }: { alerts: 
               <div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h4 className="text-base font-black leading-snug">{al.title}</h4>
-                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${al.severity === 'High' ? 'bg-red-100 border-red-200 text-red-800' : al.severity === 'Warning' ? 'bg-amber-100 border-amber-200 text-amber-800' : 'bg-blue-100 border-blue-200 text-blue-800'}`}>
+                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${riskPillClass(al.severity === 'High' ? 'critical' : al.severity === 'Warning' ? 'watch' : '')}`}>
                     {al.severity}
                   </span>
                 </div>
