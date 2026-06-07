@@ -32,6 +32,7 @@ import {
   latLngToMapPercent,
   loadGoogleMaps,
   mapPercentToLatLng,
+  mapTargetForRelocationJob,
   parseGoogleMapsLocationText,
   parseKmlTreePlacemarks,
   pointFromDevicePosition,
@@ -126,6 +127,7 @@ export default function MapsBoard({
   const googleMapRef = useRef<HTMLDivElement | null>(null);
   const googleMapInstanceRef = useRef<any>(null);
   const googleMarkerRefs = useRef<any[]>([]);
+  const lastFocusedJobTargetRef = useRef('');
   const pinModeRef = useRef<TreeRelocationPointType | null>(pinMode);
   const selectedTreeIdRef = useRef<string | null>(selectedTreeId);
 
@@ -144,6 +146,7 @@ export default function MapsBoard({
   }, [filteredTreeRecords, selectedTreeId]);
 
   const selectedTree = filteredTreeRecords.find(tree => tree.treeId === selectedTreeId || tree.id === selectedTreeId);
+  const selectedJobMapTarget = useMemo(() => mapTargetForRelocationJob(selectedJob), [selectedJob]);
   const selectedTasks = selectedTree ? buildTreeRelocationTasks(selectedTree) : [];
   const allTreeTasks = filteredTreeRecords.flatMap(tree => buildTreeRelocationTasks(tree).map(task => ({ ...task, tree })));
   const readyTasks = allTreeTasks.filter(task => task.status === 'Ready').slice(0, 7);
@@ -181,6 +184,57 @@ export default function MapsBoard({
       ? `Selected ${selectedPin.pointType} pin. Click Move Selected Pin, drag the marker, or use phone GPS to update it.`
     : 'Choose Source or Destination before marking a tree pin.';
 
+  const focusMapOnSelectedJob = (maps?: any) => {
+    if (selectedJobId === 'all') {
+      lastFocusedJobTargetRef.current = 'all';
+      return;
+    }
+
+    const map = googleMapInstanceRef.current;
+    const target = selectedJobMapTarget;
+    if (!map) return;
+    if (!target) {
+      lastFocusedJobTargetRef.current = `${selectedJobId}|no-target`;
+      return;
+    }
+
+    const targetKey = [
+      selectedJobId,
+      target.sourceField,
+      target.point?.lat,
+      target.point?.lng,
+      target.searchText,
+    ].filter(value => value !== undefined && value !== '').join('|');
+    if (lastFocusedJobTargetRef.current === targetKey) return;
+    lastFocusedJobTargetRef.current = targetKey;
+
+    if (target.point) {
+      map.setCenter({ lat: target.point.lat, lng: target.point.lng });
+      map.setZoom(Math.max(Number(map.getZoom?.() || 0), 17));
+      setFieldStatus(`${target.label} map centered at ${formatTreeCoordinate(target.point)}.`);
+      return;
+    }
+
+    const googleMaps = maps || window.google?.maps;
+    if (target.searchText && googleMaps?.Geocoder) {
+      const geocoder = new googleMaps.Geocoder();
+      setFieldStatus(`Searching ${target.searchText} inside the in-app map...`);
+      geocoder.geocode({ address: target.searchText }, (results: any[] = [], status: string) => {
+        const okStatus = googleMaps.GeocoderStatus?.OK || 'OK';
+        const result = status === okStatus ? results[0] : null;
+        const resultLocation = result?.geometry?.location;
+        if (!resultLocation) {
+          setFieldStatus(`Google Maps could not locate ${target.searchText}. Add exact coordinates or a Google Maps pin to this project map.`);
+          return;
+        }
+
+        map.setCenter(resultLocation);
+        map.setZoom(Math.max(Number(map.getZoom?.() || 0), 17));
+        setFieldStatus(`${target.label} map centered from ${target.searchText}.`);
+      });
+    }
+  };
+
   useEffect(() => {
     if (!mapsConfig.isReady || !googleMapRef.current) return;
     let cancelled = false;
@@ -214,6 +268,7 @@ export default function MapsBoard({
         googleMapInstanceRef.current.setZoom(zoomLevel);
         applyGoogleMapViewMode(googleMapInstanceRef.current, maps, mapViewMode);
         renderGoogleTreeMarkers(maps);
+        focusMapOnSelectedJob(maps);
       } catch (error) {
         setFieldStatus(error instanceof Error ? error.message : 'Unable to load Google Maps.');
       }
@@ -223,7 +278,11 @@ export default function MapsBoard({
     return () => {
       cancelled = true;
     };
-  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, filteredTreeRecords, scopedSavedLocations, selectedTreeId, zoomLevel, mapViewMode]);
+  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, filteredTreeRecords, scopedSavedLocations, selectedTreeId, zoomLevel, mapViewMode, selectedJobId, selectedJobMapTarget]);
+
+  useEffect(() => {
+    focusMapOnSelectedJob();
+  }, [selectedJobId, selectedJobMapTarget]);
 
   useEffect(() => {
     const map = googleMapInstanceRef.current;

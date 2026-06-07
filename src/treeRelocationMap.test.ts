@@ -11,13 +11,14 @@ import {
   formatTreeCoordinate,
   getGoogleMapsConfig,
   googleMapsUrlForSavedSiteLocation,
-  relocationContextForJob,
   getTreeRelocationStatus,
+  mapTargetForRelocationJob,
   mapPercentToLatLng,
   parseGoogleMapsLocationText,
   parseKmlTreePlacemarks,
   pointFromDevicePosition,
   pointFromSavedSiteLocation,
+  relocationContextForJob,
   searchTextForSavedSiteLocation,
   updateTreeRelocationPoint,
 } from "./treeRelocationMap";
@@ -165,6 +166,41 @@ describe("tree relocation map helpers", () => {
       sourceText: earthUrl,
     });
     assert.equal(parseGoogleMapsLocationText("Boca Raton"), null);
+  });
+
+  it("builds a map focus target from the selected relocation job site address", () => {
+    const target = mapTargetForRelocationJob({
+      id: "job-boca-course-1",
+      title: "Boca West Course 1 Renovation",
+      projectName: "Boca West Course 1 Renovation",
+      clientName: "Boca West Country Club",
+      division: "Relocation & Installation",
+      location: "20583 Boca West Dr, Boca Raton, FL 33434",
+    });
+
+    assert.equal(target?.label, "Boca West Course 1 Renovation");
+    assert.equal(target?.searchText, "20583 Boca West Dr, Boca Raton, FL 33434");
+    assert.equal(target?.sourceField, "location");
+    assert.equal(target?.point, undefined);
+  });
+
+  it("prefers exact job map pins when the selected relocation job only has a broad address", () => {
+    const target = mapTargetForRelocationJob({
+      id: "job-boca-course-1",
+      title: "Boca West Course 1 Renovation",
+      clientName: "Boca West Country Club",
+      division: "Relocation & Installation",
+      location: "Boca Raton",
+      loadUnloadPin: "https://www.google.com/maps/@26.387315,-80.1712583,260m/data=!3m1!1e3",
+    });
+
+    assert.deepEqual(target?.point, {
+      lat: 26.38732,
+      lng: -80.17126,
+      label: "Boca West Course 1 Renovation",
+    });
+    assert.equal(target?.sourceField, "loadUnloadPin");
+    assert.equal(target?.searchText, undefined);
   });
 
   it("builds project-scoped saved site location records from pasted Maps pins", () => {

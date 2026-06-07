@@ -23,6 +23,13 @@ export interface TreeRelocationPoint {
   accuracyMeters?: number;
 }
 
+export interface RelocationJobMapTarget {
+  label: string;
+  point?: TreeRelocationPoint;
+  searchText?: string;
+  sourceField?: string;
+}
+
 export interface TreeRelocationMapData {
   source?: TreeRelocationPoint;
   destination?: TreeRelocationPoint;
@@ -88,6 +95,25 @@ export type RelocationJobLike = {
   division?: string;
   jobType?: string;
   workTypes?: string[];
+  location?: string;
+  mainAddress?: string;
+  locationAddress?: string;
+  address?: string;
+  siteAddress?: string;
+  jobsiteAddress?: string;
+  crewAccessAddress?: string;
+  truckAccessAddress?: string;
+  constructionAccessPin?: string;
+  loadUnloadPin?: string;
+  secondaryLoadUnloadPin?: string;
+  latitude?: number | string;
+  longitude?: number | string;
+  lat?: number | string;
+  lng?: number | string;
+  mapLatitude?: number | string;
+  mapLongitude?: number | string;
+  jobLatitude?: number | string;
+  jobLongitude?: number | string;
 };
 
 export interface ParsedGoogleMapsLocation {
@@ -266,6 +292,42 @@ export function pointFromDevicePosition(
     accuracyMeters: typeof coords.accuracy === "number" ? Math.round(coords.accuracy) : undefined,
     label: pointType === "source" ? "GPS source pin" : "GPS destination pin",
   };
+}
+
+export function mapTargetForRelocationJob(job?: RelocationJobLike | null): RelocationJobMapTarget | undefined {
+  if (!job) return undefined;
+  const record = job as RelocationJobLike & Record<string, unknown>;
+  const label = cleanLabel(record.projectName)
+    || cleanLabel(record.title)
+    || cleanLabel(record.jobName)
+    || cleanLabel(record.name)
+    || "Selected relocation job";
+
+  const directPoint = pointFromJobCoordinateFields(record, label);
+  if (directPoint) return directPoint;
+
+  const mainAddressFields = fieldCandidates(record, [
+    "location",
+    "mainAddress",
+    "locationAddress",
+    "address",
+    "siteAddress",
+    "jobsiteAddress",
+  ]);
+  const accessFields = fieldCandidates(record, [
+    "constructionAccessPin",
+    "loadUnloadPin",
+    "secondaryLoadUnloadPin",
+    "crewAccessAddress",
+    "truckAccessAddress",
+  ]);
+
+  return coordinateTargetFromFields(mainAddressFields, label)
+    || addressTargetFromFields(mainAddressFields.filter((field) => isSpecificMappableAddress(field.value)), label)
+    || coordinateTargetFromFields(accessFields, label)
+    || addressTargetFromFields(accessFields.filter((field) => isSpecificMappableAddress(field.value)), label)
+    || addressTargetFromFields(mainAddressFields, label)
+    || addressTargetFromFields(accessFields, label);
 }
 
 export function parseGoogleMapsLocationText(text: unknown): ParsedGoogleMapsLocation | null {
@@ -756,6 +818,78 @@ function cleanLabel(value: unknown): string {
 
 function isUrl(value: unknown): boolean {
   return /^https?:\/\//i.test(String(value || "").trim());
+}
+
+type MapTargetFieldCandidate = {
+  field: string;
+  value: string;
+};
+
+function pointFromJobCoordinateFields(
+  record: Record<string, unknown>,
+  label: string,
+): RelocationJobMapTarget | undefined {
+  const coordinatePairs = [
+    ["latitude", "longitude"],
+    ["lat", "lng"],
+    ["mapLatitude", "mapLongitude"],
+    ["jobLatitude", "jobLongitude"],
+  ];
+
+  for (const [latField, lngField] of coordinatePairs) {
+    const lat = Number(record[latField]);
+    const lng = Number(record[lngField]);
+    if (isValidLatLng(lat, lng)) {
+      return {
+        label,
+        point: { lat: roundCoordinate(lat), lng: roundCoordinate(lng), label },
+        sourceField: `${latField}/${lngField}`,
+      };
+    }
+  }
+  return undefined;
+}
+
+function fieldCandidates(record: Record<string, unknown>, fields: string[]): MapTargetFieldCandidate[] {
+  return fields
+    .map((field) => ({ field, value: cleanLabel(record[field]) }))
+    .filter((candidate) => Boolean(candidate.value));
+}
+
+function coordinateTargetFromFields(
+  candidates: MapTargetFieldCandidate[],
+  label: string,
+): RelocationJobMapTarget | undefined {
+  for (const candidate of candidates) {
+    const parsed = parseGoogleMapsLocationText(candidate.value);
+    if (parsed) {
+      return {
+        label,
+        point: { lat: parsed.lat, lng: parsed.lng, label },
+        sourceField: candidate.field,
+      };
+    }
+  }
+  return undefined;
+}
+
+function addressTargetFromFields(
+  candidates: MapTargetFieldCandidate[],
+  label: string,
+): RelocationJobMapTarget | undefined {
+  const candidate = candidates.find((field) => !isUrl(field.value));
+  if (!candidate) return undefined;
+  return {
+    label,
+    searchText: candidate.value,
+    sourceField: candidate.field,
+  };
+}
+
+function isSpecificMappableAddress(value: string): boolean {
+  const address = cleanLabel(value);
+  if (!address || isUrl(address)) return false;
+  return /\d/.test(address) && /,|\b(?:ave|avenue|blvd|boulevard|cir|circle|court|ct|dr|drive|hwy|highway|lane|ln|pkwy|parkway|pl|place|rd|road|st|street|terrace|ter|trail|trl|way)\b/i.test(address);
 }
 
 function parseKmlRawPlacemarks(kmlText: string): Array<{ id?: string; name: string; description: string; coordinates: string }> {
