@@ -36,23 +36,26 @@ describe("operating category visual language", () => {
     assert.doesNotMatch(compactPillHtml, />Equipment</);
   });
 
-  it("assigns stable earthy category tones and stoplight status tones", () => {
-    assert.match(categoryPillClass("crew"), /#A7BC86/);
-    assert.match(categoryPillClass("equipment"), /#C68B64/);
-    assert.match(categoryPillClass("freight"), /#8DB4BD/);
-    assert.match(categoryPillClass("nursery"), /#8FAC72/);
-    assert.match(categoryPillClass("relocation"), /#6F7D4D/);
+  it("assigns distinct category accents with muted surfaces and brighter stoplight status tones", () => {
+    assert.match(categoryPillClass("relocation"), /#0F3D2E/);
+    assert.match(categoryPillClass("crew"), /#A85418/);
+    assert.match(categoryPillClass("freight"), /#1E7EA2/);
+    assert.match(categoryPillClass("equipment"), /#B54626/);
+    assert.match(categoryPillClass("nursery"), /#63B52F/);
 
-    assert.match(categoryAccentBorderClass("freight"), /#345B6B/);
-    assert.match(categoryAccentBorderClass("equipment"), /#935231/);
+    assert.match(categoryAccentBorderClass("relocation"), /#0F3D2E/);
+    assert.match(categoryAccentBorderClass("crew"), /#A85418/);
+    assert.match(categoryAccentBorderClass("freight"), /#1E7EA2/);
+    assert.match(categoryAccentBorderClass("equipment"), /#B54626/);
+    assert.match(categoryAccentBorderClass("nursery"), /#63B52F/);
 
-    assert.match(statusPillClass("Blocked"), /#7A331F/);
-    assert.match(statusPillClass("Scheduled"), /#725B11/);
-    assert.match(statusPillClass("In Progress"), /#7A4A12/);
-    assert.match(statusPillClass("Ready For Relocation"), /#2F4A23/);
+    assert.match(statusPillClass("Blocked"), /#8F241A/);
+    assert.match(statusPillClass("Scheduled"), /#8A6500/);
+    assert.match(statusPillClass("In Progress"), /#A44E10/);
+    assert.match(statusPillClass("Ready For Relocation"), /#236B2E/);
 
-    assert.match(riskPillClass("critical"), /#7A331F/);
-    assert.match(riskPillClass("watch"), /#725B11/);
-    assert.match(riskPillClass("low"), /#2F4A23/);
+    assert.match(riskPillClass("critical"), /#8F241A/);
+    assert.match(riskPillClass("watch"), /#8A6500/);
+    assert.match(riskPillClass("low"), /#236B2E/);
   });
 });
