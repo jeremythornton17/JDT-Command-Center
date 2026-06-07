@@ -5,6 +5,7 @@ import {
   buildRelocationJobOptions,
   buildSavedSiteLocationRecord,
   buildTreeRelocationTasks,
+  buildTreeRelocationRecordsFromKmlImport,
   filterSavedSiteLocationsForJob,
   filterTreesForRelocationJob,
   formatTreeCoordinate,
@@ -14,6 +15,7 @@ import {
   getTreeRelocationStatus,
   mapPercentToLatLng,
   parseGoogleMapsLocationText,
+  parseKmlTreePlacemarks,
   pointFromDevicePosition,
   pointFromSavedSiteLocation,
   searchTextForSavedSiteLocation,
@@ -293,5 +295,87 @@ describe("tree relocation map helpers", () => {
     assert.equal(earthPackage.pinnedTreeCount, 0);
     assert.match(earthPackage.kml, /Empty Project/);
     assert.match(earthPackage.googleEarthUrl, /^https:\/\/earth\.google\.com\/web\/@26\.75505,-80\.91809/);
+  });
+
+  it("parses Waterford-style KML tree placemarks while skipping unnamed view points", () => {
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>
+      <kml xmlns="http://www.opengis.net/kml/2.2">
+        <Document>
+          <name>The Waterford</name>
+          <Placemark>
+            <Point><coordinates>-80.05873,26.85753,0</coordinates></Point>
+          </Placemark>
+          <Placemark id="tree-493">
+            <name>#493 Live Oak</name>
+            <description><![CDATA[Live Oak 6" cal. $2,700.00]]></description>
+            <Point><coordinates>-80.05715564588735,26.85712482010362,3.126281602522196</coordinates></Point>
+          </Placemark>
+          <Placemark id="tree-518">
+            <name>#518 Crepe Myrtle</name>
+            <description><![CDATA[Crepe Myrtle 7" cal. $3,150.00]]></description>
+            <Point><coordinates>-80.05814060988202,26.85653151382946,2.223980773087499</coordinates></Point>
+          </Placemark>
+        </Document>
+      </kml>`;
+
+    const placemarks = parseKmlTreePlacemarks(kml);
+
+    assert.equal(placemarks.length, 2);
+    assert.deepEqual(placemarks.map((point) => point.name), ["#493 Live Oak", "#518 Crepe Myrtle"]);
+    assert.deepEqual(placemarks[0], {
+      id: "tree-493",
+      name: "#493 Live Oak",
+      treeId: "#493",
+      treeType: "Live Oak",
+      description: "Live Oak 6\" cal. $2,700.00",
+      lat: 26.85712,
+      lng: -80.05716,
+      altitude: 3.126281602522196,
+      caliperInches: 6,
+      relocationCost: 2700,
+    });
+  });
+
+  it("builds project-linked tree source pins from imported KML placemarks", () => {
+    const records = buildTreeRelocationRecordsFromKmlImport({
+      placemarks: [
+        {
+          id: "tree-493",
+          name: "#493 Live Oak",
+          treeId: "#493",
+          treeType: "Live Oak",
+          description: "Live Oak 6\" cal. $2,700.00",
+          lat: 26.85712,
+          lng: -80.05716,
+          caliperInches: 6,
+          relocationCost: 2700,
+        },
+      ],
+      job: {
+        id: "job-waterford",
+        title: "Waterford tree relocation",
+        projectId: "project-waterford",
+        projectName: "The Waterford",
+        clientName: "Waterford",
+      },
+      importedBy: "jeremy@jdtnurseries.com",
+      importedAt: "2026-06-07T23:00:00.000Z",
+      sourceFileName: "The Waterford.kml",
+    });
+
+    assert.equal(records.length, 1);
+    assert.equal(records[0].id, "kml-project-waterford-493-live-oak");
+    assert.equal(records[0].treeId, "#493");
+    assert.equal(records[0].treeType, "Live Oak");
+    assert.equal(records[0].projectId, "project-waterford");
+    assert.equal(records[0].projectName, "The Waterford");
+    assert.equal(records[0].sourceSheetName, "KML Import");
+    assert.deepEqual((records[0].relocationMap as any).source, {
+      lat: 26.85712,
+      lng: -80.05716,
+      label: "#493 Live Oak",
+      recordedAt: "2026-06-07T23:00:00.000Z",
+      recordedBy: "jeremy@jdtnurseries.com",
+    });
   });
 });

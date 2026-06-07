@@ -1092,6 +1092,24 @@ export default function App() {
     )));
   };
 
+  const handleImportTreePinsFromMap = async (records: TreeRelocationRecord[]) => {
+    const saved = await setTreeRelocationRecords((prev) => records.reduce((nextRecords, record) => (
+      upsertRecordWithAudit(
+        nextRecords,
+        record,
+        'tree',
+        user?.email,
+        'kml tree import',
+        (item) => sameProjectTreeAsset(item, record),
+      )
+    ), prev));
+
+    if (saved) {
+      addToast(`${records.length} tree pin${records.length === 1 ? '' : 's'} imported`, 'success');
+    }
+    return saved;
+  };
+
   const handleSaveFieldUpdate = async (update: Partial<FieldUpdateRecord>) => {
     const saved = await setFieldUpdates((prev) => upsertRecordWithAudit(
       prev,
@@ -1142,7 +1160,7 @@ export default function App() {
       case 'calendar':
         return <CalendarBoard jobs={jobs} loads={loads} workOrders={workOrders} scheduleTasks={scheduleTasks} treeRelocationRecords={treeRelocationRecords} equipment={equipmentWithDefaults} openDrawer={openDrawer} />;
       case 'maps':
-        return <MapsBoard jobs={jobs} ranchOaks={nurseryInventory} treeRelocationRecords={treeRelocationRecords} onUpdateTreeLocation={handleUpdateTreeLocation} openDrawer={openDrawer} />;
+        return <MapsBoard jobs={jobs} ranchOaks={nurseryInventory} treeRelocationRecords={treeRelocationRecords} onUpdateTreeLocation={handleUpdateTreeLocation} onImportTreePins={handleImportTreePinsFromMap} openDrawer={openDrawer} />;
       case 'reports':
         return <ReportsBoard jobs={jobs} projects={projects} workOrders={workOrders} loads={loads} ranchOaks={nurseryInventory} equipment={equipmentWithDefaults} alerts={alerts} clients={clients} fieldUpdates={fieldUpdates} scheduleTasks={scheduleTasks} treeRelocationRecords={treeRelocationRecords} documents={documents} importBatches={importBatches} />;
       case 'documents':

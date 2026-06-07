@@ -20,6 +20,7 @@ import {
   buildProjectGoogleEarthMapPackage,
   buildRelocationJobOptions,
   buildTreeRelocationTasks,
+  buildTreeRelocationRecordsFromKmlImport,
   filterSavedSiteLocationsForJob,
   filterTreesForRelocationJob,
   formatTreeCoordinate,
@@ -32,11 +33,13 @@ import {
   loadGoogleMaps,
   mapPercentToLatLng,
   parseGoogleMapsLocationText,
+  parseKmlTreePlacemarks,
   pointFromDevicePosition,
   pointFromSavedSiteLocation,
   relocationContextForJob,
   searchTextForSavedSiteLocation,
   updateTreeRelocationPoint,
+  type KmlTreePlacemark,
   type SiteLocationAccessType,
   type TreeRelocationPoint,
   type TreeRelocationPointType,
@@ -77,6 +80,8 @@ type MapsBoardProps = {
   treeRelocationRecords?: any[];
   openDrawer?: (type: string, id: string) => void;
   onUpdateTreeLocation?: (treeId: string, relocationMap: any, relocationContext?: any) => void;
+  onImportTreePins?: (records: any[]) => boolean | void | Promise<boolean | void>;
+  initialKmlImportOpen?: boolean;
 };
 
 type SelectedPin = {
@@ -84,7 +89,15 @@ type SelectedPin = {
   pointType: TreeRelocationPointType;
 };
 
-export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords = [], onUpdateTreeLocation, openDrawer }: MapsBoardProps) {
+export default function MapsBoard({
+  jobs = [],
+  ranchOaks,
+  treeRelocationRecords = [],
+  onUpdateTreeLocation,
+  onImportTreePins,
+  openDrawer,
+  initialKmlImportOpen = false,
+}: MapsBoardProps) {
   const { user } = useAuth();
   const [syncedRanchOaks, setSyncedRanchOaks] = useFirestoreSyncState<any>('ranchOaks', [], !!user && !ranchOaks);
   const [savedLocations, setSavedLocations] = useFirestoreSyncState<any>('locations', [], !!user);
@@ -106,6 +119,10 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
   const [pinMode, setPinMode] = useState<TreeRelocationPointType | null>(null);
   const [selectedPin, setSelectedPin] = useState<SelectedPin | null>(null);
   const [fieldStatus, setFieldStatus] = useState('Select a tree, choose a pin type, then click the map.');
+  const [kmlImportOpen, setKmlImportOpen] = useState(Boolean(initialKmlImportOpen));
+  const [kmlImportText, setKmlImportText] = useState('');
+  const [kmlImportFileName, setKmlImportFileName] = useState('');
+  const [kmlImportStatus, setKmlImportStatus] = useState('');
   const googleMapRef = useRef<HTMLDivElement | null>(null);
   const googleMapInstanceRef = useRef<any>(null);
   const googleMarkerRefs = useRef<any[]>([]);
@@ -150,6 +167,13 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
     divisionUse: ['Relocation & Installation', 'Freight', 'Equipment'],
   });
   const parsedSiteLocation = useMemo(() => parseGoogleMapsLocationText(siteLocationForm.sourceText), [siteLocationForm.sourceText]);
+  const kmlImportPreview = useMemo(() => parseKmlTreePlacemarks(kmlImportText), [kmlImportText]);
+  const kmlImportRecords = useMemo(() => buildTreeRelocationRecordsFromKmlImport({
+    placemarks: kmlImportPreview,
+    job: selectedJob,
+    importedBy: user?.email || 'Command Center',
+    sourceFileName: kmlImportFileName || 'KML Import',
+  }), [kmlImportPreview, selectedJob, user?.email, kmlImportFileName]);
 
   const mapInstruction = pinMode
     ? `Click the map to set ${pinMode === 'source' ? 'current field position' : 'relocation destination'} for ${selectedTree?.treeId || selectedTree?.id || 'selected tree'}.`
@@ -486,7 +510,54 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
   };
 
   const showClientKmlImportPath = () => {
-    setFieldStatus('Client KML/KMZ import will be used for files that already contain marked tree positions. For now, keep saving Waterford-style pins inside this project map.');
+    setKmlImportOpen(true);
+    setKmlImportStatus('Upload a client KML file or paste KML text to preview tree placemarks before saving them into this project.');
+    setFieldStatus('Client KML/KMZ import panel opened. Preview the points before saving them to the selected project.');
+  };
+
+  const handleKmlFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
+    setKmlImportFileName(file.name);
+    if (/\.kmz$/i.test(file.name)) {
+      setKmlImportStatus('KMZ files need to be exported as KML for this first import path. Upload the .kml export from Google Earth.');
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const points = parseKmlTreePlacemarks(text);
+      setKmlImportText(text);
+      setKmlImportStatus(`Loaded ${file.name}. Preview found ${points.length} named tree point${points.length === 1 ? '' : 's'}.`);
+    } catch {
+      setKmlImportStatus('Unable to read that KML file. Try exporting the Google Earth project again as KML.');
+    }
+  };
+
+  const saveKmlImport = async () => {
+    if (!selectedJob) {
+      setKmlImportStatus('Select a relocation project before saving imported tree pins.');
+      return;
+    }
+    if (!kmlImportRecords.length) {
+      setKmlImportStatus('No named tree placemarks are ready to save yet.');
+      return;
+    }
+    if (!onImportTreePins) {
+      setKmlImportStatus('This app session cannot save imported tree pins yet. Refresh and try again.');
+      return;
+    }
+
+    const saved = await onImportTreePins(kmlImportRecords);
+    if (saved === false) {
+      setKmlImportStatus('Unable to save imported tree pins. Check Firebase permissions and try again.');
+      return;
+    }
+
+    const firstImportedTree = kmlImportRecords[0];
+    setSelectedTreeId(String(firstImportedTree.treeId || firstImportedTree.id || ''));
+    setKmlImportStatus(`Saved ${kmlImportRecords.length} imported tree pin${kmlImportRecords.length === 1 ? '' : 's'} to ${selectedJob.projectName || selectedJob.title || 'this project'}.`);
+    setFieldStatus(`KML import saved ${kmlImportRecords.length} source pin${kmlImportRecords.length === 1 ? '' : 's'} to the selected project.`);
   };
 
   const renderFallbackTreePins = () => {
@@ -636,6 +707,106 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
     </div>
   );
 
+  const kmlImportPanel = kmlImportOpen ? (
+    <div id="kml-import-panel" className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase text-zinc-400">Client KML/KMZ Import</p>
+          <h3 className="text-lg font-black text-jdt-text">Import Marked Tree Positions</h3>
+          <p className="mt-1 text-xs font-bold text-zinc-500">
+            Use this for Google Earth files that already have tree placemarks labeled. KML is read directly; for KMZ, export the project as KML first.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setKmlImportOpen(false)}
+          className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-zinc-600 hover:border-jdt-olive"
+        >
+          Close Import
+        </button>
+      </div>
+
+      {!selectedJob && (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-900">
+          Select a relocation project before saving imported tree pins.
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+        <label className="block rounded-lg border border-jdt-border bg-white p-3">
+          <span className="block text-[10px] font-black uppercase text-zinc-400 mb-2">Upload KML File</span>
+          <input
+            type="file"
+            accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz"
+            onChange={handleKmlFileChange}
+            className="block w-full text-xs font-bold text-zinc-600 file:mr-3 file:rounded-md file:border-0 file:bg-jdt-primary file:px-3 file:py-2 file:text-[10px] file:font-black file:uppercase file:text-white"
+          />
+          <p className="mt-2 text-[10px] font-bold text-zinc-400">{kmlImportFileName || 'No file loaded yet'}</p>
+        </label>
+
+        <label className="block">
+          <span className="block text-[10px] font-black uppercase text-zinc-400 mb-2">Paste KML Text</span>
+          <textarea
+            value={kmlImportText}
+            onChange={(event) => {
+              setKmlImportText(event.target.value);
+              setKmlImportFileName(kmlImportFileName || 'Pasted KML');
+              const points = parseKmlTreePlacemarks(event.target.value);
+              setKmlImportStatus(points.length ? `Preview found ${points.length} named tree point${points.length === 1 ? '' : 's'}.` : 'Paste KML with named placemarks to preview tree pins.');
+            }}
+            placeholder="Paste exported Google Earth KML here"
+            rows={5}
+            className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-mono text-jdt-text outline-none focus:border-jdt-olive"
+          />
+        </label>
+      </div>
+
+      <div className="mt-4 rounded-lg border border-jdt-border bg-white">
+        <div className="flex flex-col gap-2 border-b border-jdt-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase text-zinc-400">Preview Imported Tree Pins</p>
+            <p className="text-xs font-bold text-zinc-500">{kmlImportPreview.length} named tree point{kmlImportPreview.length === 1 ? '' : 's'} ready</p>
+          </div>
+          <button
+            type="button"
+            onClick={saveKmlImport}
+            disabled={!kmlImportPreview.length || !selectedJob}
+            className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white disabled:cursor-not-allowed disabled:bg-zinc-300"
+          >
+            Save Imported Tree Pins
+          </button>
+        </div>
+
+        {kmlImportPreview.length ? (
+          <div className="max-h-[260px] overflow-y-auto divide-y divide-jdt-border">
+            {kmlImportPreview.map((point: KmlTreePlacemark) => (
+              <div key={`${point.id || point.name}-${point.lat}-${point.lng}`} className="grid gap-2 px-3 py-2 text-xs font-bold text-zinc-600 md:grid-cols-[1.2fr_0.9fr_1fr_0.8fr]">
+                <div>
+                  <p className="font-black text-jdt-text">{point.name}</p>
+                  <p className="text-[10px] uppercase text-zinc-400">{point.treeType}</p>
+                </div>
+                <p>{point.lat.toFixed(5)}, {point.lng.toFixed(5)}</p>
+                <p>{point.caliperInches ? `${point.caliperInches}" cal.` : '-'}</p>
+                <p>{point.relocationCost ? `$${point.relocationCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-4 text-center">
+            <p className="text-xs font-black uppercase text-jdt-text">No tree points previewed yet</p>
+            <p className="mt-1 text-[11px] font-bold text-zinc-500">Upload or paste a KML file with named tree placemarks.</p>
+          </div>
+        )}
+      </div>
+
+      {kmlImportStatus && (
+        <div className="mt-3 rounded-lg border border-jdt-border bg-jdt-sand/40 px-3 py-2 text-xs font-bold text-zinc-600">
+          {kmlImportStatus}
+        </div>
+      )}
+    </div>
+  ) : null;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-jdt-border pb-5">
@@ -732,6 +903,8 @@ export default function MapsBoard({ jobs = [], ranchOaks, treeRelocationRecords 
           {activeTreeCard}
 
           {googleEarthCard}
+
+          {kmlImportPanel}
 
           <div className="grid gap-3 md:grid-cols-3">
             <SummaryTile label="Pinned Sources" value={String(filteredTreeRecords.filter(tree => tree.relocationMap?.source).length)} icon={TreePine} />

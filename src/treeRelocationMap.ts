@@ -126,6 +126,27 @@ export interface ProjectGoogleEarthMapPackage {
   googleEarthUrl: string;
 }
 
+export interface KmlTreePlacemark {
+  id?: string;
+  name: string;
+  treeId: string;
+  treeType: string;
+  description?: string;
+  lat: number;
+  lng: number;
+  altitude?: number;
+  caliperInches?: number;
+  relocationCost?: number;
+}
+
+export interface KmlTreeImportOptions {
+  placemarks: KmlTreePlacemark[];
+  job?: RelocationJobLike | null;
+  importedBy?: string;
+  importedAt?: string;
+  sourceFileName?: string;
+}
+
 const defaultMapBounds = {
   north: 26.8,
   south: 26.2,
@@ -575,6 +596,92 @@ export function googleEarthUrlForPoint(point?: TreeRelocationPoint): string {
   return `https://earth.google.com/web/@${point.lat.toFixed(5)},${point.lng.toFixed(5)},150a,900d,35y,0h,0t,0r`;
 }
 
+export function parseKmlTreePlacemarks(kmlText: unknown): KmlTreePlacemark[] {
+  const sourceText = String(kmlText || "").trim();
+  if (!sourceText) return [];
+
+  const rawPlacemarks = parseKmlRawPlacemarks(sourceText);
+  return rawPlacemarks
+    .map((placemark) => {
+      const name = cleanKmlText(placemark.name);
+      if (!name) return null;
+      const point = pointFromKmlCoordinates(placemark.coordinates);
+      if (!point) return null;
+      const description = cleanKmlText(placemark.description);
+      const parsedName = parseTreeLabelFromKmlName(name, description);
+      return {
+        id: placemark.id || undefined,
+        name,
+        treeId: parsedName.treeId,
+        treeType: parsedName.treeType,
+        description,
+        lat: point.lat,
+        lng: point.lng,
+        altitude: point.altitude,
+        caliperInches: parseCaliperInches(description || name),
+        relocationCost: parseMoneyValue(description),
+      } satisfies KmlTreePlacemark;
+    })
+    .filter(Boolean) as KmlTreePlacemark[];
+}
+
+export function buildTreeRelocationRecordsFromKmlImport(
+  options: KmlTreeImportOptions,
+): Array<RelocationTree & Record<string, unknown>> {
+  const context = relocationContextForJob(options.job);
+  const importedAt = options.importedAt || new Date().toISOString();
+  const importedBy = options.importedBy || "Command Center";
+  const projectKey = String(context.projectId || context.jobId || context.projectName || options.job?.title || options.sourceFileName || "project");
+
+  return options.placemarks.map((placemark) => {
+    const id = `kml-${slugify([projectKey, placemark.name].filter(Boolean).join("-"))}`;
+    return {
+      id,
+      treeId: placemark.treeId || placemark.name,
+      tag: placemark.treeId || placemark.name,
+      name: placemark.name,
+      title: placemark.name,
+      type: placemark.treeType,
+      treeType: placemark.treeType,
+      ranchOakType: placemark.treeType,
+      dbh: placemark.caliperInches,
+      relocationCost: placemark.relocationCost,
+      status: "Not Started",
+      relocationStatus: "Not Started",
+      existingLocationDescription: formatTreeCoordinate({ lat: placemark.lat, lng: placemark.lng }),
+      notes: placemark.description,
+      projectId: context.projectId,
+      projectsId: context.projectId,
+      projectName: context.projectName,
+      jobId: context.jobId,
+      jobName: context.jobName,
+      clientId: context.clientId,
+      clientName: context.clientName,
+      relocationMap: {
+        source: {
+          lat: placemark.lat,
+          lng: placemark.lng,
+          label: placemark.name,
+          recordedAt: importedAt,
+          recordedBy: importedBy,
+        },
+      },
+      sourceSheetName: "KML Import",
+      sourceSheet: options.sourceFileName || "KML Import",
+      sourceRowId: placemark.id || placemark.name,
+      sourceRefs: [
+        [
+          "KML Import",
+          options.sourceFileName || "",
+          placemark.id || placemark.name,
+        ].filter(Boolean).join(" / "),
+      ],
+      importedAtIso: importedAt,
+      importedBy,
+    };
+  });
+}
+
 export function getRelocationStatusTone(status: string): string {
   switch (status) {
     case "Relocated":
@@ -649,6 +756,107 @@ function cleanLabel(value: unknown): string {
 
 function isUrl(value: unknown): boolean {
   return /^https?:\/\//i.test(String(value || "").trim());
+}
+
+function parseKmlRawPlacemarks(kmlText: string): Array<{ id?: string; name: string; description: string; coordinates: string }> {
+  if (typeof DOMParser !== "undefined") {
+    const document = new DOMParser().parseFromString(kmlText, "application/xml");
+    const parserError = document.getElementsByTagName("parsererror")[0];
+    if (!parserError) {
+      return Array.from(document.getElementsByTagName("Placemark")).map((placemark) => ({
+        id: placemark.getAttribute("id") || undefined,
+        name: firstElementText(placemark, "name"),
+        description: firstElementText(placemark, "description"),
+        coordinates: firstElementText(placemark, "coordinates"),
+      }));
+    }
+  }
+
+  const placemarks: Array<{ id?: string; name: string; description: string; coordinates: string }> = [];
+  const placemarkPattern = /<Placemark\b([^>]*)>([\s\S]*?)<\/Placemark>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = placemarkPattern.exec(kmlText))) {
+    const attrs = match[1] || "";
+    const block = match[2] || "";
+    const id = attrs.match(/\bid=(?:"([^"]+)"|'([^']+)')/i)?.[1] || attrs.match(/\bid=(?:"([^"]+)"|'([^']+)')/i)?.[2] || undefined;
+    placemarks.push({
+      id,
+      name: xmlTagText(block, "name"),
+      description: xmlTagText(block, "description"),
+      coordinates: xmlTagText(block, "coordinates"),
+    });
+  }
+  return placemarks;
+}
+
+function firstElementText(parent: Element, tagName: string): string {
+  const direct = parent.getElementsByTagName(tagName)[0];
+  return direct?.textContent || "";
+}
+
+function xmlTagText(block: string, tagName: string): string {
+  const match = block.match(new RegExp(`<(?:[\\w-]+:)?${tagName}\\b[^>]*>([\\s\\S]*?)<\\/(?:[\\w-]+:)?${tagName}>`, "i"));
+  return match?.[1] || "";
+}
+
+function pointFromKmlCoordinates(coordinates: string): (TreeRelocationPoint & { altitude?: number }) | undefined {
+  const firstCoordinate = String(coordinates || "").trim().split(/\s+/)[0];
+  if (!firstCoordinate) return undefined;
+  const [lngText, latText, altitudeText] = firstCoordinate.split(",");
+  const lng = Number(lngText);
+  const lat = Number(latText);
+  const altitude = Number(altitudeText);
+  if (!isValidLatLng(lat, lng)) return undefined;
+  return {
+    lat: roundCoordinate(lat),
+    lng: roundCoordinate(lng),
+    altitude: Number.isFinite(altitude) ? altitude : undefined,
+  };
+}
+
+function cleanKmlText(value: unknown): string {
+  return decodeXmlEntities(String(value || "")
+    .replace(/<!\[CDATA\[|\]\]>/g, "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim());
+}
+
+function decodeXmlEntities(value: string): string {
+  const namedEntities: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: "\"",
+  };
+  return value
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)))
+    .replace(/&([a-z]+);/gi, (_, name) => namedEntities[String(name).toLowerCase()] || `&${name};`);
+}
+
+function parseTreeLabelFromKmlName(name: string, description = ""): { treeId: string; treeType: string } {
+  const treeId = name.match(/^#?\d+/)?.[0] || name;
+  const typeFromName = name.replace(/^#?\d+\s*/, "").trim();
+  const typeFromDescription = description.match(/^([A-Za-z][A-Za-z\s-]+?)\s+\d+(?:\.\d+)?\s*(?:"|”|in|cal)/i)?.[1]?.trim();
+  return {
+    treeId,
+    treeType: typeFromName || typeFromDescription || "Tree",
+  };
+}
+
+function parseCaliperInches(value: string): number | undefined {
+  const match = value.match(/(\d+(?:\.\d+)?)\s*(?:"|”|in\b|cal\b)/i);
+  const parsed = match ? Number(match[1]) : NaN;
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseMoneyValue(value: string): number | undefined {
+  const match = value.match(/\$\s*([\d,]+(?:\.\d+)?)/);
+  const parsed = match ? Number(match[1].replace(/,/g, "")) : NaN;
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function uniqueStrings(values: string[]): string[] {

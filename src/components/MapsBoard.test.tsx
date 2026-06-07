@@ -91,4 +91,33 @@ describe("MapsBoard relocation pin editing", () => {
     assert.match(html, /Live Oak/);
     assert.match(html, /Needs Destination Pin/);
   });
+
+  it("opens a visible client KML import panel with preview and save controls", () => {
+    const html = renderToString(
+      <MapsBoard
+        jobs={[
+          {
+            id: "job-waterford",
+            title: "The Waterford",
+            division: "Relocation & Installation",
+            projectId: "project-waterford",
+            projectName: "The Waterford",
+            clientName: "Waterford",
+          },
+        ]}
+        ranchOaks={[]}
+        treeRelocationRecords={[]}
+        onUpdateTreeLocation={() => undefined}
+        onImportTreePins={() => true}
+        initialKmlImportOpen
+      />,
+    );
+
+    assert.match(html, /Client KML\/KMZ Import/);
+    assert.match(html, /Upload KML File/);
+    assert.match(html, /Paste KML Text/);
+    assert.match(html, /Preview Imported Tree Pins/);
+    assert.match(html, /Save Imported Tree Pins/);
+    assert.match(html, /Select a relocation project before saving imported tree pins/);
+  });
 });
