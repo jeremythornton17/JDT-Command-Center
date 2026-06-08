@@ -83,6 +83,7 @@ type MapsBoardProps = {
   onUpdateTreeLocation?: (treeId: string, relocationMap: any, relocationContext?: any) => void;
   onImportTreePins?: (records: any[]) => boolean | void | Promise<boolean | void>;
   initialKmlImportOpen?: boolean;
+  initialSelectedJobId?: string;
 };
 
 type SelectedPin = {
@@ -98,6 +99,7 @@ export default function MapsBoard({
   onImportTreePins,
   openDrawer,
   initialKmlImportOpen = false,
+  initialSelectedJobId = 'all',
 }: MapsBoardProps) {
   const { user } = useAuth();
   const [syncedRanchOaks, setSyncedRanchOaks] = useFirestoreSyncState<any>('ranchOaks', [], !!user && !ranchOaks);
@@ -107,12 +109,18 @@ export default function MapsBoard({
     [ranchOaks, syncedRanchOaks, treeRelocationRecords],
   );
   const relocationJobOptions = useMemo(() => buildRelocationJobOptions(jobs), [jobs]);
-  const [selectedJobId, setSelectedJobId] = useState('all');
+  const [selectedJobId, setSelectedJobId] = useState(initialSelectedJobId);
   const filteredTreeRecords = useMemo(
     () => filterTreesForRelocationJob(treeRecords, selectedJobId, jobs),
     [treeRecords, selectedJobId, jobs],
   );
   const selectedJob = jobs.find(job => String(job.id || job.jobId || job.projectId) === selectedJobId);
+  const isAllLocationsView = selectedJobId === 'all';
+  const isRelocationJobView = Boolean(selectedJob);
+  const showTreeMapPanels = isRelocationJobView;
+  const showSavedLocationsPanel = isAllLocationsView || isRelocationJobView;
+  const savedLocationsTitle = isAllLocationsView ? 'All Saved Locations' : 'Saved Site Locations';
+  const savedLocationsListLabel = isAllLocationsView ? 'All Saved Pins' : 'Project Pins';
   const mapsConfig = useMemo(() => getGoogleMapsConfig(), []);
   const [zoomLevel, setZoomLevel] = useState(17);
   const [mapViewMode, setMapViewMode] = useState<MapViewMode>('earth');
@@ -885,18 +893,18 @@ export default function MapsBoard({
           <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <label className="block flex-1">
-                <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5">Relocation Job Map</span>
+                <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5">Current Map View</span>
                 <select
                   value={selectedJobId}
                   onChange={(event) => {
                     setSelectedJobId(event.target.value);
                     setSelectedPin(null);
                     setPinMode(null);
-                    setFieldStatus(event.target.value === 'all' ? 'Showing all relocation tree pins.' : 'Map filtered to the selected relocation job.');
+                    setFieldStatus(event.target.value === 'all' ? 'Showing all saved JDT map locations.' : 'Map focused to the selected relocation job.');
                   }}
                   className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-black text-jdt-text outline-none focus:border-jdt-olive"
                 >
-                  <option value="all">All Relocation Jobs</option>
+                  <option value="all">All JD Thornton Locations</option>
                   {relocationJobOptions.map((job) => (
                     <option key={job.id} value={job.id}>{job.label}</option>
                   ))}
@@ -927,7 +935,7 @@ export default function MapsBoard({
                   className="absolute inset-0 w-full h-full object-cover opacity-60 mix-blend-luminosity"
                 />
                 <div className="absolute inset-0 bg-jdt-dark/20" />
-                {renderSelectedTreeLine()}
+                {showTreeMapPanels && renderSelectedTreeLine()}
                 {renderFallbackTreePins()}
                 {renderFallbackSiteLocationPins()}
               </div>
@@ -959,21 +967,24 @@ export default function MapsBoard({
             </div>
           </div>
 
-          {activeTreeCard}
+          {showTreeMapPanels && activeTreeCard}
 
-          {googleEarthCard}
+          {showTreeMapPanels && googleEarthCard}
 
           {kmlImportPanel}
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <SummaryTile label="Pinned Sources" value={String(filteredTreeRecords.filter(tree => tree.relocationMap?.source).length)} icon={TreePine} />
-            <SummaryTile label="Pinned Destinations" value={String(filteredTreeRecords.filter(tree => tree.relocationMap?.destination).length)} icon={Target} />
-            <SummaryTile label="Ready Tasks" value={String(readyTasks.length)} icon={ClipboardList} />
-          </div>
+          {showTreeMapPanels && (
+            <div className="grid gap-3 md:grid-cols-3">
+              <SummaryTile label="Pinned Sources" value={String(filteredTreeRecords.filter(tree => tree.relocationMap?.source).length)} icon={TreePine} />
+              <SummaryTile label="Pinned Destinations" value={String(filteredTreeRecords.filter(tree => tree.relocationMap?.destination).length)} icon={Target} />
+              <SummaryTile label="Ready Tasks" value={String(readyTasks.length)} icon={ClipboardList} />
+            </div>
+          )}
         </div>
 
         <aside className="space-y-4">
-          <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
+          {showTreeMapPanels && (
+            <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
             <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5 mb-3"><TreePine className="h-4 w-4 text-emerald-700" /> Tree Pin List</h3>
             <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
               {filteredTreeRecords.length > 0 ? filteredTreeRecords.map(tree => {
@@ -1000,9 +1011,11 @@ export default function MapsBoard({
               )}
             </div>
           </div>
+          )}
 
-          <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
-            <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5 mb-3"><MapPin className="h-4 w-4 text-amber-700" /> Saved Site Locations</h3>
+          {showSavedLocationsPanel && (
+            <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
+            <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5 mb-3"><MapPin className="h-4 w-4 text-amber-700" /> {savedLocationsTitle}</h3>
             <div className="space-y-3">
               <label className="block">
                 <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1">Location Label</span>
@@ -1066,7 +1079,7 @@ export default function MapsBoard({
 
             <div className="mt-4 border-t border-jdt-border pt-3">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-[10px] font-black uppercase text-zinc-400">Project Pins</p>
+                <p className="text-[10px] font-black uppercase text-zinc-400">{savedLocationsListLabel}</p>
                 <span className="rounded bg-white px-2 py-0.5 text-[9px] font-black uppercase text-zinc-500">{scopedSavedLocations.length}</span>
               </div>
               <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
@@ -1112,14 +1125,16 @@ export default function MapsBoard({
                 }) : (
                   <div className="rounded-lg border border-dashed border-jdt-border bg-white p-4 text-center">
                     <p className="text-xs font-black uppercase text-jdt-text">No saved locations</p>
-                    <p className="mt-1 text-[11px] font-bold text-zinc-500">Save access pins for the selected project or job.</p>
+                    <p className="mt-1 text-[11px] font-bold text-zinc-500">{isAllLocationsView ? 'Save company, farm, client, or project locations to start building the JDT map library.' : 'Save access pins for the selected project or job.'}</p>
                   </div>
                 )}
               </div>
             </div>
           </div>
+          )}
 
-          <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
+          {showTreeMapPanels && (
+            <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
             <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5 mb-3"><Route className="h-4 w-4 text-blue-700" /> Source / Destination</h3>
             <div className="space-y-3 text-xs font-bold">
               <CoordinateCard label="Current Field Position" point={selectedTree?.relocationMap?.source} tone="source" />
@@ -1145,8 +1160,10 @@ export default function MapsBoard({
               </div>
             </div>
           </div>
+          )}
 
-          <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
+          {showTreeMapPanels && (
+            <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
             <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5 mb-3"><ClipboardList className="h-4 w-4 text-jdt-primary" /> Selected Tree Tasks</h3>
             <div className="space-y-2">
               {selectedTasks.length > 0 ? selectedTasks.map(task => (
@@ -1166,6 +1183,7 @@ export default function MapsBoard({
               )}
             </div>
           </div>
+          )}
         </aside>
       </div>
     </div>
