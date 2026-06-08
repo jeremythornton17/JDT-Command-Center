@@ -371,6 +371,14 @@ export type FieldUpdateRecord = CommandRecord & {
   issueSummary?: string;
   tomorrowPlan?: string;
   photoNotes?: string;
+  proofAttachmentText?: string;
+  proofLinks?: Array<{
+    label?: string;
+    url: string;
+    documentId?: string;
+    category?: string;
+  }>;
+  proofDocumentIds?: string[];
   adminReviewStatus?: 'Needs Review' | 'Ready for Review' | 'Reviewed' | string;
   needsAdminReview?: boolean;
 };
@@ -504,6 +512,18 @@ export type DocumentRecord = CommandRecord & {
   job?: string;
   category?: string;
   url?: string;
+  relatedEntityType?: 'client' | 'project' | 'job' | 'workOrder' | 'load' | 'equipment' | 'crew' | 'tree' | 'fieldUpdate' | string;
+  relatedEntityId?: string;
+  relatedTitle?: string;
+  uploadedBy?: string;
+  uploadedAt?: string;
+  expirationDate?: string;
+  storageProvider?: 'Google Drive' | 'Firebase Storage' | 'External URL' | 'Local Reference' | string;
+  fileType?: 'Photo' | 'PDF' | 'Image' | 'Document' | 'Video' | 'Other' | string;
+  fileId?: string;
+  filePath?: string;
+  contentType?: string;
+  reviewStatus?: 'Needs Review' | 'Approved' | 'Rejected' | 'Filed' | string;
 };
 
 export type SyncSourceRecord = CommandRecord & {

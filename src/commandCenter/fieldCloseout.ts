@@ -32,6 +32,7 @@ export type DailyCloseoutInput = {
   issueSummary?: string;
   tomorrowPlan?: string;
   photoNotes?: string;
+  proofAttachmentText?: string;
   userEmail?: string | null;
 };
 
@@ -49,6 +50,23 @@ function firstText(...values: unknown[]) {
 
 function displayName(member: CrewRecord) {
   return member.name || member.email || member.id || "Crew member";
+}
+
+export function parseProofLinks(text: string | undefined) {
+  const matches = clean(text).match(/https?:\/\/[^\s,]+/g) || [];
+  const seen = new Set<string>();
+
+  return matches
+    .map((url) => url.replace(/[.)\]}]+$/, ""))
+    .filter((url) => {
+      if (seen.has(url)) return false;
+      seen.add(url);
+      return true;
+    })
+    .map((url, index) => ({
+      label: `Proof ${index + 1}`,
+      url,
+    }));
 }
 
 export function recordMatchesCrew(record: Record<string, unknown>, member: CrewRecord) {
@@ -201,12 +219,14 @@ function todayIso() {
 }
 
 function notesFromCloseout(input: DailyCloseoutInput) {
+  const proofLinks = parseProofLinks(input.proofAttachmentText);
   return [
     ["Work completed", input.workCompleted],
     ["Tree tags/materials", input.treeTagText],
     ["GPS/location", input.locationDetail],
     ["Issues/delays", input.issueSummary],
     ["Tomorrow", input.tomorrowPlan],
+    ["Proof links", proofLinks.map((link) => link.url).join(", ")],
     ["Photos", input.photoNotes],
   ]
     .filter(([, value]) => clean(value))
@@ -219,6 +239,7 @@ export function buildDailyCloseoutUpdate(input: DailyCloseoutInput): Partial<Fie
   const assignment = input.assignment;
   const source = assignment.source as CommandRecord;
   const hasIssue = Boolean(clean(input.issueSummary));
+  const proofLinks = parseProofLinks(input.proofAttachmentText);
 
   return {
     title: `Daily Closeout: ${assignment.title}`,
@@ -244,6 +265,8 @@ export function buildDailyCloseoutUpdate(input: DailyCloseoutInput): Partial<Fie
     issueSummary: clean(input.issueSummary),
     tomorrowPlan: clean(input.tomorrowPlan),
     photoNotes: clean(input.photoNotes),
+    proofAttachmentText: clean(input.proofAttachmentText),
+    proofLinks,
     notes: notesFromCloseout(input),
     needsAdminReview: hasIssue,
     adminReviewStatus: hasIssue ? "Needs Review" : "Ready for Review",

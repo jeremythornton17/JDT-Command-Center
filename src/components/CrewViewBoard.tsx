@@ -83,6 +83,7 @@ export default function CrewViewBoard({
   const [issueSummary, setIssueSummary] = useState('');
   const [tomorrowPlan, setTomorrowPlan] = useState('');
   const [photoNotes, setPhotoNotes] = useState('');
+  const [proofAttachmentText, setProofAttachmentText] = useState('');
   const selectedCrew = sortedCrews.find((member) => (member.id || member.email || displayName(member)) === selectedCrewId) || matchedCrew || sortedCrews[0];
 
   const assignments = useMemo<AssignmentRecord[]>(() => {
@@ -175,6 +176,7 @@ export default function CrewViewBoard({
       issueSummary,
       tomorrowPlan,
       photoNotes,
+      proofAttachmentText,
       userEmail: currentUserEmail,
     }));
     setWorkCompleted('');
@@ -183,6 +185,7 @@ export default function CrewViewBoard({
     setIssueSummary('');
     setTomorrowPlan('');
     setPhotoNotes('');
+    setProofAttachmentText('');
   };
 
   return (
@@ -286,12 +289,21 @@ export default function CrewViewBoard({
                     />
                   </label>
                   <label className="block">
+                    <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-zinc-500">Proof Links / Photos</span>
+                    <textarea
+                      value={proofAttachmentText}
+                      onChange={(event) => setProofAttachmentText(event.target.value)}
+                      placeholder="Paste Drive links, photo URLs, BOL/POD links, or proof notes"
+                      className="h-16 w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                    />
+                  </label>
+                  <label className="block md:col-span-2">
                     <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-zinc-500">Photo / Proof Notes</span>
                     <textarea
                       value={photoNotes}
                       onChange={(event) => setPhotoNotes(event.target.value)}
-                      placeholder="Photos taken, BOL/POD, before-after proof, or missing proof"
-                      className="h-16 w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                      placeholder="What photos were taken, what proof is missing, or where the files are stored"
+                      className="h-14 w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-jdt-olive"
                     />
                   </label>
                 </div>
@@ -426,6 +438,18 @@ export default function CrewViewBoard({
                       </span>
                     </div>
                     {update.notes && <p className="mt-1 text-xs font-bold text-zinc-600">{update.notes}</p>}
+                    {update.proofLinks?.length ? (
+                      <div className="mt-2 rounded border border-jdt-border bg-jdt-panel p-2">
+                        <p className="text-[9px] font-black uppercase text-zinc-400">Proof Attachments</p>
+                        <div className="mt-1 space-y-1">
+                          {update.proofLinks.map((link, index) => (
+                            <a key={`${link.url}-${index}`} href={link.url} target="_blank" rel="noreferrer" className="block break-all text-[10px] font-black text-jdt-primary hover:underline">
+                              {link.label || `Proof ${index + 1}`} - {link.url}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     {update.locationName && <p className="mt-1 flex items-center gap-1 text-[10px] font-black uppercase text-zinc-400"><MapPin className="h-3 w-3" /> {update.locationName}</p>}
                   </div>
                 ))}

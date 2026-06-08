@@ -867,8 +867,47 @@ describe("work order UI wiring", () => {
     assert.match(html, /GPS \/ Location Note/);
     assert.match(html, /Issues \/ Delays/);
     assert.match(html, /Tomorrow Plan/);
+    assert.match(html, /Proof Links \/ Photos/);
     assert.match(html, /Submit Closeout/);
     assert.match(html, /Latest Crew Updates/);
+  });
+
+  it("shows proof attachments on project field updates", () => {
+    const proofUpdate: FieldUpdateRecord = {
+      id: "field-waterford-proof",
+      title: "Waterford closeout proof",
+      projectId: "project-waterford",
+      projectName: "Waterford Relocation",
+      relatedRecordType: "workOrder",
+      relatedRecordId: "workorder-root-prune",
+      relatedTitle: "Root prune Waterford trees",
+      crewName: "Carlos Reyes",
+      updateType: "Daily Closeout",
+      fieldStatus: "Closeout Submitted",
+      notes: "Completed tags 1003 and 1004.",
+      proofLinks: [
+        { label: "Root prune photo", url: "https://drive.google.com/file/d/waterford-root-prune-photo" },
+      ],
+    };
+
+    const html = renderToString(
+      <CommandDrawer
+        isOpen
+        onClose={() => undefined}
+        type="project"
+        itemId="project-waterford"
+        defaultTab="field updates"
+        openModal={() => undefined}
+        projectsList={[{ id: "project-waterford", title: "Waterford Relocation", projectName: "Waterford Relocation", status: "Active" }]}
+        fieldUpdatesList={[proofUpdate]}
+      />,
+    );
+
+    assert.match(html, /Field Updates/);
+    assert.match(html, /Root prune Waterford trees/);
+    assert.match(html, /Proof Attachments/);
+    assert.match(html, /Root prune photo/);
+    assert.match(html, /waterford-root-prune-photo/);
   });
 
   it("gives freight an operating empty state with a create action", () => {

@@ -139,6 +139,33 @@ test('project tree asset forms expose editable tree, pruning, aftercare, and pho
   assert.match(photoHtml, /Captured Date/);
 });
 
+test('document forms expose proof and compliance metadata fields', () => {
+  const html = renderToString(
+    <EntityForms
+      type="document"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{ name: 'Christian CDL medical card', category: 'Medical Card' }}
+    />,
+  );
+
+  assert.match(html, /Closeout Proof/);
+  assert.match(html, /Field Photo/);
+  assert.match(html, /Driver License/);
+  assert.match(html, /Medical Card/);
+  assert.match(html, /Vehicle Registration/);
+  assert.match(html, /Insurance/);
+  assert.match(html, /Bill of Lading/);
+  assert.match(html, /Proof of Delivery/);
+  assert.match(html, /Related Entity Type/);
+  assert.match(html, /Related Entity ID/);
+  assert.match(html, /Uploaded By/);
+  assert.match(html, /Expiration Date/);
+  assert.match(html, /Storage Provider/);
+  assert.match(html, /Review Status/);
+});
+
 test('project forms expose a default root pruning period for relocation timing', () => {
   const html = renderToString(
     <EntityForms

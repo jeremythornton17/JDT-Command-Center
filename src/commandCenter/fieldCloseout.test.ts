@@ -91,6 +91,7 @@ describe("crew field closeout workflow", () => {
       locationDetail: "North course by pump station, 26.8570,-80.0579",
       issueSummary: "Irrigation line was exposed near 1004.",
       tomorrowPlan: "Return for nutrient care and photo check.",
+      proofAttachmentText: "Photos: https://drive.google.com/file/d/root-prune-photo and BOL https://drive.google.com/file/d/bol-proof",
       userEmail: "christian@jdtnurseries.com",
     });
 
@@ -104,7 +105,13 @@ describe("crew field closeout workflow", () => {
     assert.equal(update.closeoutDate, "2026-06-08");
     assert.equal(update.treeTagText, "1003, 1004");
     assert.equal(update.locationDetail, "North course by pump station, 26.8570,-80.0579");
+    assert.equal(update.proofAttachmentText, "Photos: https://drive.google.com/file/d/root-prune-photo and BOL https://drive.google.com/file/d/bol-proof");
+    assert.deepEqual(update.proofLinks, [
+      { label: "Proof 1", url: "https://drive.google.com/file/d/root-prune-photo" },
+      { label: "Proof 2", url: "https://drive.google.com/file/d/bol-proof" },
+    ]);
     assert.match(update.notes || "", /Completed first root prune/);
     assert.match(update.notes || "", /Tomorrow: Return for nutrient care/);
+    assert.match(update.notes || "", /Proof links: https:\/\/drive.google.com\/file\/d\/root-prune-photo/);
   });
 });

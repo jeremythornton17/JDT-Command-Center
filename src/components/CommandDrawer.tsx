@@ -1569,6 +1569,24 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                         <span className="rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{update.fieldStatus || update.updateType || update.status || 'Update'}</span>
                       </div>
                       {update.notes && <p className="mt-2 text-xs font-semibold text-zinc-600">{update.notes}</p>}
+                      {update.proofLinks?.length ? (
+                        <div className="mt-3 rounded-lg border border-jdt-border bg-jdt-panel p-3">
+                          <p className="text-[10px] font-black uppercase text-zinc-500">Proof Attachments</p>
+                          <div className="mt-2 space-y-1">
+                            {update.proofLinks.map((link, index) => (
+                              <a
+                                key={`${link.url}-${index}`}
+                                href={link.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block break-all text-xs font-black text-jdt-primary hover:underline"
+                              >
+                                {link.label || `Proof ${index + 1}`} - {link.url}
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                       <p className="mt-2 text-[10px] font-bold uppercase text-zinc-400">{displayValue(update.locationName || update.createdAtIso)}</p>
                     </article>
                   ))}

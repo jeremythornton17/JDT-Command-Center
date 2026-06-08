@@ -11,7 +11,7 @@ type DocumentsBoardProps = {
 export default function DocumentsBoard({ documents, openModal }: DocumentsBoardProps) {
   const [query, setQuery] = useState('');
   const filteredDocuments = documents.filter((doc) => {
-    const haystack = `${doc.name || ''} ${doc.job || ''} ${doc.category || ''}`.toLowerCase();
+    const haystack = `${doc.name || ''} ${doc.title || ''} ${doc.job || ''} ${doc.category || ''} ${doc.status || ''} ${doc.reviewStatus || ''} ${doc.relatedTitle || ''} ${doc.url || ''}`.toLowerCase();
     return haystack.includes(query.toLowerCase());
   });
 
@@ -70,6 +70,11 @@ export default function DocumentsBoard({ documents, openModal }: DocumentsBoardP
                   <div className="min-w-0">
                     <p className="text-sm font-black text-jdt-text truncate">{doc.name}</p>
                     <p className="text-xs font-bold text-zinc-500 truncate mt-1">{doc.job || 'Unassigned'}</p>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      <span className="rounded bg-jdt-sand px-2 py-0.5 text-[9px] font-black uppercase text-jdt-primary">{doc.category || 'Document'}</span>
+                      <span className="rounded bg-zinc-100 px-2 py-0.5 text-[9px] font-black uppercase text-zinc-500">{doc.reviewStatus || doc.status || 'Unreviewed'}</span>
+                    </div>
+                    {doc.relatedTitle && <p className="mt-2 truncate text-[10px] font-bold text-zinc-400">{doc.relatedTitle}</p>}
                   </div>
                 </div>
               </button>
