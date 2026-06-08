@@ -41,7 +41,7 @@ import { CategoryIcon, CategoryPill } from './components/CategoryIcon';
 import { useAuth } from './AuthProvider';
 import { auditEventForRecordType, stampRecordForSave } from './commandCenter/audit';
 import { collectionNamesForClear } from './commandCenter/dataModel';
-import { equipmentCategory, equipmentDisplayName, normalizeDelimitedList, withHomeBaseEquipmentDefaults, workOrderResourceNames } from './commandCenter/equipmentFreight';
+import { defaultJdtFarmLocations, equipmentCategory, equipmentDisplayName, mergeLocationLibrary, normalizeDelimitedList, withHomeBaseEquipmentDefaults, workOrderResourceNames } from './commandCenter/equipmentFreight';
 import {
   advanceFreightStop,
   applyCompletedRouteStepToEquipment,
@@ -529,6 +529,7 @@ export default function App() {
   const personnel = useMemo(() => mergePersonnelRecords(defaultJdtPersonnelRoster, [...staffDirectory, ...crews]), [staffDirectory, crews]);
   const nurseryInventory = useMemo<RanchOakRecord[]>(() => [...inventoryItems, ...ranchOaks], [inventoryItems, ranchOaks]);
   const equipmentWithDefaults = useMemo<EquipmentRecord[]>(() => equipment.map(withHomeBaseEquipmentDefaults), [equipment]);
+  const locationsWithDefaults = useMemo<LocationRecord[]>(() => mergeLocationLibrary(defaultJdtFarmLocations, locations), [locations]);
 
   const activeNav = navItems.find((item) => item.id === activeTab) || navItems[0];
 
@@ -1160,7 +1161,7 @@ export default function App() {
       case 'calendar':
         return <CalendarBoard jobs={jobs} loads={loads} workOrders={workOrders} scheduleTasks={scheduleTasks} treeRelocationRecords={treeRelocationRecords} equipment={equipmentWithDefaults} openDrawer={openDrawer} />;
       case 'maps':
-        return <MapsBoard jobs={jobs} ranchOaks={nurseryInventory} treeRelocationRecords={treeRelocationRecords} onUpdateTreeLocation={handleUpdateTreeLocation} onImportTreePins={handleImportTreePinsFromMap} openDrawer={openDrawer} />;
+        return <MapsBoard jobs={jobs} ranchOaks={nurseryInventory} treeRelocationRecords={treeRelocationRecords} locationsList={locationsWithDefaults} onUpdateTreeLocation={handleUpdateTreeLocation} onImportTreePins={handleImportTreePinsFromMap} openDrawer={openDrawer} />;
       case 'reports':
         return <ReportsBoard jobs={jobs} projects={projects} workOrders={workOrders} loads={loads} ranchOaks={nurseryInventory} equipment={equipmentWithDefaults} alerts={alerts} clients={clients} fieldUpdates={fieldUpdates} scheduleTasks={scheduleTasks} treeRelocationRecords={treeRelocationRecords} documents={documents} importBatches={importBatches} />;
       case 'documents':
@@ -1270,7 +1271,7 @@ export default function App() {
         equipmentList={equipmentWithDefaults}
         crewsList={personnel}
         clientsList={clients}
-        locationsList={locations}
+        locationsList={locationsWithDefaults}
         workOrders={workOrders}
         projectMaterialItems={projectMaterialItems}
       />

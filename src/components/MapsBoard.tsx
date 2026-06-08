@@ -49,7 +49,7 @@ import {
 } from '../treeRelocationMap';
 import { useAuth } from '../AuthProvider';
 import { useFirestoreSyncState } from '../useFirestoreCollection';
-import { jdtHomeBase } from '../commandCenter/equipmentFreight';
+import { defaultJdtFarmLocations, jdtHomeBase, mergeLocationLibrary } from '../commandCenter/equipmentFreight';
 
 const defaultFieldCenter = jdtHomeBase.coordinates;
 
@@ -149,6 +149,7 @@ type MapsBoardProps = {
   initialKmlImportOpen?: boolean;
   initialSelectedJobId?: string;
   initialSavedLocations?: any[];
+  locationsList?: any[];
   initialAddPinOpen?: boolean;
 };
 
@@ -167,12 +168,16 @@ export default function MapsBoard({
   initialKmlImportOpen = false,
   initialSelectedJobId = 'all',
   initialSavedLocations,
+  locationsList,
   initialAddPinOpen = false,
 }: MapsBoardProps) {
   const { user } = useAuth();
   const [syncedRanchOaks, setSyncedRanchOaks] = useFirestoreSyncState<any>('ranchOaks', [], !!user && !ranchOaks);
   const [syncedSavedLocations, setSavedLocations] = useFirestoreSyncState<any>('locations', [], !!user);
-  const savedLocations = initialSavedLocations ?? syncedSavedLocations;
+  const savedLocations = mergeLocationLibrary(
+    defaultJdtFarmLocations,
+    (locationsList ?? initialSavedLocations ?? syncedSavedLocations) as any[],
+  );
   const treeRecords = useMemo(
     () => mergeMapTreeRecords(ranchOaks ?? syncedRanchOaks ?? [], treeRelocationRecords),
     [ranchOaks, syncedRanchOaks, treeRelocationRecords],

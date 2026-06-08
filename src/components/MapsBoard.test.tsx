@@ -42,6 +42,11 @@ describe("MapsBoard relocation pin editing", () => {
     assert.match(html, /Earth View/);
     assert.match(html, /All Saved Locations/);
     assert.match(html, /Add Pin/);
+    assert.match(html, /Main Office/);
+    assert.match(html, /25 Acre/);
+    assert.match(html, /10 Acre/);
+    assert.match(html, /40 Acre/);
+    assert.match(html, /26.757913, -81.037562/);
     assert.doesNotMatch(html, /Google Maps Link \/ Pin/);
     assert.doesNotMatch(html, /Save Site Location/);
     assert.doesNotMatch(html, /Tree Pin List/);

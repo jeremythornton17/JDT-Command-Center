@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  defaultJdtFarmLocations,
   equipmentCategory,
   equipmentDisplayName,
   isFreightVehicle,
@@ -16,6 +17,23 @@ describe("equipment and freight helpers", () => {
     assert.equal(jdtHomeBase.locationType, "Farm");
     assert.equal(typeof jdtHomeBase.coordinates.lat, "number");
     assert.equal(typeof jdtHomeBase.coordinates.lng, "number");
+  });
+
+  it("keeps the Google Maps JD Thornton farm list as default saved farm pins", () => {
+    const farmNames = defaultJdtFarmLocations.map((location) => location.name);
+    assert.deepEqual(farmNames, ["Main Office", "25 Acre", "10 Acre", "40 Acre"]);
+
+    const fortyAcre = defaultJdtFarmLocations.find((location) => location.name === "40 Acre");
+    assert.equal(fortyAcre?.locationType, "Farm");
+    assert.equal(fortyAcre?.accessType, "Farm");
+    assert.equal(fortyAcre?.coordinateText, "26.757913, -81.037562");
+    assert.equal(fortyAcre?.latitude, 26.757913);
+    assert.equal(fortyAcre?.longitude, -81.037562);
+
+    const tenAcre = defaultJdtFarmLocations.find((location) => location.name === "10 Acre");
+    assert.equal(tenAcre?.mainAddress, "1866 Baker Hwy, Moore Haven, FL 33471");
+    assert.equal(tenAcre?.latitude, 26.8170514);
+    assert.equal(tenAcre?.longitude, -81.0927008);
   });
 
   it("defaults equipment with no location to the home base", () => {

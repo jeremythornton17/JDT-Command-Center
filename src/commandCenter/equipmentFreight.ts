@@ -1,4 +1,4 @@
-import type { EquipmentRecord, WorkOrderRecord } from './records';
+import type { EquipmentRecord, LocationRecord, WorkOrderRecord } from './records';
 
 export const equipmentCategoryOptions = ['Machine', 'Truck', 'Trailer', 'Implement', 'Tool', 'Support'];
 
@@ -77,10 +77,95 @@ export const jdtHomeBase = {
   address: '1010 E Sugarland Hwy, Clewiston, FL 33440',
   locationType: 'Farm',
   coordinates: {
-    lat: 26.7544,
-    lng: -80.9182,
+    lat: 26.7539482,
+    lng: -80.9166488,
   },
 } as const;
+
+export const defaultJdtFarmLocations: LocationRecord[] = [
+  {
+    id: 'location-jdt-farm-main-office',
+    name: 'Main Office',
+    title: 'Main Office',
+    locationType: 'Farm',
+    locationId: 'main-office',
+    accessType: 'Farm',
+    mainAddress: '1010 E Sugarland Hwy, Clewiston, FL 33440',
+    sourceText: '1010 E Sugarland Hwy, Clewiston, FL 33440',
+    googleMapsUrl: 'https://www.google.com/maps/@26.7539482,-80.9166488,19z',
+    latitude: 26.7539482,
+    longitude: -80.9166488,
+    coordinateText: '26.753948, -80.916649',
+    divisionUse: ['Relocation & Installation', 'Crew', 'Freight', 'Equipment', 'Nursery'],
+    status: 'Available',
+    notes: 'Imported from Jeremy Thornton Google Maps list: JD Thornton Nurseries.',
+    sourceSheet: 'Google Maps: JD Thornton Nurseries',
+  },
+  {
+    id: 'location-jdt-farm-25-acre',
+    name: '25 Acre',
+    title: '25 Acre',
+    locationType: 'Farm',
+    locationId: '25-acre',
+    accessType: 'Farm',
+    mainAddress: '3040 US-27, Clewiston, FL 33440',
+    sourceText: '3040 US-27, Clewiston, FL 33440',
+    googleMapsUrl: 'https://www.google.com/maps/@26.755196,-80.983372,19z',
+    latitude: 26.755196,
+    longitude: -80.983372,
+    coordinateText: '26.755196, -80.983372',
+    divisionUse: ['Relocation & Installation', 'Crew', 'Freight', 'Equipment', 'Nursery'],
+    status: 'Available',
+    notes: 'Imported from Jeremy Thornton Google Maps list: JD Thornton Nurseries.',
+    sourceSheet: 'Google Maps: JD Thornton Nurseries',
+  },
+  {
+    id: 'location-jdt-farm-10-acre',
+    name: '10 Acre',
+    title: '10 Acre',
+    locationType: 'Farm',
+    locationId: '10-acre',
+    accessType: 'Farm',
+    mainAddress: '1866 Baker Hwy, Moore Haven, FL 33471',
+    sourceText: '1866 Baker Hwy, Moore Haven, FL 33471',
+    googleMapsUrl: 'https://www.google.com/maps/@26.8170514,-81.0927008,19z',
+    latitude: 26.8170514,
+    longitude: -81.0927008,
+    coordinateText: '26.817051, -81.092701',
+    divisionUse: ['Relocation & Installation', 'Crew', 'Freight', 'Equipment', 'Nursery'],
+    status: 'Available',
+    notes: 'Imported from Jeremy Thornton Google Maps list: JD Thornton Nurseries.',
+    sourceSheet: 'Google Maps: JD Thornton Nurseries',
+  },
+  {
+    id: 'location-jdt-farm-40-acre',
+    name: '40 Acre',
+    title: '40 Acre',
+    locationType: 'Farm',
+    locationId: '40-acre',
+    accessType: 'Farm',
+    mainAddress: '26.757913, -81.037562',
+    sourceText: '26.757913, -81.037562',
+    googleMapsUrl: 'https://www.google.com/maps/@26.757913,-81.037562,19z',
+    latitude: 26.757913,
+    longitude: -81.037562,
+    coordinateText: '26.757913, -81.037562',
+    divisionUse: ['Relocation & Installation', 'Crew', 'Freight', 'Equipment', 'Nursery'],
+    status: 'Available',
+    notes: 'Imported from Jeremy Thornton Google Maps list: JD Thornton Nurseries. Coordinate-only farm pin.',
+    sourceSheet: 'Google Maps: JD Thornton Nurseries',
+  },
+];
+
+export function mergeLocationLibrary(defaultLocations: LocationRecord[], savedLocations: LocationRecord[] = []): LocationRecord[] {
+  const merged = new Map<string, LocationRecord>();
+  [...defaultLocations, ...savedLocations].forEach((location) => {
+    const key = String(location.id || location.locationId || location.name || '').trim().toLowerCase();
+    if (!key) return;
+    merged.set(key, { ...merged.get(key), ...location });
+  });
+  return [...merged.values()];
+}
 
 export function normalizeDelimitedList(value: unknown): string[] {
   if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
