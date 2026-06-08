@@ -176,6 +176,26 @@ describe("command board dashboard summary", () => {
     assert.equal(summary.dataQualityQueue[0].targetTab, "tracker");
   });
 
+  it("surfaces workflow readiness issues for dispatch review", () => {
+    const summary = buildDashboardSummary({
+      loads: [{
+        id: "load-waterford",
+        title: "Waterford equipment move",
+        projectId: "project-waterford",
+        projectName: "Waterford Relocation",
+        jobId: "job-waterford",
+        jobName: "Waterford relocation",
+        status: "Scheduled",
+      }],
+    });
+
+    assert.deepEqual(
+      summary.workflowReadinessQueue.map((item) => [item.workflow, item.stage, item.title, item.missingFields.slice(0, 2)]),
+      [["Freight Move", "Dispatch", "Waterford equipment move", ["Driver", "Truck"]]],
+    );
+    assert.equal(summary.workflowReadinessQueue[0].recommendedAction, "Complete freight dispatch details before sending this move to a driver.");
+  });
+
   it("derives quote-to-job pipeline counts from real records", () => {
     const clients: ClientRecord[] = [
       { id: "client-1", name: "Oak Lead", status: "Inquiry" },

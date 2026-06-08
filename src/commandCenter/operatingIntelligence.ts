@@ -6,9 +6,11 @@ import type {
   EquipmentRecord,
   FieldUpdateRecord,
   ImportBatchRecord,
+  InventoryItemRecord,
   JobRecord,
   LoadRecord,
   ProjectRecord,
+  RanchOakRecord,
   ScheduleTaskRecord,
   TreeRelocationRecord,
   WorkOrderRecord,
@@ -91,6 +93,24 @@ export type DataQualityActionItem = {
   expectedValue?: string;
 };
 
+export type WorkflowReadinessStage = "Save" | "Dispatch" | "Closeout" | "Review";
+
+export type WorkflowReadinessIssue = {
+  id: string;
+  severity: "High" | "Medium" | "Low";
+  workflow: string;
+  stage: WorkflowReadinessStage;
+  sourceType: string;
+  sourceId: string;
+  title: string;
+  missingFields: string[];
+  detail: string;
+  recommendedAction: string;
+  targetTab: string;
+  drawerType: string;
+  recordId?: string;
+};
+
 export type OperatingIntelligenceInput = {
   clients?: ClientRecord[];
   projects?: ProjectRecord[];
@@ -104,6 +124,8 @@ export type OperatingIntelligenceInput = {
   documents?: DocumentRecord[];
   alerts?: AlertRecord[];
   importBatches?: ImportBatchRecord[];
+  ranchOaks?: RanchOakRecord[];
+  inventoryItems?: InventoryItemRecord[];
   todayIso?: string;
 };
 
@@ -120,6 +142,8 @@ const emptyInput: Required<OperatingIntelligenceInput> = {
   documents: [],
   alerts: [],
   importBatches: [],
+  ranchOaks: [],
+  inventoryItems: [],
   todayIso: "",
 };
 
@@ -372,6 +396,8 @@ function targetForSource(sourceType: string): Pick<DataQualityActionItem, "targe
       return { targetTab: "documents", drawerType: "document" };
     case "equipment":
       return { targetTab: "equipment", drawerType: "equipment" };
+    case "fieldUpdate":
+      return { targetTab: "crewView", drawerType: "fieldUpdate" };
     case "importBatch":
       return { targetTab: "sheets", drawerType: "importBatch" };
     default:
@@ -444,6 +470,181 @@ function sourceRank(sourceType: string): number {
   const order = ["job", "project", "workOrder", "tree", "load", "document", "scheduleTask", "equipment", "fieldUpdate", "importBatch"];
   const index = order.indexOf(sourceType);
   return index === -1 ? order.length : index;
+}
+
+function compactMissing(fields: Array<[string, boolean]>): string[] {
+  return fields.filter(([, missing]) => missing).map(([field]) => field);
+}
+
+function hasAnyField(record: CommandRecord, fields: string[]): boolean {
+  const generic = record as Record<string, unknown>;
+  return fields.some((field) => clean(generic[field]));
+}
+
+function hasAnyArray(record: CommandRecord, fields: string[]): boolean {
+  const generic = record as Record<string, unknown>;
+  return fields.some((field) => Array.isArray(generic[field]) && (generic[field] as unknown[]).length > 0);
+}
+
+function hasRouteStops(load: LoadRecord): boolean {
+  return Boolean((load.stops || []).length || (load.routeSteps || []).length || clean(load.stepPlanText) || (clean(load.origin) && clean(load.delivery || load.destination)));
+}
+
+function hasTreeSourcePin(tree: TreeRelocationRecord): boolean {
+  const generic = tree as TreeRelocationRecord & {
+    sourcePin?: unknown;
+    existingSourcePin?: unknown;
+    sourcePoint?: unknown;
+    sourceLatitude?: unknown;
+    sourceLongitude?: unknown;
+  };
+  return Boolean(clean(generic.sourcePin) || clean(generic.existingSourcePin) || clean(generic.sourceLatitude) || clean(generic.sourceLongitude) || (generic.sourcePoint && typeof generic.sourcePoint === "object"));
+}
+
+function hasTreeDestinationPin(tree: TreeRelocationRecord): boolean {
+  const generic = tree as TreeRelocationRecord & {
+    destinationPin?: unknown;
+    proposedDestinationPin?: unknown;
+    destinationPoint?: unknown;
+    destinationLatitude?: unknown;
+    destinationLongitude?: unknown;
+  };
+  return Boolean(clean(generic.destinationPin) || clean(generic.proposedDestinationPin) || clean(generic.destinationLatitude) || clean(generic.destinationLongitude) || (generic.destinationPoint && typeof generic.destinationPoint === "object"));
+}
+
+function readinessItem(
+  sourceType: string,
+  workflow: string,
+  stage: WorkflowReadinessStage,
+  record: CommandRecord,
+  missingFields: string[],
+  recommendedAction: string,
+  severity: WorkflowReadinessIssue["severity"] = "High",
+): WorkflowReadinessIssue | null {
+  if (!missingFields.length) return null;
+  const target = targetForSource(sourceType);
+  return {
+    id: `workflow-readiness-${sourceType}-${clean(record.id) || clean(recordTitle(record))}-${stage.toLowerCase()}`,
+    severity,
+    workflow,
+    stage,
+    sourceType,
+    sourceId: clean(record.id) || recordTitle(record),
+    title: recordTitle(record),
+    missingFields,
+    detail: `${workflow} is missing ${missingFields.join(", ")} before ${stage.toLowerCase()}.`,
+    recommendedAction,
+    recordId: clean(record.id) || clean(record.jobId) || clean(record.projectId) || recordTitle(record),
+    ...target,
+  };
+}
+
+function workflowRank(item: WorkflowReadinessIssue): number {
+  const order = ["Project", "Crew Work Order", "Freight Move", "Equipment / Maintenance", "Field Closeout", "Project Tree", "Nursery Inventory"];
+  const index = order.indexOf(item.workflow);
+  return index === -1 ? order.length : index;
+}
+
+export function buildWorkflowReadinessQueue(input: OperatingIntelligenceInput, limit = 12): WorkflowReadinessIssue[] {
+  const merged = { ...emptyInput, ...input };
+  const items: WorkflowReadinessIssue[] = [];
+
+  merged.projects.forEach((project) => {
+    const missing = compactMissing([
+      ["Client", !hasClientContext(project)],
+      ["Project name", !clean(project.projectName || project.title || project.name)],
+      ["Division or status", !clean(project.division || project.projectType || project.status)],
+      ["Main location", !hasAnyField(project, ["location", "mainAddress", "locationName", "locationId"])],
+    ]);
+    const item = readinessItem("project", "Project", "Dispatch", project, missing, "Complete project basics before assigning crews, freight, equipment, trees, or imports.", missing.some((field) => field !== "Main location") ? "High" : "Medium");
+    if (item) items.push(item);
+  });
+
+  merged.workOrders.forEach((workOrder) => {
+    const missing = compactMissing([
+      ["Project", !hasProjectContext(workOrder)],
+      ["Work type or task", !clean(workOrder.workOrderType || workOrder.taskType || workOrder.title || workOrder.name)],
+      ["Scheduled date or date range", !hasAnyField(workOrder, ["scheduledDate", "startDate", "dueDate", "endDate"])],
+      ["Crew lead or assigned crew", !clean(workOrder.crewLeadName || workOrder.crewLeadId) && !hasAnyArray(workOrder, ["assignedCrewNames", "assignedCrewIds"])],
+      ["Work location", !hasAnyField(workOrder, ["origin", "destination", "siteArea", "location", "locationName", "mainAddress"])],
+    ]);
+    const item = readinessItem("workOrder", "Crew Work Order", "Dispatch", workOrder, missing, "Complete crew work order details before putting this on the working schedule.");
+    if (item) items.push(item);
+  });
+
+  merged.loads.forEach((load) => {
+    const missing = compactMissing([
+      ["Project or job", !hasProjectContext(load) && !hasJobContext(load)],
+      ["Driver", !clean(load.driver)],
+      ["Truck", !clean(load.truck || load.truckId)],
+      ["Move date", !hasAnyField(load, ["date", "pickupDate", "deliveryDate"])],
+      ["Route stops or origin/delivery", !hasRouteStops(load)],
+    ]);
+    const item = readinessItem("load", "Freight Move", "Dispatch", load, missing, "Complete freight dispatch details before sending this move to a driver.");
+    if (item) items.push(item);
+  });
+
+  merged.equipment.forEach((equipment) => {
+    if (!isEquipmentHold(equipment)) return;
+    const missing = compactMissing([
+      ["Equipment identity", !clean(equipment.name || equipment.title || equipment.assetId || equipment.asset || equipment.model)],
+      ["Current location", !hasAnyField(equipment, ["currentLocationName", "currentLocation", "location"])],
+      ["Service status", !clean(equipment.serviceStatus)],
+    ]);
+    const item = readinessItem("equipment", "Equipment / Maintenance", "Review", equipment, missing, "Complete equipment location and service status so scheduling can see the downtime impact.", missing.includes("Equipment identity") ? "High" : "Medium");
+    if (item) items.push(item);
+  });
+
+  merged.fieldUpdates.forEach((update) => {
+    if (!needsReview(update) && normalized(update.updateType) !== "complete" && normalized(update.fieldStatus) !== "complete") return;
+    const missing = compactMissing([
+      ["Related record", !clean(update.relatedRecordId || update.relatedTitle || update.relatedRecordType)],
+      ["Update type or status", !clean(update.updateType || update.fieldStatus || update.status)],
+      ["Crew or user", !clean(update.crewName || update.crewId || update.userEmail)],
+      ["Closeout notes or location detail", !clean(update.notes || update.locationDetail || update.locationName)],
+    ]);
+    const item = readinessItem("fieldUpdate", "Field Closeout", "Closeout", update, missing, "Attach this field update to the correct work and add enough closeout detail for office review.");
+    if (item) items.push(item);
+  });
+
+  merged.treeRelocationRecords.forEach((tree) => {
+    const status = clean(tree.relocationStatus || tree.status || tree.type);
+    const needsMovePins = includesAny(tree, ["ready for relocation", "relocated", "moved to holding area"]);
+    const missing = compactMissing([
+      ["Project", !hasProjectContext(tree)],
+      ["Tree ID or tag", !clean(tree.treeId || tree.tag || tree.id)],
+      ["Tree type", !clean(tree.type || tree.title || tree.name)],
+      ["Relocation status", !status],
+      ["Source pin", needsMovePins && !hasTreeSourcePin(tree)],
+      ["Destination pin", needsMovePins && !hasTreeDestinationPin(tree)],
+    ]);
+    const item = readinessItem("tree", "Project Tree", "Dispatch", tree, missing, "Complete project tree identity, status, and pins before using it for map or relocation assignments.");
+    if (item) items.push(item);
+  });
+
+  [...merged.ranchOaks, ...merged.inventoryItems].forEach((inventory) => {
+    const missing = compactMissing([
+      ["Tree or species name", !clean(inventory.species || inventory.commonName || inventory.treeType || inventory.title || inventory.name)],
+      ["Farm, location, or zone", !hasAnyField(inventory, ["farm", "fieldLocation", "zone", "row", "position"])],
+      ["Quantity", !clean(inventory.quantity) && !clean(inventory.treeId)],
+    ]);
+    const item = readinessItem("tree", "Nursery Inventory", "Review", inventory, missing, "Complete inventory identity, location, and quantity before relying on nursery availability reports.", missing.includes("Tree or species name") ? "High" : "Medium");
+    if (item) {
+      item.targetTab = "inventory";
+      items.push(item);
+    }
+  });
+
+  const seen = new Set<string>();
+  return items
+    .filter((item) => {
+      const key = `${item.workflow}:${item.sourceId}:${item.missingFields.join("|")}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => workflowRank(a) - workflowRank(b) || severityRank(a.severity) - severityRank(b.severity) || a.title.localeCompare(b.title))
+    .slice(0, limit);
 }
 
 export function buildDataQualityActionQueue(input: OperatingIntelligenceInput, limit = 12): DataQualityActionItem[] {

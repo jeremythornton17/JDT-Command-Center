@@ -5,6 +5,7 @@ import {
   buildDataQualityActionQueue,
   buildOperatingKpis,
   buildProjectRiskScores,
+  buildWorkflowReadinessQueue,
   filterSeedRecords,
   findRelationshipIssues,
   isSeedRecord,
@@ -18,6 +19,7 @@ import type {
   JobRecord,
   LoadRecord,
   ProjectRecord,
+  RanchOakRecord,
   ScheduleTaskRecord,
   TreeRelocationRecord,
   WorkOrderRecord,
@@ -270,6 +272,84 @@ describe("operating intelligence", () => {
     );
     assert.equal(queue.at(-1)?.sourceType, "importBatch");
     assert.match(queue.at(-1)?.detail || "", /Row 3 missing Project_ID/);
+  });
+
+  it("builds workflow readiness issues by dispatch and closeout stage", () => {
+    const incompleteProject: ProjectRecord = {
+      id: "project-waterford",
+      title: "Waterford Relocation",
+      clientId: "cli-waterford",
+      clientName: "Waterford",
+      division: "Relocation & Installation",
+      status: "Active",
+    };
+    const incompleteWorkOrder: WorkOrderRecord = {
+      id: "wo-waterford-root-prune",
+      title: "Root prune Waterford trees",
+      projectId: "project-waterford",
+      projectName: "Waterford Relocation",
+      workOrderType: "tree_pruning",
+      status: "Ready",
+    };
+    const incompleteLoad: LoadRecord = {
+      id: "load-waterford",
+      title: "Waterford equipment move",
+      projectId: "project-waterford",
+      projectName: "Waterford Relocation",
+      jobId: "job-waterford",
+      jobName: "Waterford relocation",
+      status: "Scheduled",
+    };
+    const incompleteEquipment: EquipmentRecord = {
+      id: "equipment-loader-1",
+      name: "Komatsu 500 - 1",
+      status: "Down",
+    };
+    const incompleteFieldUpdate: FieldUpdateRecord = {
+      id: "field-update-closeout",
+      title: "Waterford closeout",
+      updateType: "Complete",
+      crewName: "Carlos Reyes",
+    };
+    const incompleteTree: TreeRelocationRecord = {
+      id: "tree-waterford-1003",
+      title: "Live Oak 1003",
+      treeId: "1003",
+      type: "Live Oak",
+      status: "Ready for Relocation",
+    };
+    const incompleteInventory: RanchOakRecord = {
+      id: "inventory-live-oak-batch",
+      title: "Live Oak starter batch",
+      inventoryClass: "Propagation",
+      species: "Live Oak",
+      quantity: "",
+    };
+
+    const queue = buildWorkflowReadinessQueue({
+      projects: [incompleteProject],
+      workOrders: [incompleteWorkOrder],
+      loads: [incompleteLoad],
+      equipment: [incompleteEquipment],
+      fieldUpdates: [incompleteFieldUpdate],
+      treeRelocationRecords: [incompleteTree],
+      ranchOaks: [incompleteInventory],
+    });
+
+    assert.deepEqual(
+      queue.slice(0, 7).map((item) => [item.workflow, item.stage, item.title, item.missingFields]),
+      [
+        ["Project", "Dispatch", "Waterford Relocation", ["Main location"]],
+        ["Crew Work Order", "Dispatch", "Root prune Waterford trees", ["Scheduled date or date range", "Crew lead or assigned crew", "Work location"]],
+        ["Freight Move", "Dispatch", "Waterford equipment move", ["Driver", "Truck", "Move date", "Route stops or origin/delivery"]],
+        ["Equipment / Maintenance", "Review", "Komatsu 500 - 1", ["Current location", "Service status"]],
+        ["Field Closeout", "Closeout", "Waterford closeout", ["Related record", "Closeout notes or location detail"]],
+        ["Project Tree", "Dispatch", "Live Oak 1003", ["Project", "Source pin", "Destination pin"]],
+        ["Nursery Inventory", "Review", "Live Oak starter batch", ["Farm, location, or zone", "Quantity"]],
+      ],
+    );
+    assert.equal(queue[2].recommendedAction, "Complete freight dispatch details before sending this move to a driver.");
+    assert.equal(queue[2].targetTab, "freight");
   });
 
   it("filters seed records by batch id without removing live records", () => {

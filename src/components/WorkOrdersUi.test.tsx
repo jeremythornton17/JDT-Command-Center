@@ -90,6 +90,15 @@ describe("work order UI wiring", () => {
         projectId: "project-boca-course-1",
         projectName: "Boca West Course 1 Renovation",
       }],
+      loads: [{
+        id: "load-boca-lowboy",
+        title: "Boca West lowboy move",
+        projectId: "project-boca-course-1",
+        projectName: "Boca West Course 1 Renovation",
+        jobId: "job-boca-course-1",
+        jobName: "Boca West Course 1 Renovation",
+        status: "Scheduled",
+      }],
     });
 
     const html = renderToString(
@@ -107,6 +116,10 @@ describe("work order UI wiring", () => {
     assert.match(html, /Fix the saved client\/project\/job link/);
     assert.match(html, /Create Project/);
     assert.match(html, /Dispatch Freight Move/);
+    assert.match(html, /Workflow Readiness/);
+    assert.match(html, /Boca West lowboy move/);
+    assert.match(html, /Driver/);
+    assert.match(html, /Complete freight dispatch details before sending this move to a driver/);
   });
 
   it("builds project modal context from project records that only have a project id", () => {

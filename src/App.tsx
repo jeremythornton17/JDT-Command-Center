@@ -1385,6 +1385,13 @@ export function Dashboard({ recentRecords, dashboardSummary, openModal, openDraw
     }
     setActiveTab(item.targetTab || 'reports');
   };
+  const openWorkflowReadinessItem = (item: any) => {
+    if (item.recordId && drawerBackedTypes.has(item.drawerType)) {
+      openDrawer(item.drawerType, item.recordId);
+      return;
+    }
+    setActiveTab(item.targetTab || 'reports');
+  };
 
   return (
     <div className="space-y-6">
@@ -1684,6 +1691,46 @@ export function Dashboard({ recentRecords, dashboardSummary, openModal, openDraw
               </div>
             </div>
             <WorkItemStack items={dashboardSummary.ownerReviewQueue} emptyTitle="No owner review items" emptyDetail="Blocked jobs, freight issues, service holds, and active alerts will collect here." onOpen={openWorkItem} />
+          </section>
+
+          <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
+              <div>
+                <h3 className="text-sm font-black uppercase text-jdt-text">Workflow Readiness</h3>
+                <p className="mt-1 text-xs font-bold text-zinc-500">Required details missing before dispatch, closeout, or review</p>
+              </div>
+              <button onClick={() => setActiveTab('reports')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
+                Reports
+              </button>
+            </div>
+            {dashboardSummary.workflowReadinessQueue?.length > 0 ? (
+              <div className="divide-y divide-jdt-border">
+                {dashboardSummary.workflowReadinessQueue.slice(0, 5).map((item: any) => (
+                  <button key={item.id} type="button" onClick={() => openWorkflowReadinessItem(item)} className="block w-full px-1 py-3 text-left hover:bg-jdt-sand/40">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black text-jdt-text">{item.title}</p>
+                        <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{item.workflow} / {item.stage}</p>
+                      </div>
+                      <span className={`shrink-0 rounded border px-2 py-1 text-[9px] font-black uppercase ${dataQualitySeverityClass(item.severity)}`}>{item.severity}</span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {(item.missingFields || []).slice(0, 4).map((field: string) => (
+                        <span key={`${item.id}-${field}`} className="rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{field}</span>
+                      ))}
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-[10px] font-black uppercase text-jdt-olive">{item.recommendedAction}</p>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4">
+                <div className="rounded-xl border border-dashed border-jdt-border bg-white p-6 text-center">
+                  <p className="text-sm font-black text-jdt-text">No workflow readiness issues detected</p>
+                  <p className="mx-auto mt-1 max-w-sm text-xs font-bold text-zinc-500">Missing dispatch, closeout, maintenance, tree, and inventory details will collect here.</p>
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">

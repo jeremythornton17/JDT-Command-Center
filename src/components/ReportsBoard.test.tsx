@@ -56,4 +56,38 @@ describe("ReportsBoard operating reports", () => {
     assert.match(html, /Fix the saved client\/project\/job link/);
     assert.match(html, /Row 7 missing Project_ID/);
   });
+
+  it("shows workflow readiness issues for records missing dispatch details", () => {
+    const html = renderToString(
+      <ReportsBoard
+        jobs={[]}
+        projects={[]}
+        workOrders={[]}
+        loads={[{
+          id: "load-waterford",
+          title: "Waterford equipment move",
+          projectId: "project-waterford",
+          projectName: "Waterford Relocation",
+          jobId: "job-waterford",
+          jobName: "Waterford relocation",
+          status: "Scheduled",
+        }]}
+        ranchOaks={[]}
+        equipment={[]}
+        alerts={[]}
+        clients={[]}
+        fieldUpdates={[]}
+        scheduleTasks={[]}
+        treeRelocationRecords={[]}
+        documents={[]}
+        importBatches={[]}
+      />,
+    );
+
+    assert.match(html, /Workflow Readiness/);
+    assert.match(html, /Waterford equipment move/);
+    assert.match(html, /Freight Move/);
+    assert.match(html, /Driver/);
+    assert.match(html, /Complete freight dispatch details before sending this move to a driver/);
+  });
 });

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AlertTriangle, BarChart3, FileDown, Loader2, Printer } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { buildDataQualityActionQueue, buildOperatingKpis } from '../commandCenter/operatingIntelligence';
+import { buildDataQualityActionQueue, buildOperatingKpis, buildWorkflowReadinessQueue } from '../commandCenter/operatingIntelligence';
 import type { AlertRecord, ClientRecord, DocumentRecord, EquipmentRecord, FieldUpdateRecord, ImportBatchRecord, JobRecord, LoadRecord, ProjectRecord, RanchOakRecord, ScheduleTaskRecord, TreeRelocationRecord, WorkOrderRecord } from '../commandCenter/records';
 import { riskPillClass, riskSurfaceClass } from '../commandCenter/visualLanguage';
 
@@ -63,6 +63,21 @@ export default function ReportsBoard({ jobs, projects = [], workOrders = [], loa
     documents,
     alerts,
     importBatches,
+  });
+  const workflowReadinessQueue = buildWorkflowReadinessQueue({
+    clients,
+    projects,
+    jobs,
+    workOrders,
+    loads,
+    equipment,
+    fieldUpdates,
+    scheduleTasks,
+    treeRelocationRecords,
+    documents,
+    alerts,
+    importBatches,
+    ranchOaks,
   });
   const rows = [
     { label: 'Projects', value: jobs.length },
@@ -171,7 +186,7 @@ export default function ReportsBoard({ jobs, projects = [], workOrders = [], loa
           <FileDown className="h-5 w-5 text-jdt-olive" />
           <h3 className="text-sm font-black uppercase text-jdt-text">Data Readiness</h3>
         </div>
-        <div className="mt-4 grid gap-4 xl:grid-cols-3">
+        <div className="mt-4 grid gap-4 xl:grid-cols-4">
           <div className="rounded-lg border border-jdt-border bg-white p-4">
             <p className="text-[10px] font-black uppercase text-zinc-400">Latest Imports</p>
             {recentImports.length > 0 ? (
@@ -224,6 +239,40 @@ export default function ReportsBoard({ jobs, projects = [], workOrders = [], loa
               </div>
             ) : (
               <p className="mt-3 text-xs font-bold text-zinc-500">No relationship, import, or missing-context cleanup items are currently visible.</p>
+            )}
+          </div>
+          <div className="rounded-lg border border-jdt-border bg-white p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase text-zinc-400">Workflow Readiness</p>
+                <p className="mt-1 text-xs font-bold text-zinc-500">Required details missing before dispatch, closeout, or office review.</p>
+              </div>
+              <AlertTriangle className="h-4 w-4 shrink-0 text-jdt-clay" />
+            </div>
+            {workflowReadinessQueue.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {workflowReadinessQueue.slice(0, 6).map((item) => (
+                  <div key={item.id} className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-black text-jdt-text">{item.title}</p>
+                        <p className="mt-1 text-[10px] font-bold uppercase text-zinc-400">{item.workflow} / {item.stage}</p>
+                      </div>
+                      <span className={`rounded border px-2 py-0.5 text-[9px] font-black uppercase ${dataQualitySeverityClass(item.severity)}`}>
+                        {item.severity}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {item.missingFields.slice(0, 4).map((field) => (
+                        <span key={`${item.id}-${field}`} className="rounded border border-jdt-border bg-white px-1.5 py-0.5 text-[9px] font-black uppercase text-jdt-text">{field}</span>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-[10px] font-black uppercase leading-snug text-jdt-primary">{item.recommendedAction}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs font-bold text-zinc-500">No dispatch, closeout, maintenance, tree, or inventory readiness gaps are currently visible.</p>
             )}
           </div>
         </div>

@@ -19,9 +19,11 @@ import {
   buildDataQualityActionQueue,
   buildDailyCommandBrief,
   buildProjectRiskScores,
+  buildWorkflowReadinessQueue,
   type DataQualityActionItem,
   type DailyCommandBrief,
   type ProjectRiskScore,
+  type WorkflowReadinessIssue,
 } from "./operatingIntelligence";
 import { buildTreeLifecycleAlerts, type TreeLifecycleAlert } from "./treeLifecycle";
 
@@ -76,6 +78,7 @@ export type DashboardSummary = {
   commandAlerts: DashboardCommandAlert[];
   dailyBrief: DailyCommandBrief;
   dataQualityQueue: DataQualityActionItem[];
+  workflowReadinessQueue: WorkflowReadinessIssue[];
   projectRisks: ProjectRiskScore[];
   todaySchedule: DashboardWorkItem[];
   tomorrowQueue: DashboardWorkItem[];
@@ -377,10 +380,12 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
     documents,
     alerts,
     importBatches,
+    ranchOaks: trees as RanchOakRecord[],
     todayIso,
   };
   const dailyBrief = buildDailyCommandBrief(intelligenceInput);
   const dataQualityQueue = buildDataQualityActionQueue(intelligenceInput);
+  const workflowReadinessQueue = buildWorkflowReadinessQueue(intelligenceInput);
   const projectRisks = buildProjectRiskScores(intelligenceInput);
   const treeLifecycleAlerts = buildTreeLifecycleAlerts({ trees: treeRelocationRecords, jobs, workOrders, todayIso });
   const todaySchedule = buildTodaySchedule(jobs, loads, scheduleTasks);
@@ -591,6 +596,7 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
     commandAlerts,
     dailyBrief,
     dataQualityQueue,
+    workflowReadinessQueue,
     projectRisks,
     todaySchedule,
     tomorrowQueue,
