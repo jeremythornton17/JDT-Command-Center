@@ -538,6 +538,7 @@ export default function App() {
     loads,
     trees: nurseryInventory,
     equipment: equipmentWithDefaults,
+    crew: personnel,
     clients,
     projects,
     workOrders,
@@ -547,7 +548,7 @@ export default function App() {
     alerts,
     fieldUpdates,
     importBatches,
-  }), [jobs, loads, nurseryInventory, equipmentWithDefaults, clients, projects, workOrders, scheduleTasks, treeRelocationRecords, documents, alerts, fieldUpdates, importBatches]);
+  }), [jobs, loads, nurseryInventory, equipmentWithDefaults, personnel, clients, projects, workOrders, scheduleTasks, treeRelocationRecords, documents, alerts, fieldUpdates, importBatches]);
 
   const recentRecords = useMemo(() => [
     ...jobs.map((item) => ({ type: 'job', label: item.title || item.client || 'Untitled project', meta: item.status || item.date || 'Project', id: item.id || item.title })),
@@ -1399,6 +1400,13 @@ export function Dashboard({ recentRecords, dashboardSummary, openModal, openDraw
     }
     setActiveTab(item.targetTab || 'crewView');
   };
+  const openComplianceReviewItem = (item: any) => {
+    if (item.recordId && drawerBackedTypes.has(item.drawerType)) {
+      openDrawer(item.drawerType, item.recordId);
+      return;
+    }
+    setActiveTab(item.targetTab || 'documents');
+  };
 
   return (
     <div className="space-y-6">
@@ -1737,6 +1745,48 @@ export function Dashboard({ recentRecords, dashboardSummary, openModal, openDraw
                 <div className="rounded-xl border border-dashed border-jdt-border bg-white p-6 text-center">
                   <p className="text-sm font-black text-jdt-text">No closeouts waiting for review</p>
                   <p className="mx-auto mt-1 max-w-sm text-xs font-bold text-zinc-500">Submitted crew and driver closeouts will collect here for office filing and follow-up.</p>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
+              <div>
+                <h3 className="text-sm font-black uppercase text-jdt-text">Compliance Review</h3>
+                <p className="mt-1 text-xs font-bold text-zinc-500">Driver licenses, CDL medical cards, registrations, and insurance needing office action</p>
+              </div>
+              <button onClick={() => setActiveTab('documents')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
+                Documents
+              </button>
+            </div>
+            {dashboardSummary.complianceReviewQueue?.length > 0 ? (
+              <div className="divide-y divide-jdt-border">
+                {dashboardSummary.complianceReviewQueue.slice(0, 5).map((item: any) => {
+                  const expirationLabel = item.expirationDate ? `Expires ${item.expirationDate}` : 'No expiration on file';
+                  return (
+                    <button key={item.id} type="button" onClick={() => openComplianceReviewItem(item)} className="block w-full px-1 py-3 text-left hover:bg-jdt-sand/40">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-jdt-text">{item.entityName}</p>
+                          <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{item.documentType} / {item.entityType}</p>
+                        </div>
+                        <span className={`shrink-0 rounded border px-2 py-1 text-[9px] font-black uppercase ${dataQualitySeverityClass(item.severity)}`}>{item.status}</span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        <span className="rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{expirationLabel}</span>
+                        <span className="rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{item.targetTab}</span>
+                      </div>
+                      <p className="mt-2 line-clamp-2 text-[10px] font-black uppercase text-jdt-olive">{item.recommendedAction}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-4">
+                <div className="rounded-xl border border-dashed border-jdt-border bg-white p-6 text-center">
+                  <p className="text-sm font-black text-jdt-text">No compliance documents need review</p>
+                  <p className="mx-auto mt-1 max-w-sm text-xs font-bold text-zinc-500">Missing, expired, and expiring driver or vehicle documents will collect here.</p>
                 </div>
               </div>
             )}

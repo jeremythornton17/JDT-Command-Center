@@ -99,6 +99,20 @@ describe("work order UI wiring", () => {
         jobName: "Boca West Course 1 Renovation",
         status: "Scheduled",
       }],
+      crew: [{
+        id: "crew-christian",
+        name: "Christian Crespo",
+        role: "Driver",
+      }],
+      equipment: [{
+        id: "truck-semi-1",
+        name: "Semi #1",
+        category: "Truck",
+        registrationDocumentUrl: "https://drive/registration.pdf",
+        registrationExpirationDate: "2026-06-20",
+        insuranceDocumentUrl: "https://drive/insurance.pdf",
+        insuranceExpirationDate: "2026-08-15",
+      }],
       fieldUpdates: [{
         id: "closeout-boca-root-prune",
         relatedTitle: "Boca West root prune closeout",
@@ -132,6 +146,12 @@ describe("work order UI wiring", () => {
     assert.match(html, /Boca West root prune closeout/);
     assert.match(html, /0 proof/);
     assert.match(html, /Ask the crew to attach photo, BOL, POD, or job proof before filing this closeout/);
+    assert.match(html, /Compliance Review/);
+    assert.match(html, /Christian Crespo/);
+    assert.match(html, /Driver License/);
+    assert.match(html, /Semi #1/);
+    assert.match(html, /Vehicle Registration/);
+    assert.match(html, /Update or upload the Driver License for Christian Crespo before assigning driving work/);
   });
 
   it("builds project modal context from project records that only have a project id", () => {

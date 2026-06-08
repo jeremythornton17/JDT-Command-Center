@@ -1,4 +1,5 @@
 import type { CrewRecord, EquipmentRecord } from './records';
+import { equipmentDisplayName, isFreightVehicle } from './equipmentFreight';
 
 export type ComplianceStatusLabel = 'Missing' | 'On File' | 'Expiring Soon' | 'Expired' | 'Not Required';
 export type ComplianceTone = 'good' | 'watch' | 'bad' | 'neutral';
@@ -14,6 +15,29 @@ export type ComplianceDocumentInput = {
   documentUrl?: string;
   expirationDate?: string;
   required?: boolean;
+};
+
+export type ComplianceReviewItem = {
+  id: string;
+  title: string;
+  entityName: string;
+  entityType: 'Crew' | 'Vehicle';
+  documentType: 'Driver License' | 'Medical Card' | 'Vehicle Registration' | 'Insurance';
+  status: Exclude<ComplianceStatusLabel, 'On File' | 'Not Required'>;
+  severity: 'High' | 'Medium';
+  expirationDate?: string;
+  daysUntilExpiration?: number;
+  recommendedAction: string;
+  targetTab: 'crews' | 'freight';
+  drawerType: 'employee' | 'equipment';
+  recordId: string;
+};
+
+export type ComplianceReviewInput = {
+  crew?: CrewRecord[];
+  equipment?: EquipmentRecord[];
+  todayIso?: string;
+  limit?: number;
 };
 
 const expirationWindowDays = 30;
@@ -107,6 +131,114 @@ export function vehicleComplianceSummary(vehicle: EquipmentRecord, todayIso?: st
       expirationDate: vehicle.insuranceExpirationDate,
     }, todayIso),
   };
+}
+
+function isReviewableStatus(status: ComplianceStatus): status is ComplianceStatus & { label: ComplianceReviewItem['status'] } {
+  return status.label === 'Missing' || status.label === 'Expired' || status.label === 'Expiring Soon';
+}
+
+function statusRank(status: ComplianceReviewItem['status']) {
+  if (status === 'Expired') return 0;
+  if (status === 'Missing') return 1;
+  return 2;
+}
+
+function entityRank(entityType: ComplianceReviewItem['entityType']) {
+  return entityType === 'Crew' ? 0 : 1;
+}
+
+function reviewItemFromStatus(input: {
+  recordId: string;
+  entityName: string;
+  entityType: ComplianceReviewItem['entityType'];
+  documentType: ComplianceReviewItem['documentType'];
+  status: ComplianceStatus;
+  targetTab: ComplianceReviewItem['targetTab'];
+  drawerType: ComplianceReviewItem['drawerType'];
+}): ComplianceReviewItem | null {
+  if (!isReviewableStatus(input.status)) return null;
+  const severity = input.status.label === 'Expiring Soon' ? 'Medium' : 'High';
+  const assignmentType = input.entityType === 'Crew' ? 'driving' : 'vehicle';
+
+  return {
+    id: `${input.recordId}-${input.documentType.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    title: `${input.entityName} - ${input.documentType}`,
+    entityName: input.entityName,
+    entityType: input.entityType,
+    documentType: input.documentType,
+    status: input.status.label,
+    severity,
+    expirationDate: input.status.expirationDate,
+    daysUntilExpiration: input.status.daysUntilExpiration,
+    recommendedAction: `Update or upload the ${input.documentType} for ${input.entityName} before assigning ${assignmentType} work.`,
+    targetTab: input.targetTab,
+    drawerType: input.drawerType,
+    recordId: input.recordId,
+  };
+}
+
+export function buildComplianceReviewQueue(input: ComplianceReviewInput = {}): ComplianceReviewItem[] {
+  const items: ComplianceReviewItem[] = [];
+
+  (input.crew || []).forEach((member) => {
+    const summary = driverComplianceSummary(member, input.todayIso);
+    const recordId = member.id || member.name || 'crew-record';
+    const entityName = member.name || member.title || recordId;
+    [
+      reviewItemFromStatus({
+        recordId,
+        entityName,
+        entityType: 'Crew',
+        documentType: 'Driver License',
+        status: summary.license,
+        targetTab: 'crews',
+        drawerType: 'employee',
+      }),
+      reviewItemFromStatus({
+        recordId,
+        entityName,
+        entityType: 'Crew',
+        documentType: 'Medical Card',
+        status: summary.medicalCard,
+        targetTab: 'crews',
+        drawerType: 'employee',
+      }),
+    ].filter(Boolean).forEach((item) => items.push(item as ComplianceReviewItem));
+  });
+
+  (input.equipment || []).filter(isFreightVehicle).forEach((vehicle) => {
+    const summary = vehicleComplianceSummary(vehicle, input.todayIso);
+    const recordId = vehicle.id || vehicle.assetId || equipmentDisplayName(vehicle);
+    const entityName = equipmentDisplayName(vehicle);
+    [
+      reviewItemFromStatus({
+        recordId,
+        entityName,
+        entityType: 'Vehicle',
+        documentType: 'Vehicle Registration',
+        status: summary.registration,
+        targetTab: 'freight',
+        drawerType: 'equipment',
+      }),
+      reviewItemFromStatus({
+        recordId,
+        entityName,
+        entityType: 'Vehicle',
+        documentType: 'Insurance',
+        status: summary.insurance,
+        targetTab: 'freight',
+        drawerType: 'equipment',
+      }),
+    ].filter(Boolean).forEach((item) => items.push(item as ComplianceReviewItem));
+  });
+
+  return items
+    .sort((a, b) => (
+      statusRank(a.status) - statusRank(b.status)
+      || entityRank(a.entityType) - entityRank(b.entityType)
+      || a.title.localeCompare(b.title)
+    ))
+    .slice(0, input.limit || 8);
 }
 
 export function complianceBadgeClass(status: ComplianceStatus) {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { buildDashboardSummary } from "./dashboard";
-import type { ClientRecord, EquipmentRecord, FieldUpdateRecord, InventoryItemRecord, JobRecord, LoadRecord, ScheduleTaskRecord, TreeRelocationRecord } from "./records";
+import type { ClientRecord, CrewRecord, EquipmentRecord, FieldUpdateRecord, InventoryItemRecord, JobRecord, LoadRecord, ScheduleTaskRecord, TreeRelocationRecord } from "./records";
 
 describe("command board dashboard summary", () => {
   it("builds actionable command strip counts for the hybrid board", () => {
@@ -127,6 +127,30 @@ describe("command board dashboard summary", () => {
     ]);
     assert.equal(summary.fieldCloseoutReviewQueue[0].targetTab, "crewView");
     assert.equal(summary.fieldCloseoutReviewQueue[0].drawerType, "fieldUpdate");
+  });
+
+  it("surfaces driver and vehicle compliance documents for office review", () => {
+    const crew: CrewRecord[] = [
+      { id: "crew-christian", name: "Christian Crespo", role: "Driver" },
+    ];
+    const equipment: EquipmentRecord[] = [
+      {
+        id: "truck-semi-1",
+        name: "Semi #1",
+        category: "Truck",
+        registrationDocumentUrl: "https://drive/registration.pdf",
+        registrationExpirationDate: "2026-06-20",
+        insuranceDocumentUrl: "https://drive/insurance.pdf",
+        insuranceExpirationDate: "2026-08-15",
+      },
+    ];
+
+    const summary = buildDashboardSummary({ crew, equipment, todayIso: "2026-06-03" });
+
+    assert.deepEqual(summary.complianceReviewQueue.map((item) => [item.recordId, item.documentType, item.status, item.targetTab]), [
+      ["crew-christian", "Driver License", "Missing", "crews"],
+      ["truck-semi-1", "Vehicle Registration", "Expiring Soon", "freight"],
+    ]);
   });
 
   it("surfaces tree lifecycle reminders on the command board", () => {

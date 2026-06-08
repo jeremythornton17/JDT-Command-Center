@@ -2,6 +2,7 @@ import type {
   AlertRecord,
   ClientRecord,
   CommandRecord,
+  CrewRecord,
   DocumentRecord,
   EquipmentRecord,
   FieldUpdateRecord,
@@ -15,6 +16,7 @@ import type {
   TreeRelocationRecord,
   WorkOrderRecord,
 } from "./records";
+import { buildComplianceReviewQueue, type ComplianceReviewItem } from "./compliance";
 import {
   buildDataQualityActionQueue,
   buildDailyCommandBrief,
@@ -81,6 +83,7 @@ export type DashboardSummary = {
   dataQualityQueue: DataQualityActionItem[];
   workflowReadinessQueue: WorkflowReadinessIssue[];
   fieldCloseoutReviewQueue: FieldCloseoutReviewItem[];
+  complianceReviewQueue: ComplianceReviewItem[];
   projectRisks: ProjectRiskScore[];
   todaySchedule: DashboardWorkItem[];
   tomorrowQueue: DashboardWorkItem[];
@@ -95,6 +98,7 @@ export type DashboardSummaryInput = {
   loads?: LoadRecord[];
   trees?: Array<RanchOakRecord | InventoryItemRecord>;
   equipment?: EquipmentRecord[];
+  crew?: CrewRecord[];
   clients?: ClientRecord[];
   projects?: ProjectRecord[];
   workOrders?: WorkOrderRecord[];
@@ -112,6 +116,7 @@ const emptyArrays: Required<DashboardSummaryInput> = {
   loads: [],
   trees: [],
   equipment: [],
+  crew: [],
   clients: [],
   projects: [],
   workOrders: [],
@@ -357,6 +362,7 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
     loads,
     trees,
     equipment,
+    crew,
     clients,
     projects,
     workOrders,
@@ -389,6 +395,7 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
   const dataQualityQueue = buildDataQualityActionQueue(intelligenceInput);
   const workflowReadinessQueue = buildWorkflowReadinessQueue(intelligenceInput);
   const fieldCloseoutReviewQueue = buildFieldCloseoutReviewQueue(fieldUpdates);
+  const complianceReviewQueue = buildComplianceReviewQueue({ crew, equipment, todayIso });
   const projectRisks = buildProjectRiskScores(intelligenceInput);
   const treeLifecycleAlerts = buildTreeLifecycleAlerts({ trees: treeRelocationRecords, jobs, workOrders, todayIso });
   const todaySchedule = buildTodaySchedule(jobs, loads, scheduleTasks);
@@ -601,6 +608,7 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
     dataQualityQueue,
     workflowReadinessQueue,
     fieldCloseoutReviewQueue,
+    complianceReviewQueue,
     projectRisks,
     todaySchedule,
     tomorrowQueue,
