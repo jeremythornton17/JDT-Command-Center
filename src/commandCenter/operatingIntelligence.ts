@@ -75,6 +75,22 @@ export type OperatingKpiGroup = {
   metrics: OperatingKpiMetric[];
 };
 
+export type DataQualityActionItem = {
+  id: string;
+  severity: "High" | "Medium" | "Low";
+  sourceType: string;
+  sourceId: string;
+  title: string;
+  detail: string;
+  recommendedAction: string;
+  targetTab: string;
+  drawerType: string;
+  recordId?: string;
+  field?: string;
+  currentValue?: string;
+  expectedValue?: string;
+};
+
 export type OperatingIntelligenceInput = {
   clients?: ClientRecord[];
   projects?: ProjectRecord[];
@@ -318,6 +334,239 @@ export function findRelationshipIssues(input: OperatingIntelligenceInput): Relat
   documents.forEach((record) => checkProjectJob("document", record));
 
   return issues;
+}
+
+function sourceRecordForIssue(issue: RelationshipIssue, input: Required<OperatingIntelligenceInput>): CommandRecord | undefined {
+  const collections: Record<string, CommandRecord[]> = {
+    client: input.clients,
+    project: input.projects,
+    job: input.jobs,
+    workOrder: input.workOrders,
+    load: input.loads,
+    scheduleTask: input.scheduleTasks,
+    tree: input.treeRelocationRecords,
+    document: input.documents,
+    equipment: input.equipment,
+    fieldUpdate: input.fieldUpdates,
+    importBatch: input.importBatches,
+  };
+  return (collections[issue.recordType] || []).find((record) => (
+    clean(record.id) === clean(issue.recordId)
+    || clean(record.jobId) === clean(issue.recordId)
+    || clean(record.projectId) === clean(issue.recordId)
+    || recordTitle(record) === issue.recordId
+  ));
+}
+
+function targetForSource(sourceType: string): Pick<DataQualityActionItem, "targetTab" | "drawerType"> {
+  switch (sourceType) {
+    case "job":
+    case "project":
+    case "workOrder":
+    case "tree":
+    case "scheduleTask":
+      return { targetTab: "tracker", drawerType: sourceType === "project" ? "job" : sourceType };
+    case "load":
+      return { targetTab: "freight", drawerType: "freight" };
+    case "document":
+      return { targetTab: "documents", drawerType: "document" };
+    case "equipment":
+      return { targetTab: "equipment", drawerType: "equipment" };
+    case "importBatch":
+      return { targetTab: "sheets", drawerType: "importBatch" };
+    default:
+      return { targetTab: "reports", drawerType: sourceType };
+  }
+}
+
+function hasClientContext(record: CommandRecord & { client?: unknown }): boolean {
+  return Boolean(clean(record.clientId) || clean(record.clientName) || clean(record.client));
+}
+
+function hasProjectContext(record: CommandRecord & { projectsId?: unknown; project?: unknown }): boolean {
+  return Boolean(clean(record.projectId) || clean(record.projectName) || clean(record.projectsId) || clean(record.project));
+}
+
+function hasJobContext(record: CommandRecord & { job?: unknown }): boolean {
+  return Boolean(clean(record.jobId) || clean(record.jobName) || clean(record.job));
+}
+
+function hasDocumentContext(record: DocumentRecord): boolean {
+  const generic = record as DocumentRecord & {
+    relatedRecordId?: unknown;
+    treeId?: unknown;
+    equipmentId?: unknown;
+    personnelId?: unknown;
+    loadId?: unknown;
+  };
+  return Boolean(
+    hasClientContext(record)
+    || hasProjectContext(record)
+    || hasJobContext(record)
+    || clean(record.job)
+    || clean(generic.relatedRecordId)
+    || clean(generic.treeId)
+    || clean(generic.equipmentId)
+    || clean(generic.personnelId)
+    || clean(generic.loadId)
+  );
+}
+
+function dataQualityItem(
+  sourceType: string,
+  record: CommandRecord,
+  severity: DataQualityActionItem["severity"],
+  detail: string,
+  recommendedAction: string,
+  suffix: string,
+): DataQualityActionItem {
+  const target = targetForSource(sourceType);
+  return {
+    id: `data-quality-${sourceType}-${clean(record.id) || clean(recordTitle(record))}-${suffix}`,
+    severity,
+    sourceType,
+    sourceId: clean(record.id) || recordTitle(record),
+    title: recordTitle(record),
+    detail,
+    recommendedAction,
+    recordId: clean(record.id) || clean(record.jobId) || clean(record.projectId) || recordTitle(record),
+    ...target,
+  };
+}
+
+function severityRank(severity: DataQualityActionItem["severity"]): number {
+  if (severity === "High") return 0;
+  if (severity === "Medium") return 1;
+  return 2;
+}
+
+function sourceRank(sourceType: string): number {
+  const order = ["job", "project", "workOrder", "tree", "load", "document", "scheduleTask", "equipment", "fieldUpdate", "importBatch"];
+  const index = order.indexOf(sourceType);
+  return index === -1 ? order.length : index;
+}
+
+export function buildDataQualityActionQueue(input: OperatingIntelligenceInput, limit = 12): DataQualityActionItem[] {
+  const merged = { ...emptyInput, ...input };
+  const items: DataQualityActionItem[] = [];
+  const relationshipGroups = new Map<string, RelationshipIssue[]>();
+
+  findRelationshipIssues(merged).forEach((relationshipIssue) => {
+    const key = `${relationshipIssue.recordType}:${relationshipIssue.recordId}`;
+    relationshipGroups.set(key, [...(relationshipGroups.get(key) || []), relationshipIssue]);
+  });
+
+  relationshipGroups.forEach((issues) => {
+    const firstIssue = issues[0];
+    const sourceRecord = sourceRecordForIssue(firstIssue, merged) || ({ id: firstIssue.recordId, title: firstIssue.recordId } as CommandRecord);
+    const target = targetForSource(firstIssue.recordType);
+    items.push({
+      id: `data-quality-relationship-${firstIssue.recordType}-${firstIssue.recordId}`,
+      severity: issues.some((item) => item.severity === "High") ? "High" : issues.some((item) => item.severity === "Medium") ? "Medium" : "Low",
+      sourceType: firstIssue.recordType,
+      sourceId: firstIssue.recordId,
+      title: recordTitle(sourceRecord),
+      detail: issues.length > 1
+        ? `${firstIssue.message} ${issues.length} relationship fields need review.`
+        : firstIssue.message,
+      recommendedAction: "Fix the saved client/project/job link before using this record for scheduling or reports.",
+      targetTab: target.targetTab,
+      drawerType: target.drawerType,
+      recordId: clean(sourceRecord.id) || firstIssue.recordId,
+      field: issues.map((item) => item.field).join(", "),
+      currentValue: issues.map((item) => item.currentValue || "-").join(", "),
+      expectedValue: issues.map((item) => item.expectedValue || "-").join(", "),
+    });
+  });
+
+  merged.projects.forEach((project) => {
+    if (!hasClientContext(project)) {
+      items.push(dataQualityItem(
+        "project",
+        project,
+        "High",
+        `${recordTitle(project)} is missing client context.`,
+        "Select the saved client before this project is used for work orders, maps, imports, or reports.",
+        "missing-client",
+      ));
+    }
+  });
+
+  merged.workOrders.forEach((workOrder) => {
+    if (!hasProjectContext(workOrder)) {
+      items.push(dataQualityItem(
+        "workOrder",
+        workOrder,
+        "High",
+        `${recordTitle(workOrder)} is missing project context.`,
+        "Attach this work order to a saved project so crew, equipment, freight, field updates, and reports stay connected.",
+        "missing-project",
+      ));
+    }
+  });
+
+  merged.loads.forEach((load) => {
+    if (!hasProjectContext(load) || !hasJobContext(load)) {
+      items.push(dataQualityItem(
+        "load",
+        load,
+        "Medium",
+        `${recordTitle(load)} is missing ${!hasProjectContext(load) && !hasJobContext(load) ? "project and job" : !hasProjectContext(load) ? "project" : "job"} context.`,
+        "Attach this freight move to the saved project and work order before dispatching or reporting.",
+        "missing-project-job",
+      ));
+    }
+  });
+
+  merged.treeRelocationRecords.forEach((tree) => {
+    if (!hasProjectContext(tree)) {
+      items.push(dataQualityItem(
+        "tree",
+        tree,
+        "High",
+        `${recordTitle(tree)} is missing project context.`,
+        "Attach this tree to the correct project before using it in maps, root pruning, nutrient care, photos, or status reports.",
+        "missing-project",
+      ));
+    }
+  });
+
+  merged.documents.forEach((document) => {
+    if (!hasDocumentContext(document)) {
+      items.push(dataQualityItem(
+        "document",
+        document,
+        "Medium",
+        `${recordTitle(document)} is not linked to an operating record.`,
+        "Link this file or photo to a client, project, work order, tree, equipment, personnel record, or freight move.",
+        "missing-link",
+      ));
+    }
+  });
+
+  merged.importBatches.forEach((batch) => {
+    if (Number(batch.warningCount || 0) > 0 || (batch.warnings || []).length > 0) {
+      items.push(dataQualityItem(
+        "importBatch",
+        batch,
+        "Low",
+        [batch.warningCount ? `${batch.warningCount} import warnings` : "", ...(batch.warnings || []).slice(0, 2)].filter(Boolean).join(" - "),
+        "Review the import warnings before using these records as the source of truth.",
+        "warnings",
+      ));
+    }
+  });
+
+  const seen = new Set<string>();
+  return items
+    .filter((item) => {
+      const key = `${item.sourceType}:${item.sourceId}:${item.recommendedAction}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => severityRank(a.severity) - severityRank(b.severity) || sourceRank(a.sourceType) - sourceRank(b.sourceType) || a.title.localeCompare(b.title))
+    .slice(0, limit);
 }
 
 export function buildProjectRiskScores(input: OperatingIntelligenceInput): ProjectRiskScore[] {

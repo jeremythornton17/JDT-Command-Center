@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildDailyCommandBrief,
+  buildDataQualityActionQueue,
   buildOperatingKpis,
   buildProjectRiskScores,
   filterSeedRecords,
@@ -10,11 +11,15 @@ import {
 } from "./operatingIntelligence";
 import type {
   ClientRecord,
+  DocumentRecord,
   EquipmentRecord,
   FieldUpdateRecord,
+  ImportBatchRecord,
   JobRecord,
   LoadRecord,
+  ProjectRecord,
   ScheduleTaskRecord,
+  TreeRelocationRecord,
   WorkOrderRecord,
 } from "./records";
 
@@ -186,6 +191,85 @@ describe("operating intelligence", () => {
         ["dataQuality", [["Relationship Issues", "1"], ["Seed Records", "1"], ["Import Warnings", "1"]]],
       ],
     );
+  });
+
+  it("builds a prioritized data quality action queue for relationship and import cleanup", () => {
+    const projects: ProjectRecord[] = [
+      {
+        id: "project-no-client",
+        title: "Unlinked project",
+        projectName: "Unlinked project",
+        status: "Active",
+      },
+    ];
+    const dirtyWorkOrders: WorkOrderRecord[] = [
+      {
+        id: "wo-missing-project",
+        title: "Root prune with no project",
+        status: "Scheduled",
+        clientName: "Boca West Country Club",
+      },
+    ];
+    const dirtyTrees: TreeRelocationRecord[] = [
+      {
+        id: "tree-1003",
+        treeId: "1003",
+        title: "Live Oak 1003",
+        status: "Not Started",
+      },
+    ];
+    const dirtyDocuments: DocumentRecord[] = [
+      {
+        id: "doc-floating-photo",
+        title: "Floating field photo",
+        category: "Tree Photo",
+      },
+    ];
+    const warningImports: ImportBatchRecord[] = [
+      {
+        id: "import-project-tree-assets",
+        name: "Project tree import",
+        recordCount: 5,
+        createdCount: 4,
+        updatedCount: 1,
+        warningCount: 2,
+        warnings: ["Row 3 missing Project_ID", "Row 5 has unknown Tree_Assets_ID"],
+        targets: [{
+          collectionName: "treeRelocationRecords",
+          label: "Tree records",
+          recordIds: ["tree-1003"],
+          createdIds: ["tree-1003"],
+          updatedIds: [],
+          previousRecords: [],
+        }],
+        status: "Applied",
+      },
+    ];
+
+    const queue = buildDataQualityActionQueue({
+      clients,
+      projects,
+      jobs,
+      workOrders: dirtyWorkOrders,
+      loads: [{ ...loads[0], projectId: "", jobId: "" }],
+      treeRelocationRecords: dirtyTrees,
+      documents: dirtyDocuments,
+      importBatches: warningImports,
+    });
+
+    assert.deepEqual(
+      queue.slice(0, 6).map((item) => [item.severity, item.sourceType, item.title, item.recommendedAction]),
+      [
+        ["High", "job", "Boca West Course 1 Renovation", "Fix the saved client/project/job link before using this record for scheduling or reports."],
+        ["High", "project", "Unlinked project", "Select the saved client before this project is used for work orders, maps, imports, or reports."],
+        ["High", "workOrder", "Root prune with no project", "Attach this work order to a saved project so crew, equipment, freight, field updates, and reports stay connected."],
+        ["High", "tree", "Live Oak 1003", "Attach this tree to the correct project before using it in maps, root pruning, nutrient care, photos, or status reports."],
+        ["Medium", "load", "Bellaire freight", "Fix the saved client/project/job link before using this record for scheduling or reports."],
+        ["Medium", "document", "Floating field photo", "Link this file or photo to a client, project, work order, tree, equipment, personnel record, or freight move."],
+      ],
+    );
+    assert.equal(queue.at(-1)?.sourceType, "importBatch");
+    assert.match(queue.at(-1)?.detail || "", /Row 3 missing Project_ID/);
   });
 
   it("filters seed records by batch id without removing live records", () => {

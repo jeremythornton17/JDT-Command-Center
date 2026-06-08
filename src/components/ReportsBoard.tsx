@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { BarChart3, FileDown, Loader2, Printer } from 'lucide-react';
+import { AlertTriangle, BarChart3, FileDown, Loader2, Printer } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { buildOperatingKpis } from '../commandCenter/operatingIntelligence';
+import { buildDataQualityActionQueue, buildOperatingKpis } from '../commandCenter/operatingIntelligence';
 import type { AlertRecord, ClientRecord, DocumentRecord, EquipmentRecord, FieldUpdateRecord, ImportBatchRecord, JobRecord, LoadRecord, ProjectRecord, RanchOakRecord, ScheduleTaskRecord, TreeRelocationRecord, WorkOrderRecord } from '../commandCenter/records';
-import { riskSurfaceClass } from '../commandCenter/visualLanguage';
+import { riskPillClass, riskSurfaceClass } from '../commandCenter/visualLanguage';
 
 type ReportsBoardProps = {
   jobs: JobRecord[];
@@ -28,9 +28,29 @@ const metricToneClass = {
   context: 'border-jdt-border bg-white text-jdt-text',
 };
 
+function dataQualitySeverityClass(severity: string) {
+  if (severity === 'High') return riskPillClass('critical');
+  if (severity === 'Medium') return riskPillClass('watch');
+  return riskPillClass('low');
+}
+
 export default function ReportsBoard({ jobs, projects = [], workOrders = [], loads, ranchOaks, equipment, alerts, clients = [], fieldUpdates = [], scheduleTasks = [], treeRelocationRecords = [], documents = [], importBatches = [] }: ReportsBoardProps) {
   const [exporting, setExporting] = useState(false);
   const kpiGroups = buildOperatingKpis({
+    clients,
+    projects,
+    jobs,
+    workOrders,
+    loads,
+    equipment,
+    fieldUpdates,
+    scheduleTasks,
+    treeRelocationRecords,
+    documents,
+    alerts,
+    importBatches,
+  });
+  const dataQualityQueue = buildDataQualityActionQueue({
     clients,
     projects,
     jobs,
@@ -151,7 +171,7 @@ export default function ReportsBoard({ jobs, projects = [], workOrders = [], loa
           <FileDown className="h-5 w-5 text-jdt-olive" />
           <h3 className="text-sm font-black uppercase text-jdt-text">Data Readiness</h3>
         </div>
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div className="mt-4 grid gap-4 xl:grid-cols-3">
           <div className="rounded-lg border border-jdt-border bg-white p-4">
             <p className="text-[10px] font-black uppercase text-zinc-400">Latest Imports</p>
             {recentImports.length > 0 ? (
@@ -175,6 +195,36 @@ export default function ReportsBoard({ jobs, projects = [], workOrders = [], loa
               <p>Tree inventory available for maps/reports: {ranchOaks.length}</p>
               <p>Equipment records ready for service tracking: {equipment.length}</p>
             </div>
+          </div>
+          <div className="rounded-lg border border-jdt-border bg-white p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase text-zinc-400">Data Quality Action Queue</p>
+                <p className="mt-1 text-xs font-bold text-zinc-500">Records to clean up before relying on dashboards, maps, schedules, or imports.</p>
+              </div>
+              <AlertTriangle className="h-4 w-4 shrink-0 text-jdt-clay" />
+            </div>
+            {dataQualityQueue.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {dataQualityQueue.slice(0, 6).map((item) => (
+                  <div key={item.id} className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-black text-jdt-text">{item.title}</p>
+                        <p className="mt-1 text-[10px] font-bold uppercase text-zinc-400">{item.sourceType}</p>
+                      </div>
+                      <span className={`rounded border px-2 py-0.5 text-[9px] font-black uppercase ${dataQualitySeverityClass(item.severity)}`}>
+                        {item.severity}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[11px] font-bold leading-snug text-zinc-600">{item.detail}</p>
+                    <p className="mt-2 text-[10px] font-black uppercase leading-snug text-jdt-primary">{item.recommendedAction}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs font-bold text-zinc-500">No relationship, import, or missing-context cleanup items are currently visible.</p>
+            )}
           </div>
         </div>
       </div>

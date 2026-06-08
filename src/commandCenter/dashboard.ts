@@ -16,8 +16,10 @@ import type {
   WorkOrderRecord,
 } from "./records";
 import {
+  buildDataQualityActionQueue,
   buildDailyCommandBrief,
   buildProjectRiskScores,
+  type DataQualityActionItem,
   type DailyCommandBrief,
   type ProjectRiskScore,
 } from "./operatingIntelligence";
@@ -73,6 +75,7 @@ export type DashboardWorkItem = {
 export type DashboardSummary = {
   commandAlerts: DashboardCommandAlert[];
   dailyBrief: DailyCommandBrief;
+  dataQualityQueue: DataQualityActionItem[];
   projectRisks: ProjectRiskScore[];
   todaySchedule: DashboardWorkItem[];
   tomorrowQueue: DashboardWorkItem[];
@@ -377,6 +380,7 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
     todayIso,
   };
   const dailyBrief = buildDailyCommandBrief(intelligenceInput);
+  const dataQualityQueue = buildDataQualityActionQueue(intelligenceInput);
   const projectRisks = buildProjectRiskScores(intelligenceInput);
   const treeLifecycleAlerts = buildTreeLifecycleAlerts({ trees: treeRelocationRecords, jobs, workOrders, todayIso });
   const todaySchedule = buildTodaySchedule(jobs, loads, scheduleTasks);
@@ -586,6 +590,7 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
   return {
     commandAlerts,
     dailyBrief,
+    dataQualityQueue,
     projectRisks,
     todaySchedule,
     tomorrowQueue,

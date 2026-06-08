@@ -3,7 +3,8 @@ import { describe, it } from "node:test";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import type { CrewRecord, DocumentRecord, EquipmentRecord, FieldUpdateRecord, JobRecord, LoadRecord, ProjectMaterialItemRecord, TreeRelocationRecord, WorkOrderRecord } from "../commandCenter/records";
-import { TrackerBoard } from "../App";
+import { Dashboard, TrackerBoard } from "../App";
+import { buildDashboardSummary } from "../commandCenter/dashboard";
 import CommandDrawer, { filterTreeAssets, projectModalContextForRecord, projectSiteMapUrl } from "./CommandDrawer";
 import CrewViewBoard from "./CrewViewBoard";
 import CrewsBoard from "./CrewsBoard";
@@ -78,6 +79,36 @@ describe("work order UI wiring", () => {
     assert.match(html, /Do not send crews through the clubhouse entrance/);
   });
 
+  it("shows data quality issues on the command board", () => {
+    const dashboardSummary = buildDashboardSummary({
+      clients: [{ id: "cli-2275", name: "Boca West Country Club" }],
+      jobs: [{
+        id: "job-boca-course-1",
+        title: "Boca West Course 1 Renovation",
+        clientId: "client-boca-west-country-club",
+        clientName: "Boca West Country Club",
+        projectId: "project-boca-course-1",
+        projectName: "Boca West Course 1 Renovation",
+      }],
+    });
+
+    const html = renderToString(
+      <Dashboard
+        recentRecords={[]}
+        dashboardSummary={dashboardSummary}
+        openModal={() => undefined}
+        openDrawer={() => undefined}
+        setActiveTab={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Data Quality Queue/);
+    assert.match(html, /Boca West Course 1 Renovation/);
+    assert.match(html, /Fix the saved client\/project\/job link/);
+    assert.match(html, /Create Project/);
+    assert.match(html, /Dispatch Freight Move/);
+  });
+
   it("builds project modal context from project records that only have a project id", () => {
     assert.deepEqual(projectModalContextForRecord({
       id: "project-waterford",
@@ -114,6 +145,7 @@ describe("work order UI wiring", () => {
     );
 
     assert.match(html, /Importing To Project/);
+    assert.match(html, /Import \/ Backup/);
     assert.match(html, /JDT Command Center/);
     assert.match(html, /App Import Setup/);
     assert.match(html, /Waterford/);

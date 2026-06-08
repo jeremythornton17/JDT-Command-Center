@@ -151,6 +151,31 @@ describe("command board dashboard summary", () => {
     ]);
   });
 
+  it("surfaces data quality relationship issues for command board review", () => {
+    const clients: ClientRecord[] = [
+      { id: "cli-2275", name: "Boca West Country Club" },
+    ];
+    const jobs: JobRecord[] = [
+      {
+        id: "job-boca-course-1",
+        title: "Boca West Course 1 Renovation",
+        clientId: "client-boca-west-country-club",
+        clientName: "Boca West Country Club",
+        projectId: "project-boca-course-1",
+        projectName: "Boca West Course 1 Renovation",
+        status: "Active",
+      },
+    ];
+
+    const summary = buildDashboardSummary({ clients, jobs });
+
+    assert.deepEqual(summary.dataQualityQueue.map((item) => [item.severity, item.sourceType, item.title]), [
+      ["High", "job", "Boca West Course 1 Renovation"],
+    ]);
+    assert.match(summary.dataQualityQueue[0].detail, /cli-2275/);
+    assert.equal(summary.dataQualityQueue[0].targetTab, "tracker");
+  });
+
   it("derives quote-to-job pipeline counts from real records", () => {
     const clients: ClientRecord[] = [
       { id: "client-1", name: "Oak Lead", status: "Inquiry" },

@@ -43,9 +43,9 @@ export const appCollections = {
   scheduleTasks: { label: 'Schedule Tasks', primaryBoard: 'Calendar', importable: true, resetGroup: 'schedule' },
   alerts: { label: 'Alerts', primaryBoard: 'Alerts', resetGroup: 'alerts' },
   documents: { label: 'Documents', primaryBoard: 'Documents', importable: true, resetGroup: 'documents' },
-  syncSources: { label: 'Sync Sources', primaryBoard: 'Data Sync', resetGroup: 'sources' },
-  syncMappings: { label: 'Sync Mappings', primaryBoard: 'Data Sync', resetGroup: 'sources' },
-  importBatches: { label: 'Import Batches', primaryBoard: 'Data Sync', resetGroup: 'sources' },
+  syncSources: { label: 'Sync Sources', primaryBoard: 'Import / Backup', resetGroup: 'sources' },
+  syncMappings: { label: 'Sync Mappings', primaryBoard: 'Import / Backup', resetGroup: 'sources' },
+  importBatches: { label: 'Import Batches', primaryBoard: 'Import / Backup', resetGroup: 'sources' },
 } as const satisfies Record<string, AppCollectionDefinition>;
 
 export type AppCollectionName = keyof typeof appCollections;

@@ -132,7 +132,7 @@ const secondaryNav = [
   { id: 'maps', label: 'Maps', icon: MapPin },
   { id: 'reports', label: 'Reports', icon: BarChart2 },
   { id: 'documents', label: 'Documents', icon: Folder },
-  { id: 'sheets', label: 'Data Sync', icon: Database },
+  { id: 'sheets', label: 'Import / Backup', icon: Database },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -1346,7 +1346,13 @@ const commandAlertToneMap: Record<DashboardCommandAlert['tone'], string> = {
 
 const drawerBackedTypes = new Set(['job', 'project', 'freight', 'load', 'tree', 'equipment', 'employee', 'client']);
 
-function Dashboard({ recentRecords, dashboardSummary, openModal, openDrawer, setActiveTab }: any) {
+function dataQualitySeverityClass(severity: string) {
+  if (severity === 'High') return riskPillClass('critical');
+  if (severity === 'Medium') return riskPillClass('watch');
+  return riskPillClass('low');
+}
+
+export function Dashboard({ recentRecords, dashboardSummary, openModal, openDrawer, setActiveTab }: any) {
   const openOperation = (operation: FeaturedOperation) => {
     if (operation.recordId) {
       openDrawer(operation.drawerType, operation.recordId);
@@ -1372,6 +1378,13 @@ function Dashboard({ recentRecords, dashboardSummary, openModal, openDrawer, set
     }
     setActiveTab(item.targetTab);
   };
+  const openDataQualityItem = (item: any) => {
+    if (item.recordId && drawerBackedTypes.has(item.drawerType)) {
+      openDrawer(item.drawerType, item.recordId);
+      return;
+    }
+    setActiveTab(item.targetTab || 'reports');
+  };
 
   return (
     <div className="space-y-6">
@@ -1383,7 +1396,7 @@ function Dashboard({ recentRecords, dashboardSummary, openModal, openDrawer, set
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => openModal('job')} className="inline-flex items-center justify-center gap-2 rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white shadow-sm hover:bg-jdt-dark">
-            <Plus className="h-4 w-4" /> Add Record
+            <Plus className="h-4 w-4" /> Create Project
           </button>
           <button onClick={() => setActiveTab('calendar')} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-jdt-panel px-4 py-2.5 text-xs font-black uppercase text-jdt-text shadow-sm hover:bg-jdt-sand">
             <Calendar className="h-4 w-4" /> Calendar
@@ -1623,7 +1636,7 @@ function Dashboard({ recentRecords, dashboardSummary, openModal, openDrawer, set
         </div>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+      <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
         <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
             <div>
@@ -1631,7 +1644,7 @@ function Dashboard({ recentRecords, dashboardSummary, openModal, openDrawer, set
               <p className="text-xs font-bold text-zinc-500 mt-1">Your latest projects, loads, trees, and equipment</p>
             </div>
             <button onClick={() => openModal('job')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
-              Add Record
+              Create Project
             </button>
           </div>
 
@@ -1662,23 +1675,60 @@ function Dashboard({ recentRecords, dashboardSummary, openModal, openDrawer, set
           )}
         </section>
 
-        <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
-            <div>
-              <h3 className="text-sm font-black uppercase text-jdt-text">Owner Review Queue</h3>
-              <p className="mt-1 text-xs font-bold text-zinc-500">Blocked, urgent, or decision-ready items</p>
+        <div className="space-y-4">
+          <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
+              <div>
+                <h3 className="text-sm font-black uppercase text-jdt-text">Owner Review Queue</h3>
+                <p className="mt-1 text-xs font-bold text-zinc-500">Blocked, urgent, or decision-ready items</p>
+              </div>
             </div>
-          </div>
-          <WorkItemStack items={dashboardSummary.ownerReviewQueue} emptyTitle="No owner review items" emptyDetail="Blocked jobs, freight issues, service holds, and active alerts will collect here." onOpen={openWorkItem} />
-        </section>
+            <WorkItemStack items={dashboardSummary.ownerReviewQueue} emptyTitle="No owner review items" emptyDetail="Blocked jobs, freight issues, service holds, and active alerts will collect here." onOpen={openWorkItem} />
+          </section>
+
+          <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
+              <div>
+                <h3 className="text-sm font-black uppercase text-jdt-text">Data Quality Queue</h3>
+                <p className="mt-1 text-xs font-bold text-zinc-500">Client, project, work order, tree, freight, and import cleanup</p>
+              </div>
+              <button onClick={() => setActiveTab('reports')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
+                Reports
+              </button>
+            </div>
+            {dashboardSummary.dataQualityQueue?.length > 0 ? (
+              <div className="divide-y divide-jdt-border">
+                {dashboardSummary.dataQualityQueue.slice(0, 5).map((item: any) => (
+                  <button key={item.id} type="button" onClick={() => openDataQualityItem(item)} className="block w-full px-1 py-3 text-left hover:bg-jdt-sand/40">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black text-jdt-text">{item.title}</p>
+                        <p className="mt-1 line-clamp-2 text-[11px] font-bold text-zinc-500">{item.detail}</p>
+                      </div>
+                      <span className={`shrink-0 rounded border px-2 py-1 text-[9px] font-black uppercase ${dataQualitySeverityClass(item.severity)}`}>{item.severity}</span>
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-[10px] font-black uppercase text-jdt-olive">{item.recommendedAction}</p>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4">
+                <div className="rounded-xl border border-dashed border-jdt-border bg-white p-6 text-center">
+                  <p className="text-sm font-black text-jdt-text">No data quality issues detected</p>
+                  <p className="mx-auto mt-1 max-w-sm text-xs font-bold text-zinc-500">Client, project, work order, tree, freight, document, and import problems will collect here.</p>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
       </div>
 
       <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
         <h3 className="text-sm font-black uppercase text-jdt-text">Quick Actions</h3>
         <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          <button onClick={() => openModal('job')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Create project</button>
+          <button onClick={() => openModal('job')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Create Project</button>
           <button onClick={() => openModal('tree')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Add tree</button>
-          <button onClick={() => openModal('load')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Add freight load</button>
+          <button onClick={() => openModal('load')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Dispatch Freight Move</button>
           <button onClick={() => setActiveTab('maps')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Open tree map</button>
         </div>
       </section>

@@ -39,7 +39,7 @@ describe("command center data model", () => {
     assert.equal(appCollections.inventoryItems.primaryBoard, "Nursery");
     assert.equal(appCollections.projects.primaryBoard, "Clients");
     assert.equal(appCollections.scheduleTasks.primaryBoard, "Calendar");
-    assert.equal(appCollections.importBatches.primaryBoard, "Data Sync");
+    assert.equal(appCollections.importBatches.primaryBoard, "Import / Backup");
     assert.equal(appCollections.workOrders.label, "Work Orders");
     assert.equal(appCollections.workOrders.primaryBoard, "Command Board");
     assert.equal(appCollections.workOrders.resetGroup, "projects");

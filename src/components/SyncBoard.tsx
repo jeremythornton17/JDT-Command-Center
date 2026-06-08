@@ -233,8 +233,8 @@ export default function SyncBoard({
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-jdt-border pb-5">
         <div>
-          <h2 className="text-2xl font-black text-jdt-primary">Data Sync</h2>
-          <p className="text-sm font-bold text-zinc-500 mt-1">Use the JDT Command Center workbook as the single spreadsheet source of truth.</p>
+          <h2 className="text-2xl font-black text-jdt-primary">Import / Backup</h2>
+          <p className="text-sm font-bold text-zinc-500 mt-1">Use the JDT Command Center workbook for bulk entry, imports, and backup exports.</p>
         </div>
         <button
           type="button"
