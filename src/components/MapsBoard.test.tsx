@@ -41,9 +41,9 @@ describe("MapsBoard relocation pin editing", () => {
     assert.match(html, /Map View/);
     assert.match(html, /Earth View/);
     assert.match(html, /All Saved Locations/);
-    assert.match(html, /Google Maps Link \/ Pin/);
-    assert.match(html, /Save Site Location/);
-    assert.match(html, /Load \/ Unload Pin/);
+    assert.match(html, /Add Pin/);
+    assert.doesNotMatch(html, /Google Maps Link \/ Pin/);
+    assert.doesNotMatch(html, /Save Site Location/);
     assert.doesNotMatch(html, /Tree Pin List/);
     assert.doesNotMatch(html, /Active Tree/);
     assert.doesNotMatch(html, /Pin Editor/);
@@ -96,6 +96,7 @@ describe("MapsBoard relocation pin editing", () => {
     assert.match(html, /Manual pins are the active project record/);
     assert.match(html, /Saved Site Locations/);
     assert.match(html, /Project Pins/);
+    assert.match(html, /Add Pin/);
     assert.doesNotMatch(html, /Google Earth Project Map/);
     assert.doesNotMatch(html, /Download KML/);
     assert.doesNotMatch(html, /Open Google Earth/);
@@ -166,5 +167,84 @@ describe("MapsBoard relocation pin editing", () => {
     assert.match(html, /Preview Imported Tree Pins/);
     assert.match(html, /Save Imported Tree Pins/);
     assert.doesNotMatch(html, /Select a relocation project before saving imported tree pins/);
+  });
+
+  it("shows selected project profile addresses and saved pins as editable map locations", () => {
+    const html = renderToString(
+      <MapsBoard
+        initialSelectedJobId="job-waterford"
+        jobs={[
+          {
+            id: "job-waterford",
+            title: "The Waterford",
+            division: "Relocation & Installation",
+            projectId: "project-waterford",
+            projectName: "The Waterford",
+            clientName: "Waterford",
+            location: "Palm Beach Gardens, FL",
+            crewAccessAddress: "Waterford crew gate from Hood Road",
+            truckAccessAddress: "Waterford truck entrance",
+            loadUnloadPin: "26.85703076,-80.05794282",
+          },
+        ]}
+        initialSavedLocations={[
+          {
+            id: "location-project-waterford-load-unload-pin-waterford-practice-green-load-zone",
+            name: "Waterford practice green load zone",
+            title: "Waterford practice green load zone",
+            locationType: "Load / Unload Pin",
+            accessType: "Load / Unload Pin",
+            sourceText: "26.85715,-80.05811",
+            coordinateText: "26.85715, -80.05811",
+            latitude: 26.85715,
+            longitude: -80.05811,
+            projectId: "project-waterford",
+            jobId: "job-waterford",
+            divisionUse: ["Relocation & Installation", "Freight"],
+          },
+        ]}
+        ranchOaks={[]}
+        treeRelocationRecords={[]}
+        onUpdateTreeLocation={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Saved Site Locations/);
+    assert.match(html, /Project Pins/);
+    assert.match(html, /Waterford crew gate from Hood Road/);
+    assert.match(html, /Waterford practice green load zone/);
+    assert.match(html, /Load \/ Unload Pin/);
+    assert.match(html, /Edit Pin/);
+    assert.match(html, /Adjust Pin/);
+    assert.match(html, /Focus/);
+    assert.match(html, /Open Maps/);
+  });
+
+  it("opens the add pin form with selected project context when requested", () => {
+    const html = renderToString(
+      <MapsBoard
+        initialSelectedJobId="job-waterford"
+        initialAddPinOpen
+        jobs={[
+          {
+            id: "job-waterford",
+            title: "The Waterford",
+            division: "Relocation & Installation",
+            projectId: "project-waterford",
+            projectName: "The Waterford",
+            clientName: "Waterford",
+          },
+        ]}
+        ranchOaks={[]}
+        treeRelocationRecords={[]}
+        onUpdateTreeLocation={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Add Project Pin/);
+    assert.match(html, /Saved to The Waterford/);
+    assert.match(html, /Click the map, paste a Google Maps link, enter lat\/long, or paste a street address/);
+    assert.match(html, /Location Label/);
+    assert.match(html, /Save Site Location/);
   });
 });

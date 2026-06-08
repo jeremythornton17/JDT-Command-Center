@@ -7,6 +7,8 @@ import {
   Globe2,
   LocateFixed,
   MapPin,
+  Pencil,
+  Plus,
   Route,
   Save,
   Target,
@@ -67,11 +69,73 @@ const siteLocationDivisionOptions = ['Relocation & Installation', 'Crew', 'Freig
 
 type MapViewMode = 'map' | 'earth';
 
+const profileSiteLocationFields: Array<{ key: string; accessType: SiteLocationAccessType; label: string }> = [
+  { key: 'location', accessType: 'Main Jobsite Address', label: 'Main Jobsite Address' },
+  { key: 'mainAddress', accessType: 'Main Jobsite Address', label: 'Main Jobsite Address' },
+  { key: 'siteAddress', accessType: 'Main Jobsite Address', label: 'Main Jobsite Address' },
+  { key: 'jobsiteAddress', accessType: 'Main Jobsite Address', label: 'Main Jobsite Address' },
+  { key: 'crewAccessAddress', accessType: 'Crew Access', label: 'Crew Access' },
+  { key: 'truckAccessAddress', accessType: 'Truck / Equipment Access', label: 'Truck / Equipment Access' },
+  { key: 'constructionAccessPin', accessType: 'Construction / Equipment Access Pin', label: 'Construction / Equipment Access Pin' },
+  { key: 'loadUnloadPin', accessType: 'Load / Unload Pin', label: 'Load / Unload Pin' },
+  { key: 'secondaryLoadUnloadPin', accessType: 'Additional Load / Unload Pin', label: 'Additional Load / Unload Pin' },
+];
+
 function applyGoogleMapViewMode(map: any, maps: any, mode: MapViewMode) {
   if (!map || !maps) return;
   map.setMapTypeId(mode === 'earth' ? maps.MapTypeId.SATELLITE : maps.MapTypeId.ROADMAP);
   if (typeof map.setTilt === 'function') map.setTilt(mode === 'earth' ? 45 : 0);
   if (typeof map.setHeading === 'function') map.setHeading(0);
+}
+
+function profileJobTitle(job: any) {
+  return String(job?.projectName || job?.title || job?.jobName || job?.name || 'Project').trim();
+}
+
+function buildProfileSiteLocations(jobs: any[] = []) {
+  return jobs.flatMap((job) => {
+    const title = profileJobTitle(job);
+    const seenValues = new Set<string>();
+    return profileSiteLocationFields.flatMap((field) => {
+      const sourceText = String(job?.[field.key] || '').trim();
+      const valueKey = `${field.accessType}|${sourceText}`.toLowerCase();
+      if (!sourceText || seenValues.has(valueKey)) return [];
+      seenValues.add(valueKey);
+      return buildSavedSiteLocationRecord({
+        label: `${title} ${field.label}`,
+        accessType: field.accessType,
+        sourceText,
+        job,
+        divisionUse: field.accessType === 'Main Jobsite Address'
+          ? ['Relocation & Installation', 'Crew', 'Freight', 'Equipment']
+          : ['Relocation & Installation', 'Freight', 'Equipment'],
+        savedBy: 'Project Profile',
+        savedAt: String(job?.updatedAtIso || job?.createdAtIso || 'Project Profile'),
+      });
+    });
+  });
+}
+
+function mergeSavedLocationRecords(locations: any[] = []) {
+  const merged = new Map<string, any>();
+  locations.forEach((location) => {
+    const key = String(location?.id || `${location?.projectId || location?.jobId || 'general'}|${location?.locationType || location?.accessType}|${location?.name || location?.title}|${location?.sourceText || location?.mainAddress}`).toLowerCase();
+    if (!key) return;
+    merged.set(key, { ...merged.get(key), ...location });
+  });
+  return [...merged.values()];
+}
+
+function sourceTextForSiteLocation(location: any) {
+  return String(
+    location?.sourceText
+      || location?.googleMapsUrl
+      || location?.coordinateText
+      || location?.mainAddress
+      || location?.locationAddress
+      || location?.address
+      || '',
+  ).trim();
 }
 
 type MapsBoardProps = {
@@ -84,6 +148,8 @@ type MapsBoardProps = {
   onImportTreePins?: (records: any[]) => boolean | void | Promise<boolean | void>;
   initialKmlImportOpen?: boolean;
   initialSelectedJobId?: string;
+  initialSavedLocations?: any[];
+  initialAddPinOpen?: boolean;
 };
 
 type SelectedPin = {
@@ -100,10 +166,13 @@ export default function MapsBoard({
   openDrawer,
   initialKmlImportOpen = false,
   initialSelectedJobId = 'all',
+  initialSavedLocations,
+  initialAddPinOpen = false,
 }: MapsBoardProps) {
   const { user } = useAuth();
   const [syncedRanchOaks, setSyncedRanchOaks] = useFirestoreSyncState<any>('ranchOaks', [], !!user && !ranchOaks);
-  const [savedLocations, setSavedLocations] = useFirestoreSyncState<any>('locations', [], !!user);
+  const [syncedSavedLocations, setSavedLocations] = useFirestoreSyncState<any>('locations', [], !!user);
+  const savedLocations = initialSavedLocations ?? syncedSavedLocations;
   const treeRecords = useMemo(
     () => mergeMapTreeRecords(ranchOaks ?? syncedRanchOaks ?? [], treeRelocationRecords),
     [ranchOaks, syncedRanchOaks, treeRelocationRecords],
@@ -132,17 +201,21 @@ export default function MapsBoard({
   const [kmlImportText, setKmlImportText] = useState('');
   const [kmlImportFileName, setKmlImportFileName] = useState('');
   const [kmlImportStatus, setKmlImportStatus] = useState('');
+  const [isSiteLocationFormOpen, setIsSiteLocationFormOpen] = useState(Boolean(initialAddPinOpen));
+  const [editingSiteLocationId, setEditingSiteLocationId] = useState<string | null>(null);
   const googleMapRef = useRef<HTMLDivElement | null>(null);
   const googleMapInstanceRef = useRef<any>(null);
   const googleMarkerRefs = useRef<any[]>([]);
   const lastFocusedJobTargetRef = useRef('');
   const pinModeRef = useRef<TreeRelocationPointType | null>(pinMode);
   const selectedTreeIdRef = useRef<string | null>(selectedTreeId);
+  const isSiteLocationFormOpenRef = useRef(Boolean(initialAddPinOpen));
 
   useEffect(() => {
     pinModeRef.current = pinMode;
     selectedTreeIdRef.current = selectedTreeId;
-  }, [pinMode, selectedTreeId]);
+    isSiteLocationFormOpenRef.current = isSiteLocationFormOpen;
+  }, [pinMode, selectedTreeId, isSiteLocationFormOpen]);
 
   useEffect(() => {
     const selectedStillVisible = filteredTreeRecords.some(tree => tree.treeId === selectedTreeId || tree.id === selectedTreeId);
@@ -167,9 +240,16 @@ export default function MapsBoard({
   const selectedPinPoint = selectedPin
     ? selectedTree?.relocationMap?.[selectedPin.pointType]
     : undefined;
+  const profileSiteLocations = useMemo(
+    () => buildProfileSiteLocations(isAllLocationsView ? jobs : selectedJob ? [selectedJob] : []),
+    [isAllLocationsView, jobs, selectedJob],
+  );
   const scopedSavedLocations = useMemo(
-    () => filterSavedSiteLocationsForJob(savedLocations, selectedJob),
-    [savedLocations, selectedJob],
+    () => mergeSavedLocationRecords([
+      ...profileSiteLocations,
+      ...filterSavedSiteLocationsForJob(savedLocations, selectedJob),
+    ]),
+    [profileSiteLocations, savedLocations, selectedJob],
   );
   const [siteLocationForm, setSiteLocationForm] = useState({
     label: '',
@@ -264,12 +344,22 @@ export default function MapsBoard({
           });
 
           googleMapInstanceRef.current.addListener('click', (event: any) => {
-            if (!event.latLng || !pinModeRef.current || !selectedTreeIdRef.current) return;
-            markTreePoint(selectedTreeIdRef.current, pinModeRef.current, {
-              lat: event.latLng.lat(),
-              lng: event.latLng.lng(),
-              label: pinModeRef.current === 'source' ? 'Field source pin' : 'Relocation destination pin',
-            });
+            if (!event.latLng) return;
+            if (pinModeRef.current && selectedTreeIdRef.current) {
+              markTreePoint(selectedTreeIdRef.current, pinModeRef.current, {
+                lat: event.latLng.lat(),
+                lng: event.latLng.lng(),
+                label: pinModeRef.current === 'source' ? 'Field source pin' : 'Relocation destination pin',
+              });
+              return;
+            }
+            if (isSiteLocationFormOpenRef.current) {
+              setSiteLocationSourceFromMapPoint({
+                lat: event.latLng.lat(),
+                lng: event.latLng.lng(),
+                label: 'Map-selected project pin',
+              });
+            }
           });
         }
 
@@ -391,15 +481,30 @@ export default function MapsBoard({
     setPinMode(null);
   };
 
+  const setSiteLocationSourceFromMapPoint = (point: TreeRelocationPoint) => {
+    const coordinateText = `${Number(point.lat).toFixed(6)}, ${Number(point.lng).toFixed(6)}`;
+    setSiteLocationForm((prev) => ({ ...prev, sourceText: coordinateText }));
+    setFieldStatus(`Project pin point selected at ${formatTreeCoordinate(point)}. Add a clear label and save it to this map.`);
+  };
+
   const handleFallbackMapClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * 100;
+    const y = ((event.clientY - rect.top) / rect.height) * 100;
+
+    if (isSiteLocationFormOpen && !pinMode) {
+      setSiteLocationSourceFromMapPoint({
+        ...mapPercentToLatLng(x, y),
+        label: 'Fallback map project pin',
+      });
+      return;
+    }
+
     if (!selectedTree || !pinMode) {
       setFieldStatus('Select a tree and choose Source or Destination before marking the map.');
       return;
     }
 
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * 100;
-    const y = ((event.clientY - rect.top) / rect.height) * 100;
     markTreePoint(selectedTree.treeId || selectedTree.id, pinMode, {
       ...mapPercentToLatLng(x, y),
       label: pinMode === 'source' ? `${selectedTree.farm || selectedTree.existingLocationDescription || 'Field'} ${selectedTree.zone || ''}`.trim() : 'Relocation destination',
@@ -440,6 +545,36 @@ export default function MapsBoard({
     });
   };
 
+  const openAddPinForm = () => {
+    setIsSiteLocationFormOpen(true);
+    setEditingSiteLocationId(null);
+    setSiteLocationForm({
+      label: '',
+      accessType: 'Load / Unload Pin',
+      sourceText: '',
+      divisionUse: ['Relocation & Installation', 'Freight', 'Equipment'],
+    });
+    setFieldStatus(selectedJob
+      ? `Add Pin mode is active for ${profileJobTitle(selectedJob)}. Click the map, paste a Google Maps link, enter lat/long, or paste a street address.`
+      : 'Add Pin mode is active for the JDT map library. Click the map, paste a Google Maps link, enter lat/long, or paste a street address.');
+  };
+
+  const editSavedLocation = (location: any, adjustMode = false) => {
+    setIsSiteLocationFormOpen(true);
+    setEditingSiteLocationId(String(location.id || ''));
+    setSiteLocationForm({
+      label: String(location.name || location.title || '').trim(),
+      accessType: String(location.accessType || location.locationType || 'Load / Unload Pin') as SiteLocationAccessType,
+      sourceText: sourceTextForSiteLocation(location),
+      divisionUse: Array.isArray(location.divisionUse) && location.divisionUse.length > 0
+        ? location.divisionUse
+        : ['Relocation & Installation', 'Freight', 'Equipment'],
+    });
+    setFieldStatus(adjustMode
+      ? `Adjusting ${location.name || location.title || 'saved pin'}. Click the map or paste a new Google Maps pin, then save.`
+      : `Editing ${location.name || location.title || 'saved pin'}. Update the label, type, divisions, or map pin and save.`);
+  };
+
   const saveSiteLocation = async () => {
     const sourceText = siteLocationForm.sourceText.trim();
     const label = siteLocationForm.label.trim();
@@ -452,7 +587,7 @@ export default function MapsBoard({
       return;
     }
 
-    const record = buildSavedSiteLocationRecord({
+    const builtRecord = buildSavedSiteLocationRecord({
       label,
       accessType: siteLocationForm.accessType,
       sourceText,
@@ -460,6 +595,7 @@ export default function MapsBoard({
       divisionUse: siteLocationForm.divisionUse,
       savedBy: user?.email || 'Command Center',
     });
+    const record = editingSiteLocationId ? { ...builtRecord, id: editingSiteLocationId } : builtRecord;
 
     const saved = await setSavedLocations((prev) => {
       const existing = prev.find((item) => item.id === record.id);
@@ -478,6 +614,8 @@ export default function MapsBoard({
     }
 
     setSiteLocationForm((prev) => ({ ...prev, label: '', sourceText: '' }));
+    setEditingSiteLocationId(null);
+    setIsSiteLocationFormOpen(false);
     setFieldStatus(`Saved ${record.name} as ${record.locationType}${selectedJob ? ` for ${selectedJob.title || selectedJob.projectName || 'this project'}` : ''}.`);
   };
 
@@ -910,15 +1048,24 @@ export default function MapsBoard({
                   ))}
                 </select>
               </label>
-              {selectedJob && openDrawer && (
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => openDrawer('job', selectedJob.id || selectedJob.jobId || selectedJob.projectId)}
-                  className="rounded-lg border border-jdt-border bg-white px-4 py-2 text-xs font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                  onClick={openAddPinForm}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-jdt-primary px-4 py-2 text-xs font-black uppercase text-white hover:bg-jdt-dark"
                 >
-                  Open Job
+                  <Plus className="h-4 w-4" /> Add Pin
                 </button>
-              )}
+                {selectedJob && openDrawer && (
+                  <button
+                    type="button"
+                    onClick={() => openDrawer('job', selectedJob.id || selectedJob.jobId || selectedJob.projectId)}
+                    className="rounded-lg border border-jdt-border bg-white px-4 py-2 text-xs font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                  >
+                    Open Job
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1015,67 +1162,99 @@ export default function MapsBoard({
 
           {showSavedLocationsPanel && (
             <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
-            <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5 mb-3"><MapPin className="h-4 w-4 text-amber-700" /> {savedLocationsTitle}</h3>
-            <div className="space-y-3">
-              <label className="block">
-                <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1">Location Label</span>
-                <input
-                  value={siteLocationForm.label}
-                  onChange={(event) => setSiteLocationForm((prev) => ({ ...prev, label: event.target.value }))}
-                  placeholder="25 Acre east equipment gate"
-                  className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-bold text-jdt-text outline-none focus:border-jdt-olive"
-                />
-              </label>
-              <label className="block">
-                <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1">Location Type</span>
-                <select
-                  value={siteLocationForm.accessType}
-                  onChange={(event) => setSiteLocationForm((prev) => ({ ...prev, accessType: event.target.value }))}
-                  className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-bold text-jdt-text outline-none focus:border-jdt-olive"
-                >
-                  {siteLocationAccessTypes.map((type) => <option key={type} value={type}>{type}</option>)}
-                </select>
-              </label>
-              <div>
-                <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1">Division Use</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {siteLocationDivisionOptions.map((division) => {
-                    const selected = siteLocationForm.divisionUse.includes(division);
-                    return (
-                      <button
-                        key={division}
-                        type="button"
-                        onClick={() => toggleSiteLocationDivision(division)}
-                        className={`rounded-md border px-2 py-1 text-[9px] font-black uppercase ${selected ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-white text-zinc-600'}`}
-                      >
-                        {division}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <label className="block">
-                <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1">Google Maps Link / Pin</span>
-                <textarea
-                  value={siteLocationForm.sourceText}
-                  onChange={(event) => setSiteLocationForm((prev) => ({ ...prev, sourceText: event.target.value }))}
-                  placeholder="Paste Google Maps link, lat/long, or address"
-                  rows={3}
-                  className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-bold text-jdt-text outline-none focus:border-jdt-olive"
-                />
-              </label>
-              <div className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[11px] font-bold text-zinc-500">
-                <span className="font-black uppercase text-zinc-400">Parsed Pin: </span>
-                {parsedSiteLocation ? `${parsedSiteLocation.lat.toFixed(5)}, ${parsedSiteLocation.lng.toFixed(5)}` : 'No coordinates detected yet'}
-              </div>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5"><MapPin className="h-4 w-4 text-amber-700" /> {savedLocationsTitle}</h3>
               <button
                 type="button"
-                onClick={saveSiteLocation}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark"
+                onClick={openAddPinForm}
+                className="inline-flex items-center gap-1.5 rounded-md border border-jdt-border bg-white px-2.5 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
               >
-                <Save className="h-4 w-4" /> Save Site Location
+                <Plus className="h-3.5 w-3.5" /> Add Pin
               </button>
             </div>
+            {isSiteLocationFormOpen && (
+              <div className="mb-4 space-y-3 rounded-lg border border-jdt-border bg-jdt-sand/30 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] font-black uppercase text-jdt-text">{editingSiteLocationId ? 'Edit Project Pin' : 'Add Project Pin'}</p>
+                    <p className="mt-1 text-[11px] font-bold text-zinc-500">
+                      {selectedJob ? `Saved to ${profileJobTitle(selectedJob)}` : 'Saved to All JD Thornton Locations'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSiteLocationFormOpen(false);
+                      setEditingSiteLocationId(null);
+                    }}
+                    className="rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-zinc-500 hover:border-jdt-olive"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <p className="rounded-md border border-jdt-border bg-white px-3 py-2 text-[11px] font-bold text-zinc-500">
+                  Click the map, paste a Google Maps link, enter lat/long, or paste a street address.
+                </p>
+                <label className="block">
+                  <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1">Location Label</span>
+                  <input
+                    value={siteLocationForm.label}
+                    onChange={(event) => setSiteLocationForm((prev) => ({ ...prev, label: event.target.value }))}
+                    placeholder="25 Acre east equipment gate"
+                    className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                  />
+                </label>
+                <label className="block">
+                  <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1">Location Type</span>
+                  <select
+                    value={siteLocationForm.accessType}
+                    onChange={(event) => setSiteLocationForm((prev) => ({ ...prev, accessType: event.target.value }))}
+                    className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                  >
+                    {siteLocationAccessTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                </label>
+                <div>
+                  <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1">Division Use</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {siteLocationDivisionOptions.map((division) => {
+                      const selected = siteLocationForm.divisionUse.includes(division);
+                      return (
+                        <button
+                          key={division}
+                          type="button"
+                          onClick={() => toggleSiteLocationDivision(division)}
+                          className={`rounded-md border px-2 py-1 text-[9px] font-black uppercase ${selected ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-white text-zinc-600'}`}
+                        >
+                          {division}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <label className="block">
+                  <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1">Google Maps Link / Pin</span>
+                  <textarea
+                    value={siteLocationForm.sourceText}
+                    onChange={(event) => setSiteLocationForm((prev) => ({ ...prev, sourceText: event.target.value }))}
+                    placeholder="Paste Google Maps link, lat/long, or address"
+                    rows={3}
+                    className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                  />
+                </label>
+                <div className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[11px] font-bold text-zinc-500">
+                  <span className="font-black uppercase text-zinc-400">Parsed Pin: </span>
+                  {parsedSiteLocation ? `${parsedSiteLocation.lat.toFixed(5)}, ${parsedSiteLocation.lng.toFixed(5)}` : 'No coordinates detected yet'}
+                </div>
+                <button
+                  type="button"
+                  onClick={saveSiteLocation}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark"
+                >
+                  <Save className="h-4 w-4" /> Save Site Location
+                </button>
+              </div>
+            )}
 
             <div className="mt-4 border-t border-jdt-border pt-3">
               <div className="mb-2 flex items-center justify-between gap-2">
@@ -1098,7 +1277,7 @@ export default function MapsBoard({
                       {Array.isArray(location.divisionUse) && location.divisionUse.length > 0 && (
                         <p className="mt-1 text-[10px] font-bold text-zinc-400">{location.divisionUse.join(' / ')}</p>
                       )}
-                      <div className="mt-3 flex gap-2">
+                      <div className="mt-3 grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={(event) => {
@@ -1118,6 +1297,26 @@ export default function MapsBoard({
                           className="flex-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
                         >
                           Open Maps
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            editSavedLocation(location);
+                          }}
+                          className="flex items-center justify-center gap-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> Edit Pin
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            editSavedLocation(location, true);
+                          }}
+                          className="flex items-center justify-center gap-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                        >
+                          <Crosshair className="h-3.5 w-3.5" /> Adjust Pin
                         </button>
                       </div>
                     </div>
