@@ -16,6 +16,7 @@ import type {
   TreeRelocationRecord,
   WorkOrderRecord,
 } from "./records";
+import { buildOperatingCalendar, type OperatingCalendarConflict } from "./calendar";
 import { buildComplianceReviewQueue, type ComplianceReviewItem } from "./compliance";
 import {
   buildDataQualityActionQueue,
@@ -84,6 +85,7 @@ export type DashboardSummary = {
   workflowReadinessQueue: WorkflowReadinessIssue[];
   fieldCloseoutReviewQueue: FieldCloseoutReviewItem[];
   complianceReviewQueue: ComplianceReviewItem[];
+  resourceConflictQueue: OperatingCalendarConflict[];
   projectRisks: ProjectRiskScore[];
   todaySchedule: DashboardWorkItem[];
   tomorrowQueue: DashboardWorkItem[];
@@ -396,6 +398,15 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
   const workflowReadinessQueue = buildWorkflowReadinessQueue(intelligenceInput);
   const fieldCloseoutReviewQueue = buildFieldCloseoutReviewQueue(fieldUpdates);
   const complianceReviewQueue = buildComplianceReviewQueue({ crew, equipment, todayIso });
+  const resourceConflictQueue = buildOperatingCalendar({
+    jobs,
+    loads,
+    workOrders,
+    scheduleTasks,
+    treeRelocationRecords,
+    equipment,
+    todayIso,
+  }).conflicts.slice(0, 8);
   const projectRisks = buildProjectRiskScores(intelligenceInput);
   const treeLifecycleAlerts = buildTreeLifecycleAlerts({ trees: treeRelocationRecords, jobs, workOrders, todayIso });
   const todaySchedule = buildTodaySchedule(jobs, loads, scheduleTasks);
@@ -609,6 +620,7 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
     workflowReadinessQueue,
     fieldCloseoutReviewQueue,
     complianceReviewQueue,
+    resourceConflictQueue,
     projectRisks,
     todaySchedule,
     tomorrowQueue,

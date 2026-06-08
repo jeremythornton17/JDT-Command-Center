@@ -1795,6 +1795,45 @@ export function Dashboard({ recentRecords, dashboardSummary, openModal, openDraw
           <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
             <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
               <div>
+                <h3 className="text-sm font-black uppercase text-jdt-text">Resource Conflicts</h3>
+                <p className="mt-1 text-xs font-bold text-zinc-500">Double-booked crew, drivers, trucks, trailers, or equipment from the operating calendar</p>
+              </div>
+              <button onClick={() => setActiveTab('calendar')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
+                Calendar
+              </button>
+            </div>
+            {dashboardSummary.resourceConflictQueue?.length > 0 ? (
+              <div className="divide-y divide-jdt-border">
+                {dashboardSummary.resourceConflictQueue.slice(0, 5).map((conflict: any) => {
+                  const assignmentLabel = conflict.eventTitles.join(' / ');
+                  const resourceMeta = `${conflict.dateIso} / ${conflict.resourceKind}`;
+                  return (
+                    <button key={conflict.id} type="button" onClick={() => setActiveTab('calendar')} className="block w-full px-1 py-3 text-left hover:bg-jdt-sand/40">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-jdt-text">{conflict.resourceLabel}</p>
+                          <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{resourceMeta}</p>
+                        </div>
+                        <span className={`shrink-0 rounded border px-2 py-1 text-[9px] font-black uppercase ${riskPillClass('critical')}`}>Double Booked</span>
+                      </div>
+                      <p className="mt-2 line-clamp-2 text-[10px] font-black uppercase text-jdt-olive">{assignmentLabel}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-4">
+                <div className="rounded-xl border border-dashed border-jdt-border bg-white p-6 text-center">
+                  <p className="text-sm font-black text-jdt-text">No resource conflicts detected</p>
+                  <p className="mx-auto mt-1 max-w-sm text-xs font-bold text-zinc-500">Calendar double-bookings will collect here before the schedule goes out.</p>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
+              <div>
                 <h3 className="text-sm font-black uppercase text-jdt-text">Workflow Readiness</h3>
                 <p className="mt-1 text-xs font-bold text-zinc-500">Required details missing before dispatch, closeout, or review</p>
               </div>

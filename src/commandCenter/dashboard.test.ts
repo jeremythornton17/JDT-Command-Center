@@ -153,6 +153,36 @@ describe("command board dashboard summary", () => {
     ]);
   });
 
+  it("surfaces schedule resource conflicts for command board planning", () => {
+    const loads: LoadRecord[] = [
+      {
+        id: "load-boca-equipment",
+        title: "Boca West equipment move",
+        driver: "Christian Crespo",
+        truck: "Semi #1",
+        trailer: "Black Lowboy",
+        pickupDate: "2026-06-05",
+        status: "Scheduled",
+      },
+      {
+        id: "load-waterford-trees",
+        title: "Waterford tree delivery",
+        driver: "Christian Crespo",
+        truck: "Semi #1",
+        trailer: "Dropdeck",
+        pickupDate: "2026-06-05",
+        status: "Scheduled",
+      },
+    ];
+
+    const summary = buildDashboardSummary({ loads, todayIso: "2026-06-04" });
+
+    assert.deepEqual(summary.resourceConflictQueue.map((item) => [item.resourceLabel, item.resourceKind, item.dateIso, item.eventTitles]), [
+      ["Christian Crespo", "driver", "2026-06-05", ["Boca West equipment move", "Waterford tree delivery"]],
+      ["Semi #1", "truck", "2026-06-05", ["Boca West equipment move", "Waterford tree delivery"]],
+    ]);
+  });
+
   it("surfaces tree lifecycle reminders on the command board", () => {
     const jobs: JobRecord[] = [
       {
