@@ -365,6 +365,13 @@ export type FieldUpdateRecord = CommandRecord & {
   fieldStatus?: string;
   locationName?: string;
   locationDetail?: string;
+  closeoutDate?: string;
+  workCompleted?: string;
+  treeTagText?: string;
+  issueSummary?: string;
+  tomorrowPlan?: string;
+  photoNotes?: string;
+  adminReviewStatus?: 'Needs Review' | 'Ready for Review' | 'Reviewed' | string;
   needsAdminReview?: boolean;
 };
 

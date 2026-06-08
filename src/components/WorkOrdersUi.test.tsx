@@ -861,6 +861,13 @@ describe("work order UI wiring", () => {
     assert.match(html, /Arrived/);
     assert.match(html, /Need Help/);
     assert.match(html, /Complete/);
+    assert.match(html, /Daily Closeout/);
+    assert.match(html, /Work Completed/);
+    assert.match(html, /Tree Tags \/ Materials/);
+    assert.match(html, /GPS \/ Location Note/);
+    assert.match(html, /Issues \/ Delays/);
+    assert.match(html, /Tomorrow Plan/);
+    assert.match(html, /Submit Closeout/);
     assert.match(html, /Latest Crew Updates/);
   });
 

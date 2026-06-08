@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ClipboardList, Clock, MapPin, MessageSquare, Truck, UserCheck, Wrench } from 'lucide-react';
 import { equipmentDisplayName } from '../commandCenter/equipmentFreight';
+import { buildCrewCloseoutPrompts, buildDailyCloseoutUpdate, recordMatchesCrew } from '../commandCenter/fieldCloseout';
 import type { CrewRecord, EquipmentRecord, FieldUpdateRecord, JobRecord, LoadRecord, WorkOrderRecord } from '../commandCenter/records';
 import { categoryAccentBorderClass, riskSurfaceClass, statusPillClass } from '../commandCenter/visualLanguage';
 
@@ -33,29 +34,6 @@ function normalize(value: unknown) {
 
 function displayName(member: CrewRecord) {
   return member.name || member.email || member.id || 'Crew member';
-}
-
-function recordMatchesCrew(record: Record<string, unknown>, member: CrewRecord) {
-  const memberId = normalize(member.id || member.email || member.name);
-  const memberName = normalize(member.name);
-  const memberEmail = normalize(member.email);
-  const scalarValues = [
-    record.driver,
-    record.assignee,
-    record.crew,
-    record.pm,
-    record.operator,
-    record.crewLeadName,
-    record.assignedCrewName,
-    record.assignedDriverName,
-  ].map(normalize);
-  const arrayValues = [
-    ...(Array.isArray(record.assignedCrewIds) ? record.assignedCrewIds : []),
-    ...(Array.isArray(record.assignedCrewNames) ? record.assignedCrewNames : []),
-  ].map(normalize);
-  const allValues = [...scalarValues, ...arrayValues];
-
-  return allValues.some((value) => value && (value === memberId || value === memberName || value === memberEmail));
 }
 
 function assignmentEquipmentNames(load: LoadRecord, equipment: EquipmentRecord[]) {
@@ -99,6 +77,12 @@ export default function CrewViewBoard({
   const matchedCrew = sortedCrews.find((member) => normalize(member.email) === normalize(currentUserEmail));
   const [selectedCrewId, setSelectedCrewId] = useState(matchedCrew?.id || sortedCrews[0]?.id || sortedCrews[0]?.email || '');
   const [notes, setNotes] = useState('');
+  const [workCompleted, setWorkCompleted] = useState('');
+  const [treeTagText, setTreeTagText] = useState('');
+  const [locationDetail, setLocationDetail] = useState('');
+  const [issueSummary, setIssueSummary] = useState('');
+  const [tomorrowPlan, setTomorrowPlan] = useState('');
+  const [photoNotes, setPhotoNotes] = useState('');
   const selectedCrew = sortedCrews.find((member) => (member.id || member.email || displayName(member)) === selectedCrewId) || matchedCrew || sortedCrews[0];
 
   const assignments = useMemo<AssignmentRecord[]>(() => {
@@ -143,6 +127,14 @@ export default function CrewViewBoard({
     return [...loadAssignments, ...workOrderAssignments, ...jobAssignments];
   }, [jobs, loads, selectedCrew, workOrders]);
 
+  const closeoutPrompts = useMemo(() => buildCrewCloseoutPrompts({
+    crew: selectedCrew,
+    loads,
+    workOrders,
+    jobs,
+    fieldUpdates,
+  }), [fieldUpdates, jobs, loads, selectedCrew, workOrders]);
+
   const selectedCrewUpdates = fieldUpdates.filter((update) => normalize(update.crewName) === normalize(selectedCrew?.name) || normalize(update.crewId) === normalize(selectedCrew?.id));
 
   const submitUpdate = (assignment: AssignmentRecord, fieldStatus: string) => {
@@ -164,6 +156,33 @@ export default function CrewViewBoard({
       status: statusNeedsAdmin(fieldStatus) ? 'Needs Review' : 'Submitted',
     });
     setNotes('');
+  };
+
+  const submitCloseout = (assignment: AssignmentRecord) => {
+    if (!selectedCrew || !canSubmitFieldUpdates) return;
+
+    onSaveFieldUpdate(buildDailyCloseoutUpdate({
+      crew: selectedCrew,
+      assignment: {
+        id: assignment.id,
+        type: assignment.type,
+        title: assignment.title,
+        source: assignment.source,
+      },
+      workCompleted,
+      treeTagText,
+      locationDetail,
+      issueSummary,
+      tomorrowPlan,
+      photoNotes,
+      userEmail: currentUserEmail,
+    }));
+    setWorkCompleted('');
+    setTreeTagText('');
+    setLocationDetail('');
+    setIssueSummary('');
+    setTomorrowPlan('');
+    setPhotoNotes('');
   };
 
   return (
@@ -212,6 +231,71 @@ export default function CrewViewBoard({
                   className="h-20 w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-jdt-olive"
                 />
               </label>
+              <div className="mt-4 border-t border-jdt-border pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wide text-zinc-500">Daily Closeout</p>
+                    <p className="mt-0.5 text-xs font-bold text-zinc-500">Capture completed work, tags/materials, location proof, issues, and tomorrow handoff notes.</p>
+                  </div>
+                  <span className="rounded-md border border-jdt-border bg-white px-2.5 py-1 text-[10px] font-black uppercase text-jdt-primary">{closeoutPrompts.filter((prompt) => prompt.closeoutStatus === 'Needs Closeout').length} open</span>
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-zinc-500">Work Completed</span>
+                    <textarea
+                      value={workCompleted}
+                      onChange={(event) => setWorkCompleted(event.target.value)}
+                      placeholder="What actually got done today"
+                      className="h-16 w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-zinc-500">Tree Tags / Materials</span>
+                    <textarea
+                      value={treeTagText}
+                      onChange={(event) => setTreeTagText(event.target.value)}
+                      placeholder="Tree tags, quantities, material names, or load notes"
+                      className="h-16 w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-zinc-500">GPS / Location Note</span>
+                    <textarea
+                      value={locationDetail}
+                      onChange={(event) => setLocationDetail(event.target.value)}
+                      placeholder="Pin, coordinates, farm zone, hole, staging area, or access note"
+                      className="h-16 w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-zinc-500">Issues / Delays</span>
+                    <textarea
+                      value={issueSummary}
+                      onChange={(event) => setIssueSummary(event.target.value)}
+                      placeholder="Anything Jennifer, Regina, Buck, Max, or Jeremy needs to review"
+                      className="h-16 w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-zinc-500">Tomorrow Plan</span>
+                    <textarea
+                      value={tomorrowPlan}
+                      onChange={(event) => setTomorrowPlan(event.target.value)}
+                      placeholder="What should happen next or carry over tomorrow"
+                      className="h-16 w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-zinc-500">Photo / Proof Notes</span>
+                    <textarea
+                      value={photoNotes}
+                      onChange={(event) => setPhotoNotes(event.target.value)}
+                      placeholder="Photos taken, BOL/POD, before-after proof, or missing proof"
+                      className="h-16 w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-bold text-jdt-text outline-none focus:border-jdt-olive"
+                    />
+                  </label>
+                </div>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -222,6 +306,7 @@ export default function CrewViewBoard({
 
               {assignments.map((assignment) => {
                 const relatedEquipment = assignment.type === 'load' ? assignmentEquipmentNames(assignment.source as LoadRecord, equipment) : [];
+                const closeoutPrompt = closeoutPrompts.find((prompt) => prompt.id === assignment.id && prompt.type === assignment.type);
                 return (
                   <article key={`${assignment.type}-${assignment.id}`} className={`rounded-xl border border-jdt-border border-l-4 bg-jdt-panel p-4 shadow-sm ${categoryAccentBorderClass(assignment.type === 'load' ? 'freight' : 'crew')}`}>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -287,6 +372,31 @@ export default function CrewViewBoard({
                             {status}
                           </button>
                         ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-lg border border-jdt-border bg-white p-3">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-wide text-zinc-500">Daily Closeout</p>
+                          <p className="mt-1 text-xs font-bold text-zinc-600">{closeoutPrompt?.recommendedAction || 'Submit daily closeout before office review.'}</p>
+                          {closeoutPrompt?.treeOrMaterialLabels.length ? (
+                            <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{closeoutPrompt.treeOrMaterialLabels.slice(0, 4).join(' / ')}</p>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`rounded-md border px-2.5 py-1 text-[10px] font-black uppercase ${statusPillClass(closeoutPrompt?.closeoutStatus === 'Submitted' ? 'Complete' : 'Pending')}`}>
+                            {closeoutPrompt?.closeoutStatus || 'Needs Closeout'}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={!canSubmitFieldUpdates}
+                            onClick={() => submitCloseout(assignment)}
+                            className="rounded-lg border border-jdt-olive bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Submit Closeout
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </article>
