@@ -38,6 +38,7 @@ const drawerConfig: Record<string, { title: string; icon: any; editType: string;
   equipment: { title: 'Equipment', icon: Tractor, editType: 'equipment', collection: 'equipmentList' },
   employee: { title: 'Employee', icon: HardHat, editType: 'employee', collection: 'crewsList' },
   client: { title: 'Client', icon: User, editType: 'client', collection: 'clientsList' },
+  fieldUpdate: { title: 'Field Update', icon: User, editType: 'field_update', collection: 'fieldUpdatesList' },
 };
 
 function matchesRecord(record: any, itemId: string | null) {

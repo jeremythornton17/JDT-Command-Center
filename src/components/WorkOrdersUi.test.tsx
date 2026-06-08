@@ -99,6 +99,14 @@ describe("work order UI wiring", () => {
         jobName: "Boca West Course 1 Renovation",
         status: "Scheduled",
       }],
+      fieldUpdates: [{
+        id: "closeout-boca-root-prune",
+        relatedTitle: "Boca West root prune closeout",
+        crewName: "Carlos Reyes",
+        projectName: "Boca West Course 1 Renovation",
+        updateType: "Daily Closeout",
+        fieldStatus: "Closeout Submitted",
+      }],
     });
 
     const html = renderToString(
@@ -120,6 +128,10 @@ describe("work order UI wiring", () => {
     assert.match(html, /Boca West lowboy move/);
     assert.match(html, /Driver/);
     assert.match(html, /Complete freight dispatch details before sending this move to a driver/);
+    assert.match(html, /Field Closeout Review/);
+    assert.match(html, /Boca West root prune closeout/);
+    assert.match(html, /0 proof/);
+    assert.match(html, /Ask the crew to attach photo, BOL, POD, or job proof before filing this closeout/);
   });
 
   it("builds project modal context from project records that only have a project id", () => {

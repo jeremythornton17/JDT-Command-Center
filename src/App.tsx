@@ -1344,7 +1344,7 @@ const commandAlertToneMap: Record<DashboardCommandAlert['tone'], string> = {
   blue: `border-l-4 ${categorySurfaceClass('freight')} ${categoryAccentBorderClass('freight')}`,
 };
 
-const drawerBackedTypes = new Set(['job', 'project', 'freight', 'load', 'tree', 'equipment', 'employee', 'client']);
+const drawerBackedTypes = new Set(['job', 'project', 'freight', 'load', 'tree', 'equipment', 'employee', 'client', 'fieldUpdate']);
 
 function dataQualitySeverityClass(severity: string) {
   if (severity === 'High') return riskPillClass('critical');
@@ -1391,6 +1391,13 @@ export function Dashboard({ recentRecords, dashboardSummary, openModal, openDraw
       return;
     }
     setActiveTab(item.targetTab || 'reports');
+  };
+  const openCloseoutReviewItem = (item: any) => {
+    if (item.recordId && drawerBackedTypes.has(item.drawerType)) {
+      openDrawer(item.drawerType, item.recordId);
+      return;
+    }
+    setActiveTab(item.targetTab || 'crewView');
   };
 
   return (
@@ -1691,6 +1698,48 @@ export function Dashboard({ recentRecords, dashboardSummary, openModal, openDraw
               </div>
             </div>
             <WorkItemStack items={dashboardSummary.ownerReviewQueue} emptyTitle="No owner review items" emptyDetail="Blocked jobs, freight issues, service holds, and active alerts will collect here." onOpen={openWorkItem} />
+          </section>
+
+          <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
+              <div>
+                <h3 className="text-sm font-black uppercase text-jdt-text">Field Closeout Review</h3>
+                <p className="mt-1 text-xs font-bold text-zinc-500">Crew and driver closeouts waiting on proof, filing, or follow-up</p>
+              </div>
+              <button onClick={() => setActiveTab('crewView')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
+                Crew View
+              </button>
+            </div>
+            {dashboardSummary.fieldCloseoutReviewQueue?.length > 0 ? (
+              <div className="divide-y divide-jdt-border">
+                {dashboardSummary.fieldCloseoutReviewQueue.slice(0, 5).map((item: any) => {
+                  const proofLabel = `${item.proofCount} proof${item.proofCount === 1 ? '' : 's'}`;
+                  return (
+                    <button key={item.id} type="button" onClick={() => openCloseoutReviewItem(item)} className="block w-full px-1 py-3 text-left hover:bg-jdt-sand/40">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-jdt-text">{item.title}</p>
+                          <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{item.crewName} / {item.projectName}</p>
+                        </div>
+                        <span className={`shrink-0 rounded border px-2 py-1 text-[9px] font-black uppercase ${dataQualitySeverityClass(item.severity)}`}>{item.reviewStatus}</span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        <span className="rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{proofLabel}</span>
+                        <span className="rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{item.drawerType}</span>
+                      </div>
+                      <p className="mt-2 line-clamp-2 text-[10px] font-black uppercase text-jdt-olive">{item.recommendedAction}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-4">
+                <div className="rounded-xl border border-dashed border-jdt-border bg-white p-6 text-center">
+                  <p className="text-sm font-black text-jdt-text">No closeouts waiting for review</p>
+                  <p className="mx-auto mt-1 max-w-sm text-xs font-bold text-zinc-500">Submitted crew and driver closeouts will collect here for office filing and follow-up.</p>
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">

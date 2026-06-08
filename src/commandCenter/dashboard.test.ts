@@ -108,6 +108,27 @@ describe("command board dashboard summary", () => {
     ]);
   });
 
+  it("surfaces submitted closeouts for admin review", () => {
+    const fieldUpdates: FieldUpdateRecord[] = [
+      {
+        id: "closeout-waterford",
+        relatedTitle: "Waterford root pruning",
+        crewName: "Carlos Reyes",
+        projectName: "Waterford Relocation",
+        updateType: "Daily Closeout",
+        fieldStatus: "Closeout Submitted",
+      },
+    ];
+
+    const summary = buildDashboardSummary({ fieldUpdates });
+
+    assert.deepEqual(summary.fieldCloseoutReviewQueue.map((item) => [item.id, item.title, item.reviewStatus, item.proofCount]), [
+      ["closeout-waterford", "Waterford root pruning", "Needs Proof", 0],
+    ]);
+    assert.equal(summary.fieldCloseoutReviewQueue[0].targetTab, "crewView");
+    assert.equal(summary.fieldCloseoutReviewQueue[0].drawerType, "fieldUpdate");
+  });
+
   it("surfaces tree lifecycle reminders on the command board", () => {
     const jobs: JobRecord[] = [
       {

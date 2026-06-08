@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { CrewRecord, FieldUpdateRecord, LoadRecord, WorkOrderRecord } from "./records";
-import { buildCrewCloseoutPrompts, buildDailyCloseoutUpdate } from "./fieldCloseout";
+import { buildCrewCloseoutPrompts, buildDailyCloseoutUpdate, buildFieldCloseoutReviewQueue } from "./fieldCloseout";
 
 describe("crew field closeout workflow", () => {
   const christian: CrewRecord = {
@@ -113,5 +113,46 @@ describe("crew field closeout workflow", () => {
     assert.match(update.notes || "", /Completed first root prune/);
     assert.match(update.notes || "", /Tomorrow: Return for nutrient care/);
     assert.match(update.notes || "", /Proof links: https:\/\/drive.google.com\/file\/d\/root-prune-photo/);
+  });
+
+  it("builds an admin review queue for submitted closeouts", () => {
+    const fieldUpdates: FieldUpdateRecord[] = [
+      {
+        id: "closeout-ready",
+        relatedTitle: "Semi #1 Dispatch",
+        crewName: "Christian Crespo",
+        projectName: "Boca West Course 1 Renovation",
+        updateType: "Daily Closeout",
+        fieldStatus: "Closeout Submitted",
+        proofLinks: [{ label: "BOL", url: "https://drive.google.com/file/d/bol" }],
+      },
+      {
+        id: "closeout-missing-proof",
+        relatedTitle: "Waterford root pruning",
+        crewName: "Carlos Reyes",
+        projectName: "Waterford Relocation",
+        updateType: "Daily Closeout",
+        fieldStatus: "Closeout Submitted",
+      },
+      {
+        id: "closeout-issue",
+        relatedTitle: "Frenchman's install",
+        crewName: "Neftali Euceda",
+        projectName: "Frenchman's Driving Range",
+        updateType: "Daily Closeout",
+        fieldStatus: "Closeout Submitted",
+        issueSummary: "Need irrigation sleeve decision before backfill.",
+        proofLinks: [{ label: "Photo", url: "https://drive.google.com/file/d/photo" }],
+        needsAdminReview: true,
+      },
+    ];
+
+    const queue = buildFieldCloseoutReviewQueue(fieldUpdates);
+
+    assert.deepEqual(queue.map((item) => [item.id, item.reviewStatus, item.proofCount, item.recommendedAction]), [
+      ["closeout-issue", "Needs Review", 1, "Review the reported issue and decide the follow-up before tomorrow planning."],
+      ["closeout-missing-proof", "Needs Proof", 0, "Ask the crew to attach photo, BOL, POD, or job proof before filing this closeout."],
+      ["closeout-ready", "Ready for Review", 1, "Review and file this closeout into the project history."],
+    ]);
   });
 });

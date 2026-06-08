@@ -26,6 +26,7 @@ import {
   type WorkflowReadinessIssue,
 } from "./operatingIntelligence";
 import { buildTreeLifecycleAlerts, type TreeLifecycleAlert } from "./treeLifecycle";
+import { buildFieldCloseoutReviewQueue, type FieldCloseoutReviewItem } from "./fieldCloseout";
 
 export type DashboardPipelineStage = {
   id: "inquiries" | "siteVisits" | "estimates" | "approved" | "scheduled" | "completed" | "invoiced";
@@ -79,6 +80,7 @@ export type DashboardSummary = {
   dailyBrief: DailyCommandBrief;
   dataQualityQueue: DataQualityActionItem[];
   workflowReadinessQueue: WorkflowReadinessIssue[];
+  fieldCloseoutReviewQueue: FieldCloseoutReviewItem[];
   projectRisks: ProjectRiskScore[];
   todaySchedule: DashboardWorkItem[];
   tomorrowQueue: DashboardWorkItem[];
@@ -386,6 +388,7 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
   const dailyBrief = buildDailyCommandBrief(intelligenceInput);
   const dataQualityQueue = buildDataQualityActionQueue(intelligenceInput);
   const workflowReadinessQueue = buildWorkflowReadinessQueue(intelligenceInput);
+  const fieldCloseoutReviewQueue = buildFieldCloseoutReviewQueue(fieldUpdates);
   const projectRisks = buildProjectRiskScores(intelligenceInput);
   const treeLifecycleAlerts = buildTreeLifecycleAlerts({ trees: treeRelocationRecords, jobs, workOrders, todayIso });
   const todaySchedule = buildTodaySchedule(jobs, loads, scheduleTasks);
@@ -597,6 +600,7 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
     dailyBrief,
     dataQualityQueue,
     workflowReadinessQueue,
+    fieldCloseoutReviewQueue,
     projectRisks,
     todaySchedule,
     tomorrowQueue,

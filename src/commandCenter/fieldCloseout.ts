@@ -36,6 +36,23 @@ export type DailyCloseoutInput = {
   userEmail?: string | null;
 };
 
+export type FieldCloseoutReviewStatus = "Needs Review" | "Needs Proof" | "Ready for Review";
+
+export type FieldCloseoutReviewItem = {
+  id: string;
+  title: string;
+  crewName: string;
+  projectName: string;
+  reviewStatus: FieldCloseoutReviewStatus;
+  severity: "High" | "Medium" | "Low";
+  proofCount: number;
+  detail: string;
+  recommendedAction: string;
+  targetTab: "crewView";
+  drawerType: "fieldUpdate";
+  recordId: string;
+};
+
 function clean(value: unknown) {
   return String(value || "").trim();
 }
@@ -272,4 +289,63 @@ export function buildDailyCloseoutUpdate(input: DailyCloseoutInput): Partial<Fie
     adminReviewStatus: hasIssue ? "Needs Review" : "Ready for Review",
     status: hasIssue ? "Needs Review" : "Submitted",
   };
+}
+
+function isDailyCloseout(update: FieldUpdateRecord) {
+  return normalize(update.updateType).includes("closeout")
+    || normalize(update.fieldStatus).includes("closeout")
+    || normalize(update.title).includes("daily closeout");
+}
+
+function closeoutHasIssue(update: FieldUpdateRecord) {
+  return update.needsAdminReview === true
+    || Boolean(clean(update.issueSummary))
+    || normalize(update.status).includes("needs review")
+    || normalize(update.adminReviewStatus).includes("needs review");
+}
+
+function reviewStatusForCloseout(update: FieldUpdateRecord): FieldCloseoutReviewStatus {
+  if (closeoutHasIssue(update)) return "Needs Review";
+  const proofCount = (update.proofLinks || []).length + (update.proofDocumentIds || []).length;
+  if (proofCount === 0) return "Needs Proof";
+  return "Ready for Review";
+}
+
+function reviewRank(status: FieldCloseoutReviewStatus) {
+  if (status === "Needs Review") return 0;
+  if (status === "Needs Proof") return 1;
+  return 2;
+}
+
+function recommendedActionForCloseout(status: FieldCloseoutReviewStatus) {
+  if (status === "Needs Review") return "Review the reported issue and decide the follow-up before tomorrow planning.";
+  if (status === "Needs Proof") return "Ask the crew to attach photo, BOL, POD, or job proof before filing this closeout.";
+  return "Review and file this closeout into the project history.";
+}
+
+export function buildFieldCloseoutReviewQueue(fieldUpdates: FieldUpdateRecord[] = [], limit = 8): FieldCloseoutReviewItem[] {
+  return fieldUpdates
+    .filter(isDailyCloseout)
+    .map((update) => {
+      const reviewStatus = reviewStatusForCloseout(update);
+      const proofCount = (update.proofLinks || []).length + (update.proofDocumentIds || []).length;
+      const recordId = update.id || update.relatedRecordId || update.title || "field-update";
+
+      return {
+        id: recordId,
+        title: update.relatedTitle || update.title || "Daily closeout",
+        crewName: update.crewName || update.createdBy || "Crew user",
+        projectName: update.projectName || update.jobName || "Unlinked project",
+        reviewStatus,
+        severity: reviewStatus === "Needs Review" ? "High" : reviewStatus === "Needs Proof" ? "Medium" : "Low",
+        proofCount,
+        detail: [update.notes, update.issueSummary, update.locationDetail, update.closeoutDate].map(clean).filter(Boolean).join(" - ") || "Closeout submitted for office review.",
+        recommendedAction: recommendedActionForCloseout(reviewStatus),
+        targetTab: "crewView" as const,
+        drawerType: "fieldUpdate" as const,
+        recordId,
+      };
+    })
+    .sort((a, b) => reviewRank(a.reviewStatus) - reviewRank(b.reviewStatus) || a.title.localeCompare(b.title))
+    .slice(0, limit);
 }
