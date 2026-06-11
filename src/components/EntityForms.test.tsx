@@ -455,6 +455,7 @@ test('equipment forms show category-specific dispatch compatibility fields', () 
       equipmentList={[
         { id: 'truck-dodge-2500', name: 'Dodge Ram 2500', category: 'Truck', truckType: '2500' },
         { id: 'trailer-pole', name: 'Custom Pole Trailer', category: 'Trailer', trailerType: 'pole trailer' },
+        { id: 'implement-root-pruner', name: 'Root Pruner', category: 'Implement', implementType: 'Cutter Blade' },
       ]}
     />,
   );
@@ -496,23 +497,26 @@ test('equipment forms show category-specific dispatch compatibility fields', () 
   );
 
   assert.match(machineHtml, /Compatible Trucks/);
-  assert.match(machineHtml, /Compatible Trailer Types/);
+  assert.match(machineHtml, /Compatible Trailers/);
   assert.match(machineHtml, /Compatible Implements/);
   assert.match(machineHtml, />Dodge Ram 2500<\/span>/);
   assert.doesNotMatch(machineHtml, />2500<\/span>/);
-  assert.match(machineHtml, />pole trailer<\/span>/);
+  assert.match(machineHtml, />Custom Pole Trailer<\/span>/);
+  assert.doesNotMatch(machineHtml, />pole trailer<\/span>/);
+  assert.match(machineHtml, />Root Pruner<\/span>/);
+  assert.doesNotMatch(machineHtml, />Cutter Blade<\/span>/);
   assert.doesNotMatch(machineHtml, />Truck Type<\/span>/);
   assert.doesNotMatch(machineHtml, />Trailer Type<\/span>/);
   assert.doesNotMatch(machineHtml, /Vehicle Compliance/);
 
   assert.match(truckHtml, />Truck Type<\/span>/);
-  assert.match(truckHtml, /Compatible Trailer Types/);
+  assert.match(truckHtml, /Compatible Trailers/);
   assert.match(truckHtml, /Vehicle Compliance/);
   assert.doesNotMatch(truckHtml, />Equipment Type<\/span>/);
   assert.doesNotMatch(truckHtml, />Trailer Type<\/span>/);
 
   assert.match(staleTruckHtml, />Truck Type<\/span>/);
-  assert.match(staleTruckHtml, /Compatible Trailer Types/);
+  assert.match(staleTruckHtml, /Compatible Trailers/);
   assert.doesNotMatch(staleTruckHtml, />Trailer Type<\/span>/);
   assert.doesNotMatch(staleTruckHtml, /Trailer Maintenance Categories/);
 
