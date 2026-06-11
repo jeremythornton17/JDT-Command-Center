@@ -88,6 +88,91 @@ export function projectOperatingIdFromParts(clientName: unknown, createdDate?: u
   return `${clientOperatingCodeFromName(clientName)}-${operatingDateCode(createdDate)}`;
 }
 
+function relationshipWords(value: unknown): string[] {
+  return slugifyRelationshipPart(value).split("-").filter(Boolean);
+}
+
+function projectSuffixCodeFromName(clientName: unknown, projectName: unknown): string {
+  const clientWords = new Set(relationshipWords(clientName));
+  const clientInitials = relationshipWords(clientName).map((word) => word[0]).join("");
+  if (clientInitials) clientWords.add(clientInitials);
+  if (clientWords.has("golf") && clientWords.has("club")) clientWords.add("gc");
+  if (clientWords.has("country") && clientWords.has("club")) clientWords.add("cc");
+
+  const projectWords = relationshipWords(projectName);
+  const specificWords = projectWords.filter((word) => !clientWords.has(word));
+  const suffixWords = specificWords.length ? specificWords : projectWords;
+  return suffixWords.slice(0, 3).map((word) => word.toUpperCase()).join("-");
+}
+
+function projectOperatingIdFromRecord(record: RelationshipInput): string {
+  return cleanString(record.projectId) || cleanString(record.projectsId) || cleanString(record.id);
+}
+
+function projectNameFromRecord(record: RelationshipInput): string {
+  return cleanString(record.projectName) || cleanString(record.title) || cleanString(record.name) || cleanString(record.project);
+}
+
+export function uniqueProjectOperatingIdFromParts({
+  clientName,
+  projectName,
+  createdDate,
+  existingProjects = [],
+}: {
+  clientName?: unknown;
+  projectName?: unknown;
+  createdDate?: unknown;
+  existingProjects?: RelationshipInput[];
+}): string {
+  const baseId = projectOperatingIdFromParts(clientName, createdDate);
+  const requestedProjectName = normalizeName(projectName);
+  const existingIds = new Set(existingProjects.map(projectOperatingIdFromRecord).filter(Boolean));
+
+  const baseRecord = existingProjects.find((project) => projectOperatingIdFromRecord(project) === baseId);
+  if (!baseRecord) return baseId;
+
+  const baseRecordName = normalizeName(projectNameFromRecord(baseRecord));
+  if (requestedProjectName && baseRecordName === requestedProjectName) return baseId;
+
+  const suffix = projectSuffixCodeFromName(clientName, projectName) || "PROJECT";
+  let candidate = `${baseId}-${suffix}`;
+  let sequence = 2;
+
+  while (existingIds.has(candidate)) {
+    const existing = existingProjects.find((project) => projectOperatingIdFromRecord(project) === candidate);
+    if (requestedProjectName && normalizeName(projectNameFromRecord(existing || {})) === requestedProjectName) return candidate;
+    candidate = `${baseId}-${suffix}-${String(sequence).padStart(2, "0")}`;
+    sequence += 1;
+  }
+
+  return candidate;
+}
+
+function clientNameFromRecord(record: RelationshipInput): string {
+  return cleanString(record.clientName) || cleanString(record.client) || cleanString(record.name) || cleanString(record.title);
+}
+
+export function resolveClientIdentityFromList(record: RelationshipInput, clients: RelationshipInput[] = []): RelationshipFields {
+  const explicitClientId = cleanString(record.clientId);
+  const requestedClientName = cleanString(record.clientName) || cleanString(record.client);
+  const explicitMatch = explicitClientId
+    ? clients.find((client) => cleanString(client.clientId) === explicitClientId || cleanString(client.id) === explicitClientId)
+    : undefined;
+  const nameMatch = requestedClientName
+    ? clients.find((client) => normalizeName(clientNameFromRecord(client)) === normalizeName(requestedClientName))
+    : undefined;
+  const matched = explicitMatch || nameMatch;
+  const clientName = matched ? clientNameFromRecord(matched) || requestedClientName : requestedClientName;
+  const clientId = matched
+    ? cleanString(matched.clientId) || cleanString(matched.id) || clientIdFromName(clientName)
+    : explicitClientId || clientIdFromName(clientName);
+
+  return compactRelationshipFields({
+    clientId,
+    clientName,
+  });
+}
+
 export function assigneeInitialsFromName(name: unknown): string {
   const words = cleanString(name)
     .replace(/['’]/g, "")

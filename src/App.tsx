@@ -91,7 +91,10 @@ import {
   projectOperatingIdFromParts,
   normalizeProjectRelationship,
   normalizeWorkOrderRelationship,
+  resolveClientIdentityFromList,
   sameProjectTreeAsset,
+  uniqueProjectOperatingIdFromParts,
+  type RelationshipInput,
 } from './commandCenter/relationships';
 import { sourceRefFromWorkbookRow, workbookTabForWorkOrderType } from './commandCenter/workbookProjectFlow';
 import {
@@ -204,13 +207,19 @@ function mergeImportedRecords<T extends CommandRecord>(existing: T[], incoming: 
   return Array.from(byId.values());
 }
 
-function enrichProjectLikeRecord<T extends CommandRecord>(record: T): T {
-  const relationship = normalizeProjectRelationship(record);
+function enrichProjectLikeRecord<T extends CommandRecord>(record: T, existingProjects: RelationshipInput[] = [], clients: RelationshipInput[] = []): T {
+  const clientIdentity = resolveClientIdentityFromList(record, clients);
+  const relationship = normalizeProjectRelationship({ ...record, ...clientIdentity });
   const source = record as T & { client?: string };
   const projectName = relationship.projectName || record.title || record.name || 'Untitled project';
   const clientName = relationship.clientName || source.client;
   const projectId = String(record.projectId || (record as T & { projectsId?: string }).projectsId || record.id || '').trim()
-    || projectOperatingIdFromParts(clientName, record.createdAtIso || new Date());
+    || uniqueProjectOperatingIdFromParts({
+      clientName,
+      projectName,
+      createdDate: record.createdAtIso || new Date(),
+      existingProjects,
+    });
 
   return {
     ...record,
@@ -770,7 +779,7 @@ export default function App() {
       case 'job':
       case 'project':
         {
-          const enrichedRecord = enrichProjectLikeRecord(recordData as JobRecord);
+          const enrichedRecord = enrichProjectLikeRecord(recordData as JobRecord, jobs, clients);
           setJobs((prev) => upsertRecordWithAudit(prev, enrichedRecord, 'job', user?.email, normalizedType, (item) => item.id === enrichedRecord.id || item.title === enrichedRecord.title || item.projectId === enrichedRecord.projectId));
           setProjects((prev) => upsertRecordWithAudit(prev, projectRecordFromProjectLike(enrichedRecord), 'project', user?.email, normalizedType, (item) => item.id === enrichedRecord.projectId || item.projectId === enrichedRecord.projectId || item.title === enrichedRecord.projectName));
         }

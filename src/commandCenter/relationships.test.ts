@@ -8,11 +8,13 @@ import {
   operatingDateCode,
   operatingJobIdFromParts,
   projectOperatingIdFromParts,
+  resolveClientIdentityFromList,
   normalizeWorkOrderRelationship,
   normalizeProjectRelationship,
   projectIdFromName,
   sameClient,
   sameProjectTreeAsset,
+  uniqueProjectOperatingIdFromParts,
   workOrderIdFromName,
 } from "./relationships";
 
@@ -28,6 +30,15 @@ describe("client project job relationships", () => {
     assert.equal(clientOperatingCodeFromName("A Cut Above"), "ACA");
     assert.equal(operatingDateCode("2026-06-04"), "060426");
     assert.equal(projectOperatingIdFromParts("Boca West Country Club", "2026-06-04"), "BWCC-060426");
+    assert.equal(
+      uniqueProjectOperatingIdFromParts({
+        clientName: "Miakka Golf Club",
+        projectName: "Miakka GC New Build",
+        createdDate: "2026-06-11",
+        existingProjects: [{ projectId: "MGC-061126", projectName: "Miakka GC Berm" }],
+      }),
+      "MGC-061126-NEW-BUILD",
+    );
     assert.equal(assigneeInitialsFromName("Carlos Reyes"), "CR");
     assert.equal(
       operatingJobIdFromParts({
@@ -68,6 +79,13 @@ describe("client project job relationships", () => {
     assert.equal(sameClient(client, { clientId: "client-mcarthur-golf-club", clientName: "Edited Name" }), true);
     assert.equal(sameClient(client, { clientName: "McArthur Golf Club" }), true);
     assert.equal(sameClient(client, { clientName: "Other Club" }), false);
+    assert.deepEqual(
+      resolveClientIdentityFromList(
+        { client: "Miakka Golf Club" },
+        [{ id: "client-mpy89z86", name: "Miakka Golf Club" }],
+      ),
+      { clientId: "client-mpy89z86", clientName: "Miakka Golf Club" },
+    );
   });
 
   it("matches project tree assets inside the selected project instead of globally by tree id", () => {
