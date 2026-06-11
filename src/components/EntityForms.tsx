@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Briefcase, Building2, Check, FilePlus, Leaf, MapPin, Plus, Truck, User, Wrench } from 'lucide-react';
 import {
   equipmentCategory,
@@ -1009,6 +1009,37 @@ function findEquipmentLocationOption(options: EquipmentLocationOption[], name: u
   return options.find((option) => cleanIdentity(option.name) === target);
 }
 
+function isHomeBaseLocationValue(value: unknown) {
+  const clean = cleanIdentity(value);
+  return clean === cleanIdentity(jdtHomeBase.name) || clean === cleanIdentity(jdtHomeBase.address);
+}
+
+function shouldReplaceStaleEquipmentLocation(data: Record<string, unknown>, selectedLocation?: EquipmentLocationOption) {
+  if (!selectedLocation) return false;
+
+  const currentName = String(data.currentLocationName || '').trim();
+  const currentAddress = String(data.currentLocation || '').trim();
+  const assignedProjectName = String(data.assignedProjectName || data.projectName || '').trim();
+  const jobSiteIntent = String(data.currentLocationType || '').trim() === 'Job Site' || Boolean(assignedProjectName);
+  const currentNameIsReplaceable = !currentName || isHomeBaseLocationValue(currentName);
+  const currentAddressIsReplaceable = !currentAddress || isHomeBaseLocationValue(currentAddress) || currentAddress === currentName;
+
+  return jobSiteIntent && currentNameIsReplaceable && currentAddressIsReplaceable;
+}
+
+function resolveEquipmentProjectLocation(data: Record<string, unknown>, options: EquipmentLocationOption[]) {
+  const projectLocationName = firstCleanText([data.assignedProjectName, data.projectName]);
+  const selectedLocation = findEquipmentLocationOption(options, projectLocationName);
+  if (!shouldReplaceStaleEquipmentLocation(data, selectedLocation)) return data;
+
+  return {
+    ...data,
+    currentLocationName: selectedLocation?.name || projectLocationName,
+    ...(selectedLocation?.addresses?.[0] ? { currentLocation: selectedLocation.addresses[0] } : {}),
+    currentLocationType: selectedLocation?.locationType || 'Job Site',
+  };
+}
+
 function savedLocationMatchesFormContext(location: any, data: Record<string, unknown>) {
   const contextValues = [
     data?.jobId,
@@ -1284,15 +1315,6 @@ export default function EntityForms({
         : data
   ), [resolvedType, data]);
   const [stopCount, setStopCount] = useState(() => initialStopCount(formSeed));
-  const fields = useMemo(
-    () => enrichFieldsWithSuggestions(
-      resolvedType,
-      fieldsForType(resolvedType, stopCount),
-      formSeed || {},
-      { jobsList, equipmentList, crewsList, clientsList, locationsList, workOrders, projectMaterialItems },
-    ),
-    [resolvedType, stopCount, formSeed, jobsList, equipmentList, crewsList, clientsList, locationsList, workOrders, projectMaterialItems],
-  );
   const equipmentLocationOptions = useMemo(
     () => buildEquipmentLocationOptions({
       jobsList,
@@ -1301,13 +1323,38 @@ export default function EntityForms({
     }),
     [jobsList, locationsList, equipmentList],
   );
-  const [formData, setFormData] = useState<any>(() => initialFormData(formSeed, fields));
+  const resolvedFormSeed = useMemo(
+    () => resolvedType === 'equipment' ? resolveEquipmentProjectLocation(formSeed || {}, equipmentLocationOptions) : (formSeed || {}),
+    [resolvedType, formSeed, equipmentLocationOptions],
+  );
+  const fields = useMemo(
+    () => enrichFieldsWithSuggestions(
+      resolvedType,
+      fieldsForType(resolvedType, stopCount),
+      resolvedFormSeed || {},
+      { jobsList, equipmentList, crewsList, clientsList, locationsList, workOrders, projectMaterialItems },
+    ),
+    [resolvedType, stopCount, resolvedFormSeed, jobsList, equipmentList, crewsList, clientsList, locationsList, workOrders, projectMaterialItems],
+  );
+  const [formData, setFormData] = useState<any>(() => initialFormData(resolvedFormSeed, fields));
   const [formError, setFormError] = useState('');
   const requiresProjectContext = projectTreeFormTypes.has(resolvedType);
   const missingProjectContext = requiresProjectContext && !hasProjectContext(formData);
 
+  useEffect(() => {
+    if (resolvedType !== 'equipment') return;
+    setFormData((prev: any) => {
+      const next = resolveEquipmentProjectLocation(prev, equipmentLocationOptions);
+      return next === prev ? prev : next;
+    });
+  }, [resolvedType, equipmentLocationOptions]);
+
   const handleChange = (key: string, value: any) => {
     setFormError('');
+    if (resolvedType === 'equipment' && ['assignedProjectName', 'projectName', 'currentLocationType'].includes(key)) {
+      setFormData((prev: any) => resolveEquipmentProjectLocation({ ...prev, [key]: value }, equipmentLocationOptions));
+      return;
+    }
     if (resolvedType === 'equipment' && key === 'currentLocationName') {
       setFormData((prev: any) => {
         const selectedLocation = findEquipmentLocationOption(equipmentLocationOptions, value);
