@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Wrench, MapPin, UserCheck, AlertTriangle, Clock, Activity, QrCode, ClipboardList, PenTool } from 'lucide-react';
 import { complianceBadgeClass, vehicleComplianceSummary, type ComplianceStatus } from '../commandCenter/compliance';
-import { equipmentCategory, equipmentDisplayName } from '../commandCenter/equipmentFreight';
+import { equipmentCategory, equipmentCategoryOptions, equipmentDisplayName } from '../commandCenter/equipmentFreight';
 import { categoryAccentBorderClass, riskSurfaceClass, statusPillClass } from '../commandCenter/visualLanguage';
 import { CategoryIcon } from './CategoryIcon';
 import { IconButton } from './IconBadge';
@@ -28,16 +28,29 @@ function showVehicleCompliance(eq: any) {
 }
 
 export default function EquipmentBoard({ starterEquipment, openDrawer, openModal }: { starterEquipment: any[], openDrawer: (type: string, id: string) => void, openModal: (type: string, data?: any) => void }) {
+  const standardCategories = ['Machine', 'Truck', 'Trailer', 'Implement', 'Tool'];
+  const discoveredCategories = starterEquipment
+    .map((equipment) => equipmentCategory(equipment))
+    .filter((category) => category && !standardCategories.includes(category));
+  const categoryOrder = [...standardCategories, ...equipmentCategoryOptions.filter((category) => !standardCategories.includes(category)), ...discoveredCategories]
+    .filter((category, index, values) => values.indexOf(category) === index);
+  const categoryCounts = starterEquipment.reduce((acc: Record<string, number>, equipment: any) => {
+    const category = equipmentCategory(equipment);
+    acc[category] = (acc[category] || 0) + 1;
+    return acc;
+  }, {});
+  const [activeCategory, setActiveCategory] = useState('All');
 
   const grouped = starterEquipment.reduce((acc: any, eq: any) => {
-    const status = eq.status || 'Available';
-    if (!acc[status]) acc[status] = [];
-    acc[status].push(eq);
+    const category = equipmentCategory(eq);
+    if (!acc[category]) acc[category] = [];
+    acc[category].push(eq);
     return acc;
   }, {});
 
-  const statusOrder = ['Down', 'Inspection', 'Maintenance', 'Assigned', 'Available'];
-  const statusKeys = [...statusOrder, ...Object.keys(grouped).filter((status) => !statusOrder.includes(status))];
+  const visibleCategoryKeys = activeCategory === 'All'
+    ? categoryOrder.filter((category) => grouped[category]?.length)
+    : [activeCategory];
 
   return (
     <div className="space-y-8">
@@ -65,15 +78,40 @@ export default function EquipmentBoard({ starterEquipment, openDrawer, openModal
         </div>
       )}
 
+      <div className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+        <p className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Equipment Categories</p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveCategory('All')}
+            className={`rounded-lg border px-3 py-2 text-xs font-black uppercase ${activeCategory === 'All' ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-white text-jdt-text hover:border-jdt-olive'}`}
+            aria-label={`Show all ${starterEquipment.length} equipment assets`}
+          >
+            All
+          </button>
+          {categoryOrder.map((category) => (
+            <button
+              key={category}
+              type="button"
+              onClick={() => setActiveCategory(category)}
+              className={`rounded-lg border px-3 py-2 text-xs font-black uppercase ${activeCategory === category ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-white text-jdt-text hover:border-jdt-olive'}`}
+              aria-label={`Show ${categoryCounts[category] || 0} ${category} assets`}
+            >
+              {category}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="grid gap-6">
-        {statusKeys.map(status => {
-           const items = grouped[status];
+        {visibleCategoryKeys.map(category => {
+           const items = grouped[category];
            if (!items || items.length === 0) return null;
            
            return (
-             <section key={status}>
+             <section key={category}>
                 <div className="flex items-center gap-2 mb-3">
-                   <h3 className="text-lg font-black tracking-wide text-zinc-800">{status}</h3>
+                   <h3 className="text-lg font-black tracking-wide text-zinc-800">{category} assets</h3>
                    <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-xs font-black text-zinc-700">{items.length}</span>
                 </div>
                 <div className="grid gap-4 xl:grid-cols-2 lg:grid-cols-2">

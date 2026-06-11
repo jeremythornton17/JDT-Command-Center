@@ -444,6 +444,68 @@ test('equipment forms expose vehicle registration and insurance compliance field
   assert.match(html, /Insurance Document URL/);
 });
 
+test('equipment forms show category-specific dispatch compatibility fields', () => {
+  const machineHtml = renderToString(
+    <EntityForms
+      type="equipment"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{ name: 'Kubota Mini X - Swivel Plate #1', category: 'Machine', eqType: 'Excavator' }}
+    />,
+  );
+  const truckHtml = renderToString(
+    <EntityForms
+      type="equipment"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{ name: 'International Sleeper Cab', category: 'Truck', truckType: 'Semi' }}
+    />,
+  );
+  const trailerHtml = renderToString(
+    <EntityForms
+      type="equipment"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{ name: 'Black Lowboy', category: 'Trailer', trailerType: 'black lowboy' }}
+    />,
+  );
+  const implementHtml = renderToString(
+    <EntityForms
+      type="equipment"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{ name: 'Root Pruner', category: 'Implement', implementType: 'Cutter Blade' }}
+    />,
+  );
+
+  assert.match(machineHtml, /Compatible Truck Types/);
+  assert.match(machineHtml, /Compatible Trailer Types/);
+  assert.match(machineHtml, /Compatible Implements/);
+  assert.doesNotMatch(machineHtml, />Truck Type<\/span>/);
+  assert.doesNotMatch(machineHtml, />Trailer Type<\/span>/);
+  assert.doesNotMatch(machineHtml, /Vehicle Compliance/);
+
+  assert.match(truckHtml, />Truck Type<\/span>/);
+  assert.match(truckHtml, /Compatible Trailer Types/);
+  assert.match(truckHtml, /Vehicle Compliance/);
+  assert.doesNotMatch(truckHtml, />Equipment Type<\/span>/);
+  assert.doesNotMatch(truckHtml, />Trailer Type<\/span>/);
+
+  assert.match(trailerHtml, />Trailer Type<\/span>/);
+  assert.match(trailerHtml, /Compatible Truck Types/);
+  assert.match(trailerHtml, /Trailer Maintenance Categories/);
+  assert.match(trailerHtml, /Vehicle Compliance/);
+  assert.doesNotMatch(trailerHtml, />Equipment Type<\/span>/);
+
+  assert.match(implementHtml, />Implement Type<\/span>/);
+  assert.match(implementHtml, /Compatible Machine Types/);
+  assert.doesNotMatch(implementHtml, /Vehicle Compliance/);
+});
+
 test('equipment forms split saved location names from addresses and project access pins', () => {
   const html = renderToString(
     <EntityForms

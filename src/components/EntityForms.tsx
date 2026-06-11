@@ -23,7 +23,7 @@ import { jdtProjectFlowWorkbook } from '../commandCenter/workbookProjectFlow';
 type FieldConfig = {
   key: string;
   label: string;
-  type?: 'text' | 'number' | 'date' | 'textarea' | 'checkbox' | 'select' | 'email' | 'tel' | 'url';
+  type?: 'text' | 'number' | 'date' | 'textarea' | 'checkbox' | 'select' | 'multiselect' | 'email' | 'tel' | 'url';
   options?: string[];
   suggestions?: string[];
   placeholder?: string;
@@ -106,6 +106,34 @@ function employeeDriverComplianceEnabled(formData: Record<string, unknown>) {
 
 function employeeCdlComplianceEnabled(formData: Record<string, unknown>) {
   return employeeDriverComplianceEnabled(formData) && Boolean(formData.cdlCertified);
+}
+
+function equipmentProfileCategory(formData: Record<string, unknown>) {
+  return equipmentCategory(formData as any);
+}
+
+function isMachineProfile(formData: Record<string, unknown>) {
+  return equipmentProfileCategory(formData) === 'Machine';
+}
+
+function isTruckProfile(formData: Record<string, unknown>) {
+  return equipmentProfileCategory(formData) === 'Truck';
+}
+
+function isTrailerProfile(formData: Record<string, unknown>) {
+  return equipmentProfileCategory(formData) === 'Trailer';
+}
+
+function isImplementProfile(formData: Record<string, unknown>) {
+  return equipmentProfileCategory(formData) === 'Implement';
+}
+
+function isToolProfile(formData: Record<string, unknown>) {
+  return equipmentProfileCategory(formData) === 'Tool';
+}
+
+function isVehicleProfile(formData: Record<string, unknown>) {
+  return isTruckProfile(formData) || isTrailerProfile(formData);
 }
 
 function buildLoadStopFields(stopCount: number): FieldConfig[] {
@@ -447,31 +475,63 @@ const fieldSets: Record<string, FieldConfig[]> = {
     { key: 'name', label: 'Equipment Name', required: true },
     { key: 'assetId', label: 'Asset ID' },
     { key: 'category', label: 'Category', type: 'select', options: equipmentCategoryOptions },
-    { key: 'eqType', label: 'Equipment Type', type: 'select', options: equipmentTypeOptions },
-    { key: 'truckType', label: 'Truck Type', type: 'select', options: truckTypeOptions },
-    { key: 'trailerType', label: 'Trailer Type', type: 'select', options: trailerTypeOptions },
-    { key: 'trailerMaintenanceCategories', label: 'Trailer Maintenance Categories' },
-    { key: 'implementType', label: 'Implement Type', type: 'select', options: implementTypeOptions },
     { key: 'status', label: 'Status', type: 'select', options: equipmentStatusOptions },
+    { key: 'eqType', label: 'Equipment Type', type: 'select', options: equipmentTypeOptions, section: 'Category Details', showWhen: isMachineProfile },
+    { key: 'truckType', label: 'Truck Type', type: 'select', options: truckTypeOptions, section: 'Category Details', showWhen: isTruckProfile },
+    { key: 'trailerType', label: 'Trailer Type', type: 'select', options: trailerTypeOptions, section: 'Category Details', showWhen: isTrailerProfile },
+    { key: 'implementType', label: 'Implement Type', type: 'select', options: implementTypeOptions, section: 'Category Details', showWhen: isImplementProfile },
+    { key: 'toolType', label: 'Tool Type', section: 'Category Details', showWhen: isToolProfile },
+    {
+      key: 'compatibleTruckTypes',
+      label: 'Compatible Truck Types',
+      type: 'multiselect',
+      options: truckTypeOptions,
+      section: 'Dispatch Compatibility',
+      showWhen: (formData) => isMachineProfile(formData) || isTrailerProfile(formData),
+    },
+    {
+      key: 'compatibleTrailerTypes',
+      label: 'Compatible Trailer Types',
+      type: 'multiselect',
+      options: trailerTypeOptions,
+      section: 'Dispatch Compatibility',
+      showWhen: (formData) => isMachineProfile(formData) || isTruckProfile(formData),
+    },
+    {
+      key: 'compatibleMachineTypes',
+      label: 'Compatible Machine Types',
+      type: 'multiselect',
+      options: equipmentTypeOptions.filter((option) => !['Truck', 'Trailer', 'Implement', 'Tool'].includes(option)),
+      section: 'Dispatch Compatibility',
+      showWhen: isImplementProfile,
+    },
+    {
+      key: 'compatibleImplementTypes',
+      label: 'Compatible Implements',
+      type: 'multiselect',
+      options: implementTypeOptions,
+      section: 'Dispatch Compatibility',
+      showWhen: isMachineProfile,
+    },
+    { key: 'attachedImplementNames', label: 'Attached Implements', showWhen: isMachineProfile },
     { key: 'currentLocationType', label: 'Location Type', type: 'select', options: equipmentLocationTypeOptions },
     { key: 'currentLocationName', label: 'Current Location' },
     { key: 'currentLocation', label: 'Current Address / Site Detail' },
     { key: 'assignedCrewName', label: 'Assigned Crew / Driver' },
     { key: 'assignedProjectName', label: 'Assigned Project' },
-    { key: 'assignedTruck', label: 'Assigned Truck' },
-    { key: 'compatibleImplementTypes', label: 'Compatible Implements' },
-    { key: 'attachedImplementNames', label: 'Attached Implements' },
-    { key: 'operator', label: 'Operator' },
-    { key: 'hours', label: 'Hours', type: 'number' },
-    { key: 'serviceDueHours', label: 'Service Due Hours', type: 'number' },
-    { key: 'registrationNumber', label: 'Registration Number / Tag', section: 'Vehicle Compliance' },
-    { key: 'registrationExpirationDate', label: 'Registration Expiration', type: 'date' },
-    { key: 'registrationDocumentUrl', label: 'Registration Document URL', type: 'url', wide: true },
-    { key: 'insuranceCompany', label: 'Insurance Company' },
-    { key: 'insurancePolicyNumber', label: 'Insurance Policy Number' },
-    { key: 'insuranceExpirationDate', label: 'Insurance Expiration', type: 'date' },
-    { key: 'insuranceDocumentUrl', label: 'Insurance Document URL', type: 'url', wide: true },
-    { key: 'trailerServiceNotes', label: 'Trailer Service Notes', type: 'textarea' },
+    { key: 'assignedTruck', label: 'Assigned Truck', showWhen: (formData) => isTrailerProfile(formData) || isImplementProfile(formData) },
+    { key: 'operator', label: 'Operator', showWhen: (formData) => isMachineProfile(formData) || isTruckProfile(formData) },
+    { key: 'hours', label: 'Hours', type: 'number', showWhen: (formData) => isMachineProfile(formData) || isTruckProfile(formData) },
+    { key: 'serviceDueHours', label: 'Service Due Hours', type: 'number', showWhen: (formData) => isMachineProfile(formData) || isTruckProfile(formData) },
+    { key: 'trailerMaintenanceCategories', label: 'Trailer Maintenance Categories', type: 'multiselect', options: trailerMaintenanceCategoryOptions, section: 'Trailer Maintenance', showWhen: isTrailerProfile },
+    { key: 'trailerServiceNotes', label: 'Trailer Service Notes', type: 'textarea', showWhen: isTrailerProfile },
+    { key: 'registrationNumber', label: 'Registration Number / Tag', section: 'Vehicle Compliance', showWhen: isVehicleProfile },
+    { key: 'registrationExpirationDate', label: 'Registration Expiration', type: 'date', showWhen: isVehicleProfile },
+    { key: 'registrationDocumentUrl', label: 'Registration Document URL', type: 'url', wide: true, showWhen: isVehicleProfile },
+    { key: 'insuranceCompany', label: 'Insurance Company', showWhen: isVehicleProfile },
+    { key: 'insurancePolicyNumber', label: 'Insurance Policy Number', showWhen: isVehicleProfile },
+    { key: 'insuranceExpirationDate', label: 'Insurance Expiration', type: 'date', showWhen: isVehicleProfile },
+    { key: 'insuranceDocumentUrl', label: 'Insurance Document URL', type: 'url', wide: true, showWhen: isVehicleProfile },
     { key: 'notes', label: 'Notes', type: 'textarea' },
   ],
   assign_work: [
@@ -1242,6 +1302,17 @@ export default function EntityForms({
     setFormData((prev: any) => ({ ...prev, [key]: value }));
   };
 
+  const handleMultiSelectChange = (key: string, option: string, checked: boolean) => {
+    setFormError('');
+    setFormData((prev: any) => {
+      const currentValues = normalizeResourceList(prev[key]);
+      const nextValues = checked
+        ? Array.from(new Set([...currentValues, option]))
+        : currentValues.filter((value) => value !== option);
+      return { ...prev, [key]: nextValues };
+    });
+  };
+
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (missingProjectContext) {
@@ -1278,6 +1349,9 @@ export default function EntityForms({
         'trailerIds',
         'treeIds',
         'treeNames',
+        'compatibleTruckTypes',
+        'compatibleTrailerTypes',
+        'compatibleMachineTypes',
         'compatibleImplementTypes',
         'attachedImplementNames',
         'attachedImplementIds',
@@ -1365,6 +1439,25 @@ export default function EntityForms({
                       <option key={option} value={option}>{option}</option>
                     ))}
                   </select>
+                ) : field.type === 'multiselect' ? (
+                  <div className="rounded-lg border border-jdt-border bg-jdt-panel p-2">
+                    <div className="grid gap-1.5 sm:grid-cols-2">
+                      {(field.options || field.suggestions || []).map((option) => {
+                        const selectedValues = normalizeResourceList(formData[field.key]);
+                        return (
+                          <label key={option} className="flex items-center gap-2 rounded-md bg-white/70 px-2 py-1.5 text-xs font-bold text-jdt-text">
+                            <input
+                              type="checkbox"
+                              checked={selectedValues.includes(option)}
+                              onChange={(event) => handleMultiSelectChange(field.key, option, event.target.checked)}
+                              className="h-3.5 w-3.5 rounded border-jdt-border text-jdt-primary"
+                            />
+                            <span>{option}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
                 ) : (
                   <>
                     <input

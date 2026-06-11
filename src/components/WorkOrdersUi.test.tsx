@@ -1113,6 +1113,34 @@ describe("work order UI wiring", () => {
     assert.match(html, /Edit/);
   });
 
+  it("groups the equipment page by equipment category instead of status", () => {
+    const equipment: EquipmentRecord[] = [
+      { id: "equipment-mini-x", name: "Kubota Mini X", category: "Machine", status: "Inspection" },
+      { id: "equipment-semi", name: "International Sleeper Cab", category: "Truck", status: "Available" },
+      { id: "equipment-lowboy", name: "Black Lowboy", category: "Trailer", status: "Available" },
+      { id: "equipment-root-pruner", name: "Root Pruner", category: "Implement", status: "Available" },
+      { id: "equipment-chainsaw", name: "Chainsaw", category: "Tool", status: "Available" },
+    ];
+
+    const html = renderToString(
+      <EquipmentBoard starterEquipment={equipment} openDrawer={() => undefined} openModal={() => undefined} />,
+    );
+
+    assert.match(html, /Equipment Categories/);
+    assert.match(html, />All<\/button>/);
+    assert.match(html, />Machine<\/button>/);
+    assert.match(html, />Truck<\/button>/);
+    assert.match(html, />Trailer<\/button>/);
+    assert.match(html, />Implement<\/button>/);
+    assert.match(html, />Tool<\/button>/);
+    assert.match(html, /Machine assets/);
+    assert.match(html, /Truck assets/);
+    assert.match(html, /Trailer assets/);
+    assert.match(html, /Implement assets/);
+    assert.match(html, /Tool assets/);
+    assert.doesNotMatch(html, /<h3[^>]*>Inspection<\/h3>/);
+  });
+
   it("shows vehicle registration and insurance compliance on equipment cards", () => {
     const equipment: EquipmentRecord[] = [
       {
