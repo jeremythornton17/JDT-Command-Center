@@ -1092,6 +1092,8 @@ describe("work order UI wiring", () => {
         type: "Skid Steer",
         status: "Available",
         currentLocationName: "25 Acre Farm",
+        currentLocation: "3040 US-27, Clewiston, FL 33440",
+        currentLocationType: "Farm",
         compatibleImplementTypes: ["Root Pruner", "Bucket"],
         attachedImplementNames: ["Root Pruner"],
       },
@@ -1102,7 +1104,10 @@ describe("work order UI wiring", () => {
     );
 
     assert.match(html, /CAT 299D/);
+    assert.match(html, /Current Location/);
     assert.match(html, /25 Acre Farm/);
+    assert.match(html, /3040 US-27, Clewiston, FL 33440/);
+    assert.match(html, /Farm/);
     assert.match(html, /Root Pruner/);
     assert.match(html, /Report Issue/);
     assert.match(html, /Edit/);

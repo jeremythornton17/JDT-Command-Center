@@ -79,6 +79,8 @@ export default function EquipmentBoard({ starterEquipment, openDrawer, openModal
                 <div className="grid gap-4 xl:grid-cols-2 lg:grid-cols-2">
                    {items.map((eq: any) => {
                      const compliance = vehicleComplianceSummary(eq);
+                     const currentLocationName = eq.currentLocationName || eq.location || eq.currentLocation || 'Location not set';
+                     const currentLocationDetail = eq.currentLocation && eq.currentLocation !== currentLocationName ? eq.currentLocation : '';
                      return (
                      <article key={eq.id} className={`rounded-xl border border-jdt-border border-l-4 bg-jdt-panel shadow-sm overflow-hidden flex flex-col pt-1 group hover:border-zinc-400 transition-colors ${categoryAccentBorderClass('equipment')}`}>
                         {(eq.status === 'Down' || eq.status === 'Inspection' || Number(eq.serviceDueHours ?? Number.POSITIVE_INFINITY) < 100) && (
@@ -109,8 +111,9 @@ export default function EquipmentBoard({ starterEquipment, openDrawer, openModal
                            <div className="grid sm:grid-cols-2 gap-4">
                               <div className="space-y-4">
                                 <div>
-                                  <p className="text-[10px] font-black uppercase text-zinc-500 mb-1 flex items-center gap-1"><MapPin className="h-3.5 w-3.5"/> Location</p>
-                                  <p className="font-bold text-jdt-text">{eq.currentLocationName || eq.currentLocation || eq.location || 'Location not set'}</p>
+                                  <p className="text-[10px] font-black uppercase text-zinc-500 mb-1 flex items-center gap-1"><MapPin className="h-3.5 w-3.5"/> Current Location</p>
+                                  <p className="font-bold text-jdt-text">{currentLocationName}</p>
+                                  {currentLocationDetail && <p className="mt-1 text-xs font-bold leading-snug text-zinc-600">{currentLocationDetail}</p>}
                                   <p className="text-[10px] font-black uppercase text-zinc-400">{eq.currentLocationType || 'Unknown'}</p>
                                 </div>
                                 <div>

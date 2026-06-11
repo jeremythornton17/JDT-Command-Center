@@ -53,6 +53,12 @@ type EntityFormsProps = {
   submitLabel?: string;
 };
 
+type EquipmentLocationOption = {
+  name: string;
+  addresses: string[];
+  locationType: string;
+};
+
 const addNewOptions = [
   { type: 'job', label: 'Project', icon: Briefcase },
   { type: 'client', label: 'Client', icon: Building2 },
@@ -799,6 +805,150 @@ function cleanIdentity(value: unknown): string {
   return String(value || '').trim().toLowerCase();
 }
 
+function firstCleanText(values: unknown[]): string {
+  return values.map((value) => String(value || '').trim()).find(Boolean) || '';
+}
+
+function optionLocationType(record: any, fallback = 'Unknown'): string {
+  const directType = firstCleanText([record?.currentLocationType, record?.locationType]);
+  if (equipmentLocationTypeOptions.includes(directType)) return directType;
+
+  const signal = firstCleanText([
+    record?.accessType,
+    record?.division,
+    Array.isArray(record?.divisionUse) ? record.divisionUse.join(' ') : record?.divisionUse,
+    record?.sourceSheet,
+    record?.sourceText,
+    record?.name,
+    record?.title,
+  ]).toLowerCase();
+  if (signal.includes('farm') || signal.includes('nursery')) return 'Farm';
+  if (signal.includes('shop') || signal.includes('maintenance')) return 'Shop';
+  if (signal.includes('transit')) return 'In Transit';
+  if (signal) return 'Job Site';
+  return fallback;
+}
+
+function locationAddressValues(record: any): string[] {
+  return uniqueTextOptions([
+    record?.mainAddress,
+    record?.locationAddress,
+    record?.address,
+    record?.sourceText,
+    record?.crewAccessAddress,
+    record?.truckAccessAddress,
+    record?.constructionAccessPin,
+    record?.loadUnloadPin,
+    record?.secondaryLoadUnloadPin,
+    record?.coordinateText,
+    record?.googleMapsUrl,
+  ]);
+}
+
+function pushEquipmentLocationOption(options: EquipmentLocationOption[], option: EquipmentLocationOption) {
+  const name = String(option.name || '').trim();
+  const addresses = uniqueTextOptions(option.addresses || []);
+  if (!name) return;
+
+  const key = name.toLowerCase();
+  const existing = options.find((item) => item.name.toLowerCase() === key);
+  if (existing) {
+    existing.addresses = uniqueTextOptions([...existing.addresses, ...addresses]);
+    if (existing.locationType === 'Unknown' && option.locationType) existing.locationType = option.locationType;
+    return;
+  }
+
+  options.push({
+    name,
+    addresses,
+    locationType: option.locationType || 'Unknown',
+  });
+}
+
+const projectLocationFields = [
+  { key: 'location', suffix: '', type: 'Job Site' },
+  { key: 'address', suffix: '', type: 'Job Site' },
+  { key: 'site', suffix: '', type: 'Job Site' },
+  { key: 'crewAccessAddress', suffix: ' - Crew Access', type: 'Job Site' },
+  { key: 'truckAccessAddress', suffix: ' - Truck / Equipment Access', type: 'Job Site' },
+  { key: 'constructionAccessPin', suffix: ' - Construction / Equipment Access Pin', type: 'Job Site' },
+  { key: 'loadUnloadPin', suffix: ' - Load / Unload Pin', type: 'Job Site' },
+  { key: 'secondaryLoadUnloadPin', suffix: ' - Additional Load / Unload Pin', type: 'Job Site' },
+] as const;
+
+function buildEquipmentLocationOptions({
+  jobsList,
+  locationsList,
+  equipmentList,
+}: {
+  jobsList: any[];
+  locationsList: any[];
+  equipmentList: any[];
+}): EquipmentLocationOption[] {
+  const options: EquipmentLocationOption[] = [];
+
+  pushEquipmentLocationOption(options, {
+    name: jdtHomeBase.name,
+    addresses: [jdtHomeBase.address],
+    locationType: jdtHomeBase.locationType,
+  });
+
+  locationsList.forEach((location) => {
+    const name = firstCleanText([location?.name, location?.title, location?.locationName, location?.locationId]);
+    pushEquipmentLocationOption(options, {
+      name,
+      addresses: locationAddressValues(location),
+      locationType: optionLocationType(location),
+    });
+  });
+
+  jobsList.forEach((job) => {
+    const projectName = firstCleanText([job?.projectName, job?.title, job?.name, job?.jobName, job?.projectId, job?.id]);
+    if (!projectName) return;
+
+    const projectAddresses = uniqueTextOptions(projectLocationFields.map((field) => job?.[field.key]));
+    pushEquipmentLocationOption(options, {
+      name: projectName,
+      addresses: projectAddresses,
+      locationType: 'Job Site',
+    });
+
+    projectLocationFields.forEach((field) => {
+      const address = String(job?.[field.key] || '').trim();
+      if (!address || !field.suffix) return;
+      pushEquipmentLocationOption(options, {
+        name: `${projectName}${field.suffix}`,
+        addresses: [address],
+        locationType: field.type,
+      });
+    });
+  });
+
+  equipmentList.forEach((equipment) => {
+    pushEquipmentLocationOption(options, {
+      name: firstCleanText([equipment?.currentLocationName, equipment?.location]),
+      addresses: [equipment?.currentLocation].filter(Boolean),
+      locationType: optionLocationType(equipment),
+    });
+  });
+
+  return options;
+}
+
+function equipmentLocationNameSuggestions(options: EquipmentLocationOption[], currentValue?: unknown): string[] {
+  return uniqueTextOptions([...options.map((option) => option.name), currentValue]);
+}
+
+function equipmentLocationAddressSuggestions(options: EquipmentLocationOption[], currentValue?: unknown): string[] {
+  return uniqueTextOptions([...options.flatMap((option) => option.addresses), currentValue]);
+}
+
+function findEquipmentLocationOption(options: EquipmentLocationOption[], name: unknown): EquipmentLocationOption | undefined {
+  const target = cleanIdentity(name);
+  if (!target) return undefined;
+  return options.find((option) => cleanIdentity(option.name) === target);
+}
+
 function savedLocationMatchesFormContext(location: any, data: Record<string, unknown>) {
   const contextValues = [
     data?.jobId,
@@ -921,6 +1071,12 @@ function enrichFieldsWithSuggestions(
       .filter((location) => savedLocationMatchesFormContext(location, data || {}))
       .flatMap(savedLocationSuggestionValues),
   );
+  const scopedLocationRecords = locationsList.filter((location) => savedLocationMatchesFormContext(location, data || {}));
+  const equipmentLocationOptions = buildEquipmentLocationOptions({
+    jobsList,
+    locationsList: scopedLocationRecords,
+    equipmentList,
+  });
   const locations = uniqueTextOptions([
     ...defaultFreightLocationOptions,
     ...savedLocationOptions,
@@ -956,6 +1112,20 @@ function enrichFieldsWithSuggestions(
     if (['implementNames', 'compatibleImplementTypes'].includes(field.key)) {
       return { ...field, suggestions: listWithCurrent([...implementNames, ...implementTypeOptions], currentValue) };
     }
+    if (field.key === 'currentLocationName') {
+      return {
+        ...field,
+        suggestions: equipmentLocationNameSuggestions(equipmentLocationOptions, currentValue),
+        hint: field.hint || 'Choose a saved project, farm, shop, or site pin name first.',
+      };
+    }
+    if (field.key === 'currentLocation') {
+      return {
+        ...field,
+        suggestions: equipmentLocationAddressSuggestions(equipmentLocationOptions, currentValue),
+        hint: field.hint || 'Main address, access point, Google Maps link, or lat,long pin tied to the selected location name.',
+      };
+    }
     if ([
       'origin',
       'delivery',
@@ -963,8 +1133,6 @@ function enrichFieldsWithSuggestions(
       'location',
       'locationName',
       'locationAddress',
-      'currentLocation',
-      'currentLocationName',
       'siteArea',
       'crewAccessAddress',
       'truckAccessAddress',
@@ -1039,6 +1207,14 @@ export default function EntityForms({
     ),
     [resolvedType, stopCount, formSeed, jobsList, equipmentList, crewsList, clientsList, locationsList, workOrders, projectMaterialItems],
   );
+  const equipmentLocationOptions = useMemo(
+    () => buildEquipmentLocationOptions({
+      jobsList,
+      locationsList,
+      equipmentList,
+    }),
+    [jobsList, locationsList, equipmentList],
+  );
   const [formData, setFormData] = useState<any>(() => initialFormData(formSeed, fields));
   const [formError, setFormError] = useState('');
   const requiresProjectContext = projectTreeFormTypes.has(resolvedType);
@@ -1046,6 +1222,23 @@ export default function EntityForms({
 
   const handleChange = (key: string, value: any) => {
     setFormError('');
+    if (resolvedType === 'equipment' && key === 'currentLocationName') {
+      setFormData((prev: any) => {
+        const selectedLocation = findEquipmentLocationOption(equipmentLocationOptions, value);
+        const previousLocation = findEquipmentLocationOption(equipmentLocationOptions, prev.currentLocationName);
+        const currentAddress = String(prev.currentLocation || '').trim();
+        const previousAddress = String(previousLocation?.addresses?.[0] || '').trim();
+        const previousName = String(prev.currentLocationName || '').trim();
+        const shouldReplaceAddress = !currentAddress || currentAddress === previousAddress || currentAddress === previousName;
+        return {
+          ...prev,
+          [key]: value,
+          ...(selectedLocation?.addresses?.[0] && shouldReplaceAddress ? { currentLocation: selectedLocation.addresses[0] } : {}),
+          ...(selectedLocation?.locationType ? { currentLocationType: selectedLocation.locationType } : {}),
+        };
+      });
+      return;
+    }
     setFormData((prev: any) => ({ ...prev, [key]: value }));
   };
 

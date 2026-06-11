@@ -4,6 +4,11 @@ import React from 'react';
 import { renderToString } from 'react-dom/server';
 import EntityForms from './EntityForms';
 
+function datalistHtml(html: string, id: string) {
+  const match = html.match(new RegExp(`<datalist id="${id}">([\\s\\S]*?)</datalist>`));
+  return match?.[1] || '';
+}
+
 test('freight move form suggests saved drivers, trucks, trailers, projects, and clients while allowing manual entry', () => {
   const html = renderToString(
     <EntityForms
@@ -437,6 +442,55 @@ test('equipment forms expose vehicle registration and insurance compliance field
   assert.match(html, /Insurance Policy Number/);
   assert.match(html, /Insurance Expiration/);
   assert.match(html, /Insurance Document URL/);
+});
+
+test('equipment forms split saved location names from addresses and project access pins', () => {
+  const html = renderToString(
+    <EntityForms
+      type="equipment"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{ name: 'Komatsu 500 - 1', category: 'Machine' }}
+      jobsList={[
+        {
+          id: 'project-boca-west',
+          title: 'Boca West Course 1 Renovation',
+          location: '20583 Boca West Dr, Boca Raton, FL 33434',
+          truckAccessAddress: 'Boca West construction gate',
+          loadUnloadPin: '26.387315,-80.1712583',
+        },
+      ]}
+      locationsList={[
+        {
+          id: 'location-main-office',
+          name: 'Main Office',
+          locationType: 'Farm',
+          mainAddress: '1010 E Sugarland Hwy, Clewiston, FL 33440',
+        },
+        {
+          id: 'location-boca-west-load-pin',
+          name: 'Boca West load / unload pin',
+          accessType: 'Load / Unload Pin',
+          projectName: 'Boca West Course 1 Renovation',
+          coordinateText: '26.387315,-80.1712583',
+        },
+      ]}
+    />,
+  );
+
+  const locationNameSuggestions = datalistHtml(html, 'equipment-currentLocationName-suggestions');
+  const locationAddressSuggestions = datalistHtml(html, 'equipment-currentLocation-suggestions');
+
+  assert.match(locationNameSuggestions, /Boca West Course 1 Renovation/);
+  assert.match(locationNameSuggestions, /Boca West load \/ unload pin/);
+  assert.match(locationNameSuggestions, /Main Office/);
+  assert.doesNotMatch(locationNameSuggestions, /1010 E Sugarland Hwy/);
+  assert.doesNotMatch(locationNameSuggestions, /26\.387315,-80\.1712583/);
+
+  assert.match(locationAddressSuggestions, /1010 E Sugarland Hwy, Clewiston, FL 33440/);
+  assert.match(locationAddressSuggestions, /20583 Boca West Dr, Boca Raton, FL 33434/);
+  assert.match(locationAddressSuggestions, /26\.387315,-80\.1712583/);
 });
 
 test('ranch oak forms expose editable field inventory details', () => {
