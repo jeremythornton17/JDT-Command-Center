@@ -483,7 +483,7 @@ const fieldSets: Record<string, FieldConfig[]> = {
     { key: 'toolType', label: 'Tool Type', section: 'Category Details', showWhen: isToolProfile },
     {
       key: 'compatibleTruckTypes',
-      label: 'Compatible Truck Types',
+      label: 'Compatible Trucks',
       type: 'multiselect',
       options: truckTypeOptions,
       section: 'Dispatch Compatibility',
@@ -1205,7 +1205,7 @@ function enrichFieldsWithSuggestions(
     if (field.key === 'trailerType') return { ...field, options: listWithCurrent(trailerTypeNames, currentValue) };
     if (field.key === 'eqType') return { ...field, options: listWithCurrent(equipmentTypeOptions, currentValue) };
     if (field.key === 'implementType') return { ...field, options: listWithCurrent(implementTypeNames, currentValue) };
-    if (field.key === 'compatibleTruckTypes') return { ...field, options: listWithCurrent(truckTypeNames, currentValue) };
+    if (field.key === 'compatibleTruckTypes') return { ...field, options: listWithCurrent(truckNames, currentValue) };
     if (field.key === 'compatibleTrailerTypes') return { ...field, options: listWithCurrent(trailerTypeNames, currentValue) };
     if (field.key === 'compatibleMachineTypes') return { ...field, options: listWithCurrent(machineTypeNames, currentValue) };
     if (['projectName', 'assignedProjectName'].includes(field.key)) return { ...field, suggestions: listWithCurrent(projectNames, currentValue) };

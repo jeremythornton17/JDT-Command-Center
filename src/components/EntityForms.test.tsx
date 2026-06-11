@@ -495,10 +495,11 @@ test('equipment forms show category-specific dispatch compatibility fields', () 
     />,
   );
 
-  assert.match(machineHtml, /Compatible Truck Types/);
+  assert.match(machineHtml, /Compatible Trucks/);
   assert.match(machineHtml, /Compatible Trailer Types/);
   assert.match(machineHtml, /Compatible Implements/);
-  assert.match(machineHtml, />2500<\/span>/);
+  assert.match(machineHtml, />Dodge Ram 2500<\/span>/);
+  assert.doesNotMatch(machineHtml, />2500<\/span>/);
   assert.match(machineHtml, />pole trailer<\/span>/);
   assert.doesNotMatch(machineHtml, />Truck Type<\/span>/);
   assert.doesNotMatch(machineHtml, />Trailer Type<\/span>/);
@@ -516,7 +517,7 @@ test('equipment forms show category-specific dispatch compatibility fields', () 
   assert.doesNotMatch(staleTruckHtml, /Trailer Maintenance Categories/);
 
   assert.match(trailerHtml, />Trailer Type<\/span>/);
-  assert.match(trailerHtml, /Compatible Truck Types/);
+  assert.match(trailerHtml, /Compatible Trucks/);
   assert.match(trailerHtml, /Trailer Maintenance Categories/);
   assert.match(trailerHtml, /Vehicle Compliance/);
   assert.doesNotMatch(trailerHtml, />Equipment Type<\/span>/);
