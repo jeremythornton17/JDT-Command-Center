@@ -1021,7 +1021,7 @@ function shouldReplaceStaleEquipmentLocation(data: Record<string, unknown>, sele
   const currentAddress = String(data.currentLocation || '').trim();
   const assignedProjectName = String(data.assignedProjectName || data.projectName || '').trim();
   const jobSiteIntent = String(data.currentLocationType || '').trim() === 'Job Site' || Boolean(assignedProjectName);
-  const currentNameIsReplaceable = !currentName || isHomeBaseLocationValue(currentName);
+  const currentNameIsReplaceable = !currentName || isHomeBaseLocationValue(currentName) || cleanIdentity(currentName) === cleanIdentity(selectedLocation.name);
   const currentAddressIsReplaceable = !currentAddress || isHomeBaseLocationValue(currentAddress) || currentAddress === currentName;
 
   return jobSiteIntent && currentNameIsReplaceable && currentAddressIsReplaceable;

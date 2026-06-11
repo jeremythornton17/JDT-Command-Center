@@ -611,6 +611,36 @@ test('equipment edit forms resolve assigned job-site project locations over stal
   assert.match(html, /list="equipment-currentLocation-suggestions"[^>]*value="1 Country Club Ln, Belleair, FL 33756"/);
 });
 
+test('equipment edit forms replace stale home base address when the job-site location name is already selected', () => {
+  const html = renderToString(
+    <EntityForms
+      type="equipment"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{
+        name: 'Assigned Machine',
+        category: 'Machine',
+        currentLocationType: 'Job Site',
+        currentLocationName: 'Bellaire CC Course Renovation',
+        currentLocation: '1010 E Sugarland Hwy, Clewiston, FL 33440',
+        assignedProjectName: 'Bellaire CC Course Renovation',
+      }}
+      jobsList={[
+        {
+          id: 'project-bellaire-course-renovation',
+          title: 'Bellaire CC Course Renovation',
+          location: '1 Country Club Ln, Belleair, FL 33756',
+        },
+      ]}
+    />,
+  );
+
+  assert.match(html, /list="equipment-currentLocationName-suggestions"[^>]*value="Bellaire CC Course Renovation"/);
+  assert.match(html, /list="equipment-currentLocation-suggestions"[^>]*value="1 Country Club Ln, Belleair, FL 33756"/);
+  assert.doesNotMatch(html, /list="equipment-currentLocation-suggestions"[^>]*value="1010 E Sugarland Hwy, Clewiston, FL 33440"/);
+});
+
 test('ranch oak forms expose editable field inventory details', () => {
   const addHtml = renderToString(
     <EntityForms
