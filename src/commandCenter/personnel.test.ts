@@ -14,7 +14,7 @@ function readProjectFile(relativePath: string): string {
 
 describe("JDT personnel roster", () => {
   it("includes the current personnel names and phone numbers", () => {
-    assert.equal(defaultJdtPersonnelRoster.length, 17);
+    assert.equal(defaultJdtPersonnelRoster.length, 18);
     assert.deepEqual(
       defaultJdtPersonnelRoster.map(person => [person.name, person.role, person.phone]),
       [
@@ -35,6 +35,7 @@ describe("JDT personnel roster", () => {
         ["Carlos \"Burro\"", "Nutrient Tech", "863-599-1731"],
         ["Regina Kane", "Office Admin", "863-228-1201"],
         ["Jennifer Bermudez", "Operations Coordinator", "239-800-1736"],
+        ["Max Norman", "Sales & Production", undefined],
       ],
     );
   });
@@ -63,7 +64,7 @@ describe("JDT personnel roster", () => {
       { id: "personnel-new-manager", name: "New Manager", role: "Manager", phone: "863-111-1111" },
     ]);
 
-    assert.equal(merged.length, 18);
+    assert.equal(merged.length, 19);
     assert.equal(merged.find(person => person.name === "Jeff Swindle")?.phone, "863-000-0000");
     assert.equal(merged.find(person => person.name === "Buck Thornton")?.phone, "863-228-2660");
     assert.equal(merged.at(-1)?.name, "New Manager");
@@ -76,7 +77,7 @@ describe("JDT personnel roster", () => {
     ]);
     const jeff = merged.find(person => person.id === "personnel-jeff-swindle");
 
-    assert.equal(merged.length, 17);
+    assert.equal(merged.length, 18);
     assert.equal(jeff?.name, "Jeff Swindle");
     assert.equal(jeff?.role, "Crew Leader");
     assert.equal(jeff?.phone, "863-673-1348");
@@ -106,6 +107,7 @@ describe("JDT personnel roster", () => {
         "Owner",
         "Office Admin",
         "Operations Coordinator",
+        "Sales & Production",
         "Crew Leader",
         "Driver",
         "Nutrient Tech",
@@ -123,6 +125,7 @@ describe("JDT personnel roster", () => {
         "Ownership",
         "Office",
         "Operations Leadership",
+        "Sales",
         "Transportation",
         "Nutrient Care",
         "Irrigation",
@@ -153,5 +156,15 @@ describe("JDT personnel roster", () => {
 
     assert.equal(carlos?.role, "Crew Leader");
     assert.equal(carlos?.skill, "Root pruning");
+  });
+
+  it("tracks Max Norman as Sales & Production with the Chevy Colorado assigned", () => {
+    const max = defaultJdtPersonnelRoster.find(person => person.name === "Max Norman");
+
+    assert.equal(max?.role, "Sales & Production");
+    assert.equal(max?.type, "Sales");
+    assert.deepEqual(max?.assignedEquipment, ["Chevy Colorado"]);
+    assert.equal(max?.drivesForCompany, true);
+    assert.match(max?.notes || "", /work and take-home vehicle/i);
   });
 });

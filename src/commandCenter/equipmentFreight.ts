@@ -26,6 +26,7 @@ export const truckTypeOptions = [
   '150',
   '4500',
   '3500',
+  'Pickup',
   'Van',
   'Other',
 ];

@@ -4,6 +4,7 @@ export const personnelRoleOptions = [
   'Owner',
   'Office Admin',
   'Operations Coordinator',
+  'Sales & Production',
   'Crew Leader',
   'Driver',
   'Nutrient Tech',
@@ -16,6 +17,7 @@ export const personnelCrewAllocationOptions = [
   'Ownership',
   'Office',
   'Operations Leadership',
+  'Sales',
   'Transportation',
   'Nutrient Care',
   'Irrigation',
@@ -224,6 +226,16 @@ export const defaultJdtPersonnelRoster: CrewRecord[] = [
     type: 'Operations',
     skill: 'Operations coordination',
     appAccess: 'authorized',
+  }),
+  rosterContact({
+    id: 'personnel-max-norman',
+    name: 'Max Norman',
+    role: 'Sales & Production',
+    type: 'Sales',
+    skill: 'Sales and production',
+    assignedEquipment: ['Chevy Colorado'],
+    drivesForCompany: true,
+    notes: 'Drives the Chevy Colorado as his work and take-home vehicle.',
   }),
 ];
 
