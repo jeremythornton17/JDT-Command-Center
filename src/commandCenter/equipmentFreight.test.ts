@@ -7,6 +7,7 @@ import {
   isFreightVehicle,
   jdtHomeBase,
   trailerMaintenanceCategoryOptions,
+  truckTypeOptions,
   withHomeBaseEquipmentDefaults,
 } from "./equipmentFreight";
 
@@ -70,6 +71,19 @@ describe("equipment and freight helpers", () => {
     assert.equal(isFreightVehicle({ id: "loader-1", name: "Komatsu 500 - 1", type: "Loader" }), false);
     assert.equal(equipmentDisplayName({ id: "truck-1", make: "Ford", model: "F-550" }), "Ford F-550");
     assert.equal(equipmentCategory({ id: "truck-1", truckType: "550" }), "Truck");
+  });
+
+  it("lets explicit equipment category override stale imported type fields", () => {
+    const dodge = {
+      id: "equipment-dodge-ram-2500",
+      name: "Dodge Ram 2500",
+      category: "Truck",
+      trailerType: "black lowboy",
+    };
+
+    assert.equal(equipmentCategory(dodge), "Truck");
+    assert.equal(isFreightVehicle(dodge), true);
+    assert.equal(truckTypeOptions.includes("2500"), true);
   });
 
   it("keeps trailer service categories available to equipment maintenance", () => {

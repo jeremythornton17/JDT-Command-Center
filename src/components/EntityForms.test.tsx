@@ -452,6 +452,10 @@ test('equipment forms show category-specific dispatch compatibility fields', () 
       openModal={() => undefined}
       onSaveRecord={() => undefined}
       data={{ name: 'Kubota Mini X - Swivel Plate #1', category: 'Machine', eqType: 'Excavator' }}
+      equipmentList={[
+        { id: 'truck-dodge-2500', name: 'Dodge Ram 2500', category: 'Truck', truckType: '2500' },
+        { id: 'trailer-pole', name: 'Custom Pole Trailer', category: 'Trailer', trailerType: 'pole trailer' },
+      ]}
     />,
   );
   const truckHtml = renderToString(
@@ -461,6 +465,15 @@ test('equipment forms show category-specific dispatch compatibility fields', () 
       openModal={() => undefined}
       onSaveRecord={() => undefined}
       data={{ name: 'International Sleeper Cab', category: 'Truck', truckType: 'Semi' }}
+    />,
+  );
+  const staleTruckHtml = renderToString(
+    <EntityForms
+      type="equipment"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{ name: 'Dodge Ram 2500', category: 'Truck', trailerType: 'black lowboy' }}
     />,
   );
   const trailerHtml = renderToString(
@@ -485,6 +498,8 @@ test('equipment forms show category-specific dispatch compatibility fields', () 
   assert.match(machineHtml, /Compatible Truck Types/);
   assert.match(machineHtml, /Compatible Trailer Types/);
   assert.match(machineHtml, /Compatible Implements/);
+  assert.match(machineHtml, />2500<\/span>/);
+  assert.match(machineHtml, />pole trailer<\/span>/);
   assert.doesNotMatch(machineHtml, />Truck Type<\/span>/);
   assert.doesNotMatch(machineHtml, />Trailer Type<\/span>/);
   assert.doesNotMatch(machineHtml, /Vehicle Compliance/);
@@ -494,6 +509,11 @@ test('equipment forms show category-specific dispatch compatibility fields', () 
   assert.match(truckHtml, /Vehicle Compliance/);
   assert.doesNotMatch(truckHtml, />Equipment Type<\/span>/);
   assert.doesNotMatch(truckHtml, />Trailer Type<\/span>/);
+
+  assert.match(staleTruckHtml, />Truck Type<\/span>/);
+  assert.match(staleTruckHtml, /Compatible Trailer Types/);
+  assert.doesNotMatch(staleTruckHtml, />Trailer Type<\/span>/);
+  assert.doesNotMatch(staleTruckHtml, /Trailer Maintenance Categories/);
 
   assert.match(trailerHtml, />Trailer Type<\/span>/);
   assert.match(trailerHtml, /Compatible Truck Types/);

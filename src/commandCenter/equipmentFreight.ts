@@ -20,6 +20,7 @@ export const equipmentTypeOptions = [
 
 export const truckTypeOptions = [
   'Semi',
+  '2500',
   '550',
   '350',
   '150',
@@ -190,6 +191,10 @@ export function equipmentDisplayName(equipment: EquipmentRecord): string {
 }
 
 export function equipmentCategory(equipment: EquipmentRecord): string {
+  const explicitCategory = String(equipment.category || '').trim();
+  const knownCategory = equipmentCategoryOptions.find((option) => option.toLowerCase() === explicitCategory.toLowerCase());
+  if (knownCategory) return knownCategory;
+
   const signals = [
     equipment.category,
     equipment.eqType,
@@ -207,7 +212,7 @@ export function equipmentCategory(equipment: EquipmentRecord): string {
 
 export function isFreightVehicle(equipment: EquipmentRecord): boolean {
   const category = equipmentCategory(equipment);
-  return category === 'Truck' || category === 'Trailer' || Boolean(equipment.truckType || equipment.trailerType);
+  return category === 'Truck' || category === 'Trailer';
 }
 
 export function withHomeBaseEquipmentDefaults<T extends EquipmentRecord>(equipment: T): T & EquipmentRecord {

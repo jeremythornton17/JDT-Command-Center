@@ -1115,6 +1115,22 @@ function enrichFieldsWithSuggestions(
   const truckNames = uniqueTextOptions(namesForEquipmentCategory(equipmentList, 'Truck'));
   const trailerNames = uniqueTextOptions(namesForEquipmentCategory(equipmentList, 'Trailer'));
   const implementNames = uniqueTextOptions(namesForEquipmentCategory(equipmentList, 'Implement'));
+  const truckTypeNames = uniqueTextOptions([
+    ...truckTypeOptions,
+    ...valuesFromRecords(equipmentList.filter((equipment) => equipmentCategory(equipment) === 'Truck'), ['truckType', 'type', 'eqType']),
+  ]);
+  const trailerTypeNames = uniqueTextOptions([
+    ...trailerTypeOptions,
+    ...valuesFromRecords(equipmentList.filter((equipment) => equipmentCategory(equipment) === 'Trailer'), ['trailerType', 'type', 'eqType']),
+  ]);
+  const machineTypeNames = uniqueTextOptions([
+    ...equipmentTypeOptions.filter((option) => !['Truck', 'Trailer', 'Implement', 'Tool'].includes(option)),
+    ...valuesFromRecords(equipmentList.filter((equipment) => equipmentCategory(equipment) === 'Machine'), ['eqType', 'type']),
+  ]);
+  const implementTypeNames = uniqueTextOptions([
+    ...implementTypeOptions,
+    ...valuesFromRecords(equipmentList.filter((equipment) => equipmentCategory(equipment) === 'Implement'), ['implementType', 'type', 'eqType']),
+  ]);
   const siteContacts = clientsList.flatMap((client) => [
     ...(Array.isArray(client?.members) ? client.members : []),
     {
@@ -1152,8 +1168,15 @@ function enrichFieldsWithSuggestions(
   return fields.map((field) => {
     const currentValue = data?.[field.key];
     if (field.key === 'driver') return { ...field, type: 'text' as const, suggestions: listWithCurrent(driverNames, currentValue) };
-    if (field.key === 'requiredTrailerType') return { ...field, type: 'text' as const, suggestions: listWithCurrent(['Any Trailer Type', ...trailerTypeOptions], currentValue) };
+    if (field.key === 'requiredTrailerType') return { ...field, type: 'text' as const, suggestions: listWithCurrent(['Any Trailer Type', ...trailerTypeNames], currentValue) };
     if (field.key === 'trailerMaintenanceCategories') return { ...field, suggestions: listWithCurrent(trailerMaintenanceCategoryOptions, currentValue) };
+    if (field.key === 'truckType') return { ...field, options: listWithCurrent(truckTypeNames, currentValue) };
+    if (field.key === 'trailerType') return { ...field, options: listWithCurrent(trailerTypeNames, currentValue) };
+    if (field.key === 'eqType') return { ...field, options: listWithCurrent(equipmentTypeOptions, currentValue) };
+    if (field.key === 'implementType') return { ...field, options: listWithCurrent(implementTypeNames, currentValue) };
+    if (field.key === 'compatibleTruckTypes') return { ...field, options: listWithCurrent(truckTypeNames, currentValue) };
+    if (field.key === 'compatibleTrailerTypes') return { ...field, options: listWithCurrent(trailerTypeNames, currentValue) };
+    if (field.key === 'compatibleMachineTypes') return { ...field, options: listWithCurrent(machineTypeNames, currentValue) };
     if (['projectName', 'assignedProjectName'].includes(field.key)) return { ...field, suggestions: listWithCurrent(projectNames, currentValue) };
     if (['jobName', 'job'].includes(field.key)) return { ...field, suggestions: listWithCurrent(jobNames, currentValue) };
     if (['client', 'clientName', 'company'].includes(field.key)) return { ...field, suggestions: listWithCurrent(clientNames, currentValue) };
@@ -1169,7 +1192,10 @@ function enrichFieldsWithSuggestions(
     if (['equipmentNames', 'linkedEquipment', 'attachedImplementNames'].includes(field.key)) {
       return { ...field, suggestions: listWithCurrent(equipmentNames, currentValue) };
     }
-    if (['implementNames', 'compatibleImplementTypes'].includes(field.key)) {
+    if (field.key === 'compatibleImplementTypes') {
+      return { ...field, options: listWithCurrent([...implementNames, ...implementTypeNames], currentValue) };
+    }
+    if (['implementNames'].includes(field.key)) {
       return { ...field, suggestions: listWithCurrent([...implementNames, ...implementTypeOptions], currentValue) };
     }
     if (field.key === 'currentLocationName') {
