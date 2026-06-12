@@ -30,7 +30,7 @@ describe("crew field closeout workflow", () => {
   const workOrder: WorkOrderRecord = {
     id: "workorder-root-prune-1003",
     title: "Root prune Live Oak 1003",
-    workOrderType: "Root Pruning",
+    workOrderType: "tree_pruning",
     taskType: "1st root prune",
     crewLeadName: "Christian Crespo",
     projectId: "project-waterford-relocation",

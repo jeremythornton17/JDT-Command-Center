@@ -222,7 +222,7 @@ export function buildCrewCloseoutPrompts(input: {
   const { crew, loads = [], workOrders = [], jobs = [], fieldUpdates = [], dateIso } = input;
   if (!crew) return [];
 
-  const promptRecords: Array<[CloseoutAssignmentType, LoadRecord | WorkOrderRecord | JobRecord]> = [
+  const promptRecords: ReadonlyArray<readonly [CloseoutAssignmentType, LoadRecord | WorkOrderRecord | JobRecord]> = [
     ...loads.filter((load) => recordMatchesCrew(load, crew) && recordIsRelevantForDate(load, dateIso)).map((load) => ["load", load] as const),
     ...workOrders.filter((workOrder) => recordMatchesCrew(workOrder, crew) && recordIsRelevantForDate(workOrder, dateIso)).map((workOrder) => ["workOrder", workOrder] as const),
     ...jobs.filter((job) => recordMatchesCrew(job, crew) && recordIsRelevantForDate(job, dateIso)).map((job) => ["job", job] as const),
@@ -330,6 +330,7 @@ export function buildFieldCloseoutReviewQueue(fieldUpdates: FieldUpdateRecord[] 
       const reviewStatus = reviewStatusForCloseout(update);
       const proofCount = (update.proofLinks || []).length + (update.proofDocumentIds || []).length;
       const recordId = update.id || update.relatedRecordId || update.title || "field-update";
+      const severity: FieldCloseoutReviewItem["severity"] = reviewStatus === "Needs Review" ? "High" : reviewStatus === "Needs Proof" ? "Medium" : "Low";
 
       return {
         id: recordId,
@@ -337,7 +338,7 @@ export function buildFieldCloseoutReviewQueue(fieldUpdates: FieldUpdateRecord[] 
         crewName: update.crewName || update.createdBy || "Crew user",
         projectName: update.projectName || update.jobName || "Unlinked project",
         reviewStatus,
-        severity: reviewStatus === "Needs Review" ? "High" : reviewStatus === "Needs Proof" ? "Medium" : "Low",
+        severity,
         proofCount,
         detail: [update.notes, update.issueSummary, update.locationDetail, update.closeoutDate].map(clean).filter(Boolean).join(" - ") || "Closeout submitted for office review.",
         recommendedAction: recommendedActionForCloseout(reviewStatus),

@@ -1,15 +1,68 @@
 import express from 'express';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  handleRevealGpsWebhook,
+  revealWebhookCredentialsConfigured,
+} from './server/revealTelematics.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const distDir = path.join(__dirname, 'dist');
 const port = Number(process.env.PORT) || 8080;
+const firebaseConfigPath = path.join(__dirname, 'firebase-applet-config.json');
+const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf8'));
+const firestoreProjectId = process.env.FIRESTORE_PROJECT_ID || firebaseConfig.projectId;
+const firestoreDatabaseId = process.env.FIRESTORE_DATABASE_ID || firebaseConfig.firestoreDatabaseId;
 
 const app = express();
 
 app.disable('x-powered-by');
+app.get('/api/integrations/reveal/gps/health', (_request, response) => {
+  response
+    .type('application/json')
+    .set('Cache-Control', 'no-store')
+    .send({
+      ok: true,
+      provider: 'Reveal',
+      endpoint: '/api/integrations/reveal/gps',
+      credentialsConfigured: revealWebhookCredentialsConfigured(process.env),
+      firestoreProjectId,
+      firestoreDatabaseId,
+    });
+});
+
+app.post('/api/integrations/reveal/gps', express.json({ limit: '2mb', type: ['application/json', 'application/*+json'] }), async (request, response) => {
+  try {
+    const result = await handleRevealGpsWebhook({
+      body: request.body,
+      headers: request.headers,
+      env: process.env,
+      projectId: firestoreProjectId,
+      databaseId: firestoreDatabaseId,
+      now: new Date(),
+    });
+
+    Object.entries(result.headers || {}).forEach(([key, value]) => response.set(key, value));
+    response
+      .status(result.statusCode)
+      .type('application/json')
+      .set('Cache-Control', 'no-store')
+      .send(result.body);
+  } catch (error) {
+    console.error('Reveal GPS webhook failed', error);
+    response
+      .status(500)
+      .type('application/json')
+      .set('Cache-Control', 'no-store')
+      .send({
+        ok: false,
+        error: error instanceof Error ? error.message : 'Reveal GPS webhook failed.',
+      });
+  }
+});
+
 app.get('/runtime-config.js', (_request, response) => {
   const runtimeConfig = {
     APP_URL: process.env.APP_URL || '',
