@@ -25,6 +25,7 @@ describe("data sync draft persistence", () => {
     const serialized = serializeDataSyncDraft({
       templateId: "jdt_project_flow_tree_assets",
       pastedRows: "Tree_Assets_ID\tProjects_ID\tTree Type\n1001\t\tLive Oak",
+      includedHeaders: ["Tree_Type", "Tag", "DBH_IN"],
       projectContext: {
         clientId: "cli-waterford",
         clientName: "Waterford",
@@ -45,6 +46,7 @@ describe("data sync draft persistence", () => {
       jobId: "job-waterford-relocation",
       jobName: "Tree relocation",
     });
+    assert.deepEqual(parseDataSyncDraft(serialized)?.includedHeaders, ["Tree_Type", "Tag", "DBH_IN"]);
   });
 
   it("rejects stale draft payloads with an unknown import template", () => {

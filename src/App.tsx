@@ -584,9 +584,13 @@ export default function App() {
     const normalizedContext = normalizeProjectImportContext(context);
     setProjectImportContext(normalizedContext || null);
     if (template && typeof window !== 'undefined') {
+      const includedHeaders = templateId === 'jdt_project_flow_tree_assets' && normalizedContext
+        ? ['Tree_Type', 'Tag', 'DBH_IN']
+        : pasteHeadersForTemplate(template);
       window.localStorage.setItem(dataSyncDraftStorageKey, serializeDataSyncDraft({
         templateId,
-        pastedRows: `${pasteHeadersForTemplate(template).join('\t')}\n`,
+        pastedRows: '',
+        includedHeaders,
         savedAtIso: new Date().toISOString(),
         projectContext: normalizedContext,
       }));

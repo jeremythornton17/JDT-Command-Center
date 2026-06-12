@@ -71,6 +71,7 @@ export type ProjectImportContext = {
 
 export type BuildImportPreviewOptions = {
   projectContext?: ProjectImportContext | null;
+  includedHeaders?: string[];
 };
 
 type RowObject = Record<string, string>;
@@ -298,7 +299,9 @@ function hasDelimitedQuoteClose(text: string, startIndex: number, delimiter: str
 
 export function buildImportPreview(templateId: SheetImportTemplateId, input: string | string[][], options: BuildImportPreviewOptions = {}): ImportPreview {
   const template = findTemplate(templateId);
-  const rows = typeof input === 'string' ? parseDelimitedRows(input) : input;
+  const rawRows = typeof input === 'string' ? parseDelimitedRows(input) : input;
+  const includedHeaders = normalizeIncludedHeaders(template, options.includedHeaders);
+  const rows = rowsWithSelectedHeaders(rawRows, includedHeaders);
   const projectContext = isProjectWorkbookTemplateId(templateId) ? normalizeProjectImportContext(options.projectContext) : undefined;
   const mapped = mapTemplate(template, rows, { projectContext });
   const contextualTarget = projectContext ? applyProjectContextToTarget(mapped, projectContext) : mapped;
@@ -325,6 +328,37 @@ export function previewSummary(preview: ImportPreview): string {
 
 export function pasteHeadersForTemplate(template: SheetImportTemplate): string[] {
   return template.pasteHeaders || template.requiredHeaders;
+}
+
+function normalizeIncludedHeaders(template: SheetImportTemplate, includedHeaders?: string[]): string[] {
+  if (!includedHeaders?.length) return [];
+  const allowedHeaders = new Set(pasteHeadersForTemplate(template).map(normalizedHeader));
+  const seen = new Set<string>();
+  return includedHeaders
+    .map(cleanText)
+    .filter(Boolean)
+    .filter((header) => {
+      const normalized = normalizedHeader(header);
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return allowedHeaders.size === 0 || allowedHeaders.has(normalized);
+    });
+}
+
+function rowsWithSelectedHeaders(rows: string[][], includedHeaders: string[]): string[][] {
+  if (!includedHeaders.length || rows.length === 0) return rows;
+  if (rowLooksLikeHeader(rows[0], includedHeaders)) return rows;
+  return [includedHeaders, ...rows];
+}
+
+function rowLooksLikeHeader(row: string[] | undefined, includedHeaders: string[]): boolean {
+  if (!row?.length) return false;
+  const selected = includedHeaders.map(normalizedHeader);
+  const normalizedRow = row.map(normalizedHeader);
+  const startsWithSelected = selected.every((header, index) => normalizedRow[index] === header);
+  if (startsWithSelected) return true;
+  const matchCount = selected.filter((header) => normalizedRow.includes(header)).length;
+  return matchCount >= Math.min(2, selected.length);
 }
 
 export function previewDetailsForRecord(template: SheetImportTemplate, record: CommandRecord): Array<{ label: string; value: string }> {
@@ -805,28 +839,44 @@ function mapRelocation(template: SheetImportTemplate, rows: string[][]): ImportT
 }
 
 function mapJdtProjectFlowTreeAssets(template: SheetImportTemplate, rows: string[][], projectContext?: ProjectImportContext | null): ImportTarget {
-  const { records, warnings } = objectRows(rows, template.requiredHeaders, template.headerAliases);
   const normalizedContext = normalizeProjectImportContext(projectContext);
   const contextProjectId = normalizedContext?.projectId || normalizedContext?.projectsId || '';
+  const requiredHeaders = template.requiredHeaders.filter((header) => {
+    if (header === 'Tree_Asset_ID') return false;
+    if (header === 'Project_ID' && contextProjectId) return false;
+    return true;
+  });
+  const { records, warnings } = objectRows(rows, requiredHeaders, template.headerAliases);
+  const seenProjectTags = new Set<string>();
   const treeAssets = records
     .map(({ row, index }) => {
-      const treeAssetId = firstValue(row, 'Tree_Asset_ID', 'Tree_Assets_ID', 'Tree Assets_ID');
       const projectsId = firstValue(row, 'Project_ID', 'Projects_ID') || contextProjectId;
-      const clientId = firstValue(row, 'Client_ID', 'Companies_ID');
+      const clientId = firstValue(row, 'Client_ID', 'Companies_ID') || normalizedContext?.clientId;
       const type = firstValue(row, 'Tree_Type', 'Tree Type', 'TYPE');
+      const tag = firstValue(row, 'Tag', 'TAG');
+      const treeAssetId = firstValue(row, 'Tree_Asset_ID', 'Tree_Assets_ID', 'Tree Assets_ID') || generatedTreeAssetId(projectsId, tag, index);
       const existingLocationDescription = firstValue(row, 'Existing_Location_Description', 'Existing Location Description', 'LOCATION', 'Location');
       const proposedFinalLocationDescription = firstValue(row, 'Proposed_Final_Location_Description', 'Proposed Final Location Description');
       const sourcePin = coordinatePointFromText(firstValue(row, 'Existing_Source_Pin', 'Source Pin') || existingLocationDescription, 'Imported source pin');
       const destinationPin = coordinatePointFromText(firstValue(row, 'Destination_Pin', 'Destination Pin') || proposedFinalLocationDescription, 'Imported destination pin');
 
-      if (!treeAssetId && !projectsId && !type) {
+      if (!treeAssetId && !projectsId && !type && !tag) {
         warnings.push(`Row ${index} skipped: blank tree asset row`);
         return null;
       }
 
-      if (!treeAssetId || !projectsId || !type) {
-        warnings.push(`Row ${index} skipped: tree asset rows need Tree_Asset_ID, Project_ID or selected project context, and Tree_Type`);
+      if (!projectsId || !type) {
+        warnings.push(`Row ${index} skipped: tree asset rows need Project_ID or selected project context, and Tree_Type`);
         return null;
+      }
+
+      const normalizedTag = normalizedHeader(tag);
+      if (normalizedTag) {
+        const projectTagKey = `${projectsId}:${normalizedTag}`;
+        if (seenProjectTags.has(projectTagKey)) {
+          warnings.push(`Duplicate tree tag "${tag}" in project ${projectsId}; matching rows will update the same tree asset.`);
+        }
+        seenProjectTags.add(projectTagKey);
       }
 
       return {
@@ -838,7 +888,7 @@ function mapJdtProjectFlowTreeAssets(template: SheetImportTemplate, rows: string
         projectId: projectsId,
         projectsId,
         projectName: firstValue(row, 'Project_Name', 'Project Name') || normalizedContext?.projectName,
-        tag: firstValue(row, 'Tag', 'TAG') || treeAssetId,
+        tag,
         type,
         ranchOakType: type,
         treeType: type,
@@ -1194,6 +1244,22 @@ function displayFieldValue(input: unknown): string {
 
 function normalizedHeader(input: string): string {
   return cleanText(input).toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function generatedTreeAssetId(projectId: string, tag: string, rowIndex: number): string {
+  const projectSegment = idSegment(projectId);
+  if (!projectSegment) return '';
+  const tagSegment = idSegment(tag);
+  const fallbackSegment = `ROW-${String(Math.max(1, rowIndex - 1)).padStart(3, '0')}`;
+  return `${projectSegment}-TREE-${tagSegment || fallbackSegment}`;
+}
+
+function idSegment(input: string): string {
+  return cleanText(input)
+    .replace(/&/g, ' and ')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toUpperCase();
 }
 
 function slugify(input: string): string {

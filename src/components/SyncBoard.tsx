@@ -39,6 +39,22 @@ type SyncBoardProps = {
   authorizeGoogleSheetsAccess?: () => Promise<string>;
 };
 
+const systemManagedImportColumns = new Set([
+  'Tree_Asset_ID',
+  'Project_ID',
+  'Client_ID',
+  'Root_Pruning_ID',
+  'Nutrient_Care_ID',
+  'Tree_Photo_ID',
+  'Material_Item_ID',
+  'App_Record_ID',
+  'App_Updated_At',
+  'Last_Sync_Batch_ID',
+  'Schema_Version',
+]);
+
+const projectTreeBasicHeaders = ['Tree_Type', 'Tag', 'DBH_IN'];
+
 function readInitialDataSyncDraft(): DataSyncDraft | null {
   if (typeof window === 'undefined') return null;
   return parseDataSyncDraft(window.localStorage.getItem(dataSyncDraftStorageKey));
@@ -53,10 +69,57 @@ function previewFromDraft(draft: DataSyncDraft | null): ImportPreview | null {
   if (!draft?.pastedRows.trim()) return null;
 
   try {
-    return buildImportPreview(draft.templateId, draft.pastedRows, { projectContext: draft.projectContext });
+    return buildImportPreview(draft.templateId, draft.pastedRows, { projectContext: draft.projectContext, includedHeaders: draft.includedHeaders });
   } catch {
     return null;
   }
+}
+
+function defaultHeadersForTemplate(templateId: SheetImportTemplateId, projectContext?: ProjectImportContext | null): string[] {
+  const template = sheetImportTemplates.find((item) => item.id === templateId) || sheetImportTemplates[0];
+  const headers = pasteHeadersForTemplate(template);
+  if (template.id === 'jdt_project_flow_tree_assets' && projectContext) return projectTreeBasicHeaders;
+  const operationalHeaders = headers.filter((header) => !systemManagedImportColumns.has(header));
+  return operationalHeaders.length ? operationalHeaders : headers;
+}
+
+function normalizeSelectedHeaders(templateId: SheetImportTemplateId, headers: string[]): string[] {
+  const template = sheetImportTemplates.find((item) => item.id === templateId) || sheetImportTemplates[0];
+  const available = new Set(pasteHeadersForTemplate(template));
+  const seen = new Set<string>();
+  return headers.filter((header) => {
+    if (!available.has(header) || seen.has(header)) return false;
+    seen.add(header);
+    return true;
+  });
+}
+
+function exampleValueForHeader(header: string): string {
+  const examples: Record<string, string> = {
+    'Client Company': 'A Cut Above',
+    'Contact Name': 'Damon Rockett',
+    Phone: '561-386-1770',
+    'JDT Equipment Master List': 'Truck',
+    Make: 'Dodge',
+    Model: 'Ram 2500',
+    'Location Name': 'Main Office',
+    'Main Address': '1010 E Sugarland Hwy, Clewiston, FL 33440',
+    'Staff Name': 'Christian Crespo',
+    Role: 'Driver',
+    Tree_Type: 'Live Oak',
+    Tag: '1',
+    DBH_IN: '33',
+    Height: '18 ft',
+    Spread: '20 ft',
+    Material_Type: 'Pine',
+    Quantity_Required: '12',
+  };
+  return examples[header] || '';
+}
+
+function placeholderForHeaders(headers: string[]): string {
+  const exampleRow = headers.map(exampleValueForHeader);
+  return `${headers.join('\t')}\n${exampleRow.some(Boolean) ? exampleRow.join('\t') : '...'}`;
 }
 
 export default function SyncBoard({
@@ -76,9 +139,14 @@ export default function SyncBoard({
   authorizeGoogleSheetsAccess,
 }: SyncBoardProps) {
   const [initialDraft] = useState(readInitialDataSyncDraft);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<SheetImportTemplateId>(
-    initialDraft?.templateId || (projectImportContext ? 'jdt_project_flow_tree_assets' : 'inventory'),
-  );
+  const initialTemplateId = initialDraft?.templateId || (projectImportContext ? 'jdt_project_flow_tree_assets' : 'inventory');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<SheetImportTemplateId>(initialTemplateId);
+  const [selectedImportHeaders, setSelectedImportHeaders] = useState<string[]>(() => {
+    const normalizedDraftHeaders = initialDraft?.includedHeaders ? normalizeSelectedHeaders(initialTemplateId, initialDraft.includedHeaders) : [];
+    return normalizedDraftHeaders.length
+      ? normalizedDraftHeaders
+      : defaultHeadersForTemplate(initialTemplateId, projectImportContext || initialDraft?.projectContext || null);
+  });
   const [pastedRows, setPastedRows] = useState(initialDraft?.pastedRows || '');
   const [preview, setPreview] = useState<ImportPreview | null>(() => previewFromDraft(initialDraft));
   const [activeProjectContext, setActiveProjectContext] = useState<ProjectImportContext | null>(projectImportContext || initialDraft?.projectContext || null);
@@ -90,7 +158,8 @@ export default function SyncBoard({
   const [isWritingWorkbook, setIsWritingWorkbook] = useState(false);
   const [isWritingWorkbookSetup, setIsWritingWorkbookSetup] = useState(false);
   const selectedTemplate = useMemo(() => sheetImportTemplates.find((template) => template.id === selectedTemplateId) || sheetImportTemplates[0], [selectedTemplateId]);
-  const selectedPasteHeaders = useMemo(() => pasteHeadersForTemplate(selectedTemplate), [selectedTemplate]);
+  const workbookColumnOptions = useMemo(() => pasteHeadersForTemplate(selectedTemplate), [selectedTemplate]);
+  const selectedPasteHeaders = selectedImportHeaders.length ? selectedImportHeaders : workbookColumnOptions;
   const selectedProjectContext = isProjectWorkbookTemplateId(selectedTemplateId) ? activeProjectContext : null;
   const previewWarnings = useMemo(() => preview ? Array.from(new Set([...preview.warnings, ...preview.targets.flatMap((target) => target.warnings)])) : [], [preview]);
   const previewRecordCount = preview?.targets.reduce((sum, target) => sum + target.records.length, 0) || 0;
@@ -107,12 +176,14 @@ export default function SyncBoard({
 
   useEffect(() => {
     if (projectImportContext) {
+      const nextTemplateId = isProjectWorkbookTemplateId(selectedTemplateId) ? selectedTemplateId : 'jdt_project_flow_tree_assets';
       setActiveProjectContext(projectImportContext);
-      setSelectedTemplateId((current) => isProjectWorkbookTemplateId(current) ? current : 'jdt_project_flow_tree_assets');
+      setSelectedTemplateId(nextTemplateId);
+      setSelectedImportHeaders(defaultHeadersForTemplate(nextTemplateId, projectImportContext));
       setPreview(null);
       setError('');
     }
-  }, [projectImportContext]);
+  }, [projectImportContext, selectedTemplateId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -124,10 +195,11 @@ export default function SyncBoard({
     window.localStorage.setItem(dataSyncDraftStorageKey, serializeDataSyncDraft({
       templateId: selectedTemplateId,
       pastedRows,
+      includedHeaders: selectedPasteHeaders,
       savedAtIso: new Date().toISOString(),
       projectContext: selectedProjectContext || undefined,
     }));
-  }, [pastedRows, selectedTemplateId, selectedProjectContext]);
+  }, [pastedRows, selectedTemplateId, selectedPasteHeaders, selectedProjectContext]);
 
   const handlePreview = () => {
     setError('');
@@ -136,9 +208,14 @@ export default function SyncBoard({
       setError('Paste rows from the selected master list before previewing.');
       return;
     }
+    if (!selectedPasteHeaders.length) {
+      setPreview(null);
+      setError('Choose at least one workbook column before previewing.');
+      return;
+    }
 
     try {
-      setPreview(buildImportPreview(selectedTemplateId, pastedRows, { projectContext: selectedProjectContext }));
+      setPreview(buildImportPreview(selectedTemplateId, pastedRows, { projectContext: selectedProjectContext, includedHeaders: selectedPasteHeaders }));
     } catch (err) {
       setPreview(null);
       setError(err instanceof Error ? err.message : 'Unable to build import preview.');
@@ -229,6 +306,27 @@ export default function SyncBoard({
     }
   };
 
+  const toggleImportHeader = (header: string) => {
+    setSelectedImportHeaders((current) => {
+      if (current.includes(header)) return current.filter((item) => item !== header);
+      return workbookColumnOptions.filter((option) => [...current, header].includes(option));
+    });
+    setPreview(null);
+    setError('');
+  };
+
+  const useDefaultImportHeaders = () => {
+    setSelectedImportHeaders(defaultHeadersForTemplate(selectedTemplateId, selectedProjectContext));
+    setPreview(null);
+    setError('');
+  };
+
+  const selectAllImportHeaders = () => {
+    setSelectedImportHeaders(workbookColumnOptions);
+    setPreview(null);
+    setError('');
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-jdt-border pb-5">
@@ -287,11 +385,14 @@ export default function SyncBoard({
             <select
               value={selectedTemplateId}
               onChange={(event) => {
-                setSelectedTemplateId(event.target.value as SheetImportTemplateId);
+                const nextTemplateId = event.target.value as SheetImportTemplateId;
+                const nextProjectContext = isProjectWorkbookTemplateId(nextTemplateId) ? activeProjectContext : null;
+                setSelectedTemplateId(nextTemplateId);
+                setSelectedImportHeaders(defaultHeadersForTemplate(nextTemplateId, nextProjectContext));
                 setPreview(null);
                 setError('');
                 setDraftRestored(false);
-                if (!isProjectWorkbookTemplateId(event.target.value as SheetImportTemplateId)) setActiveProjectContext(null);
+                if (!isProjectWorkbookTemplateId(nextTemplateId)) setActiveProjectContext(null);
               }}
               className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-black uppercase text-jdt-text outline-none focus:border-jdt-olive"
             >
@@ -331,6 +432,55 @@ export default function SyncBoard({
               <span className="rounded bg-jdt-sand px-2 py-1">{selectedTemplate.sourceSheet}</span>
               <span className="rounded bg-jdt-sand px-2 py-1">{selectedTemplate.targetCollections.join(', ')}</span>
             </div>
+            <div className="rounded-lg border border-jdt-border bg-white p-3">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wide text-jdt-primary">Workbook Columns</p>
+                  <p className="mt-1 text-xs font-bold text-zinc-500">Paste only the selected columns in this order. App generated columns can stay unchecked unless you are restoring a full backup row.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={useDefaultImportHeaders}
+                    className="rounded-lg border border-jdt-border bg-jdt-panel px-3 py-1.5 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive"
+                  >
+                    Basics
+                  </button>
+                  <button
+                    type="button"
+                    onClick={selectAllImportHeaders}
+                    className="rounded-lg border border-jdt-border bg-jdt-panel px-3 py-1.5 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive"
+                  >
+                    All Columns
+                  </button>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {workbookColumnOptions.map((header) => {
+                  const checked = selectedPasteHeaders.includes(header);
+                  const systemManaged = systemManagedImportColumns.has(header);
+                  return (
+                    <label
+                      key={header}
+                      className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-[10px] font-black uppercase transition-colors ${checked ? 'border-jdt-olive bg-jdt-sand text-jdt-primary' : 'border-jdt-border bg-jdt-panel text-zinc-500 hover:border-jdt-olive'}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleImportHeader(header)}
+                        className="h-3.5 w-3.5 accent-jdt-primary"
+                      />
+                      <span>{header}</span>
+                      {systemManaged && <span className="rounded bg-white px-1.5 py-0.5 text-[9px] text-zinc-400">App generated</span>}
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="mt-3 rounded-lg bg-jdt-sand px-3 py-2">
+                <p className="text-[10px] font-black uppercase tracking-wide text-zinc-500">Selected Paste Order</p>
+                <p className="mt-1 break-words font-mono text-xs font-bold text-jdt-text">{selectedPasteHeaders.join(' | ') || 'Choose at least one workbook column'}</p>
+              </div>
+            </div>
             <textarea
               value={pastedRows}
               onChange={(event) => {
@@ -339,7 +489,7 @@ export default function SyncBoard({
                 setError('');
                 setDraftRestored(false);
               }}
-              placeholder={`${selectedPasteHeaders.join('\t')}\n...`}
+              placeholder={placeholderForHeaders(selectedPasteHeaders)}
               className="min-h-[220px] w-full resize-y rounded-lg border border-jdt-border bg-white p-3 font-mono text-xs text-jdt-text outline-none focus:border-jdt-olive"
             />
             {draftRestored && pastedRows.trim() && (

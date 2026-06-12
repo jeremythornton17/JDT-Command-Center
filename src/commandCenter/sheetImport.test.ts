@@ -448,6 +448,72 @@ describe("sheet import mapping", () => {
     assert.equal(preview.warnings.some((warning) => warning.includes("Projects_ID")), false);
   });
 
+  it("imports selected project tree asset columns and lets the app generate stable IDs", () => {
+    const preview = buildImportPreview("jdt_project_flow_tree_assets", [
+      ["Live Oak", "1", "33"],
+      ["Live Oak", "2", "28"],
+    ], {
+      projectContext: {
+        clientId: "client-a-cut-above",
+        clientName: "A Cut Above",
+        projectId: "ACA-061126-CARMAX",
+        projectName: "Carmax",
+        jobId: "job-carmax",
+        jobName: "Carmax",
+      },
+      includedHeaders: ["Tree_Type", "Tag", "DBH_IN"],
+    });
+    const trees = preview.targets.find((target) => target.collectionName === "treeRelocationRecords")?.records as any[];
+
+    assert.equal(trees?.length, 2);
+    assert.equal(trees[0].id, "ACA-061126-CARMAX-TREE-1");
+    assert.equal(trees[0].treeId, "ACA-061126-CARMAX-TREE-1");
+    assert.equal(trees[0].clientId, "client-a-cut-above");
+    assert.equal(trees[0].projectId, "ACA-061126-CARMAX");
+    assert.equal(trees[0].tag, "1");
+    assert.equal(trees[0].dbh, 33);
+    assert.equal(trees[1].id, "ACA-061126-CARMAX-TREE-2");
+    assert.equal(preview.warnings.some((warning) => /Tree_Asset_ID|Project_ID|Client_ID/.test(warning)), false);
+  });
+
+  it("warns when selected-column project tree imports repeat a tag in the same project", () => {
+    const preview = buildImportPreview("jdt_project_flow_tree_assets", [
+      ["Live Oak", "1", "33"],
+      ["Live Oak", "1", "28"],
+    ], {
+      projectContext: {
+        projectId: "ACA-061126-CARMAX",
+        projectName: "Carmax",
+      },
+      includedHeaders: ["Tree_Type", "Tag", "DBH_IN"],
+    });
+
+    assert.match(preview.warnings.join("\n"), /Duplicate tree tag "1"/);
+    assert.match(preview.warnings.join("\n"), /ACA-061126-CARMAX/);
+  });
+
+  it("imports selected columns for master-list workbook tabs without requiring a pasted header row", () => {
+    const clientPreview = buildImportPreview("clients", "A Cut Above\tDamon Rockett\t561-386-1770", {
+      includedHeaders: ["Client Company", "Contact Name", "Phone"],
+    });
+    const clients = clientPreview.targets.find((target) => target.collectionName === "clients")?.records as any[];
+
+    assert.equal(clients?.length, 1);
+    assert.equal(clients[0].id, "client-a-cut-above");
+    assert.equal(clients[0].contactName, "Damon Rockett");
+    assert.equal(clientPreview.warnings.includes("No matching header row found"), false);
+
+    const equipmentPreview = buildImportPreview("equipment", "Truck\tDodge\tRam 2500", {
+      includedHeaders: ["JDT Equipment Master List", "Make", "Model"],
+    });
+    const equipment = equipmentPreview.targets.find((target) => target.collectionName === "equipment")?.records as any[];
+
+    assert.equal(equipment?.length, 1);
+    assert.equal(equipment[0].id, "equipment-truck-dodge-ram-2500");
+    assert.equal(equipment[0].category, "Truck");
+    assert.equal(equipmentPreview.warnings.includes("No matching header row found"), false);
+  });
+
   it("maps JDT project flow treatment or aftercare rows into tree-linked work orders", () => {
     const preview = buildImportPreview("jdt_project_flow_treatment_aftercare", [
       ["Treatment_Aftercare Logs_ID", "Tree Assets_ID", "Treatments", "Treatments Type", "Date Of Last Treatment", "Treatment Action", "Completed By", "Condition Observed", "Watering Status", "Irrigation Status", "Stress Level", "Follow-up Needed", "Next Follow-up Date", "Notes"],

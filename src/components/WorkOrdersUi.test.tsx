@@ -217,6 +217,28 @@ describe("work order UI wiring", () => {
     assert.match(html, /Tree relocation/);
   });
 
+  it("shows fixed workbook column choices for selected-column Data Sync imports", () => {
+    const html = renderToString(
+      <SyncBoard
+        sources={[]}
+        mappings={[]}
+        openModal={() => undefined}
+        projectImportContext={{
+          clientName: "A Cut Above",
+          projectId: "ACA-061126-CARMAX",
+          projectName: "Carmax",
+        }}
+      />,
+    );
+
+    assert.match(html, /Workbook Columns/);
+    assert.match(html, /Paste only the selected columns in this order/);
+    assert.match(html, /Tree_Type/);
+    assert.match(html, /Tag/);
+    assert.match(html, /DBH_IN/);
+    assert.match(html, /App generated/);
+  });
+
   it("builds project-scoped address options for assignment forms launched from a project profile", () => {
     const context = projectModalContextForRecord({
       id: "job-frenchmans-driving-range",
