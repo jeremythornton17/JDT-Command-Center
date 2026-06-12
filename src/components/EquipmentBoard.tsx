@@ -27,6 +27,76 @@ function showVehicleCompliance(eq: any) {
     || Boolean(eq.insuranceExpirationDate);
 }
 
+function listValues(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  return String(value || '')
+    .split(/[,;\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function equipmentResponsibleLabel(category: string) {
+  if (category === 'Truck') return 'Driver / Operator';
+  if (category === 'Trailer') return 'Driver / Truck';
+  if (category === 'Implement') return 'Attached / Assigned To';
+  if (category === 'Tool' || category === 'Support') return 'Responsible Crew';
+  return 'Operator';
+}
+
+function equipmentResponsibleValue(eq: any, category: string) {
+  if (category === 'Trailer') {
+    return [eq.assignedCrewName, eq.assignedTruck].filter(Boolean).join(' / ') || 'Unassigned';
+  }
+  if (category === 'Implement') {
+    return eq.attachedMachineName || eq.assignedTruck || eq.assignedCrewName || 'Unassigned';
+  }
+  if (category === 'Tool' || category === 'Support') {
+    return eq.assignedCrewName || eq.operator || 'Unassigned';
+  }
+  return eq.assignedCrewName || eq.operator || 'Unassigned';
+}
+
+function equipmentDetailLabel(category: string) {
+  if (category === 'Trailer') return 'Load State';
+  if (category === 'Truck') return 'Truck Details';
+  if (category === 'Implement') return 'Implement Details';
+  if (category === 'Tool') return 'Tool Details';
+  if (category === 'Support') return 'Asset Support';
+  return 'Machine Details';
+}
+
+function equipmentDetailValue(eq: any, category: string) {
+  if (category === 'Trailer') return eq.vehicleLoadState || eq.trailerType || 'Trailer details not set';
+  if (category === 'Truck') return eq.truckType || 'Truck type not set';
+  if (category === 'Implement') return eq.implementType || 'Implement type not set';
+  if (category === 'Tool') return eq.toolType || 'Tool type not set';
+  if (category === 'Support') return eq.supportType || 'Support type not set';
+  return eq.eqType || eq.type || 'Machine type not set';
+}
+
+function showRuntimePanel(eq: any, category: string) {
+  return category === 'Machine' || category === 'Truck' || Boolean(eq.hours) || Boolean(eq.serviceDueHours);
+}
+
+function compatibilityGroups(eq: any, category: string) {
+  const groups = [
+    ...(category === 'Machine' || category === 'Trailer'
+      ? [{ label: 'Compatible Trucks', values: listValues(eq.compatibleTruckTypes) }]
+      : []),
+    ...(category === 'Machine' || category === 'Truck'
+      ? [{ label: 'Compatible Trailers', values: listValues(eq.compatibleTrailerTypes) }]
+      : []),
+    ...(category === 'Machine'
+      ? [{ label: 'Compatible Implements', values: listValues(eq.compatibleImplementTypes) }]
+      : []),
+    ...(category === 'Implement'
+      ? [{ label: 'Compatible Machines', values: listValues(eq.compatibleMachineTypes) }]
+      : []),
+  ];
+
+  return groups.filter((group) => group.values.length > 0);
+}
+
 export default function EquipmentBoard({ starterEquipment, openDrawer, openModal }: { starterEquipment: any[], openDrawer: (type: string, id: string) => void, openModal: (type: string, data?: any) => void }) {
   const standardCategories = ['Machine', 'Truck', 'Trailer', 'Implement', 'Tool'];
   const discoveredCategories = starterEquipment
@@ -117,8 +187,15 @@ export default function EquipmentBoard({ starterEquipment, openDrawer, openModal
                 <div className="grid gap-4 xl:grid-cols-2 lg:grid-cols-2">
                    {items.map((eq: any) => {
                      const compliance = vehicleComplianceSummary(eq);
+                     const assetCategory = equipmentCategory(eq);
                      const currentLocationName = eq.currentLocationName || eq.location || eq.currentLocation || 'Location not set';
                      const currentLocationDetail = eq.currentLocation && eq.currentLocation !== currentLocationName ? eq.currentLocation : '';
+                     const responsibleLabel = equipmentResponsibleLabel(assetCategory);
+                     const responsibleValue = equipmentResponsibleValue(eq, assetCategory);
+                     const detailLabel = equipmentDetailLabel(assetCategory);
+                     const detailValue = equipmentDetailValue(eq, assetCategory);
+                     const showRuntime = showRuntimePanel(eq, assetCategory);
+                     const dispatchCompatibility = compatibilityGroups(eq, assetCategory);
                      return (
                      <article key={eq.id} className={`rounded-xl border border-jdt-border border-l-4 bg-jdt-panel shadow-sm overflow-hidden flex flex-col pt-1 group hover:border-zinc-400 transition-colors ${categoryAccentBorderClass('equipment')}`}>
                         {(eq.status === 'Down' || eq.status === 'Inspection' || Number(eq.serviceDueHours ?? Number.POSITIVE_INFINITY) < 100) && (
@@ -136,7 +213,7 @@ export default function EquipmentBoard({ starterEquipment, openDrawer, openModal
                                <CategoryIcon category="equipment" size="md" className="group-hover:scale-110 transition-transform" />
                                <div>
                                  <h4 className="text-xl font-black text-jdt-primary group-hover:text-blue-700 transition-colors">{equipmentDisplayName(eq)}</h4>
-                                 <p className="text-xs font-black uppercase text-zinc-500 tracking-wider mt-1">{equipmentCategory(eq)} - {eq.assetId || eq.id}</p>
+                                 <p className="text-xs font-black uppercase text-zinc-500 tracking-wider mt-1">{assetCategory} - {eq.assetId || eq.id}</p>
                                </div>
                              </div>
                            </div>
@@ -155,8 +232,8 @@ export default function EquipmentBoard({ starterEquipment, openDrawer, openModal
                                   <p className="text-[10px] font-black uppercase text-zinc-400">{eq.currentLocationType || 'Unknown'}</p>
                                 </div>
                                 <div>
-                                  <p className="text-[10px] font-black uppercase text-zinc-500 mb-1 flex items-center gap-1"><UserCheck className="h-3.5 w-3.5"/> Operator</p>
-                                  <p className="font-bold text-jdt-text">{eq.assignedCrewName || eq.operator || 'Unassigned'}</p>
+                                  <p className="text-[10px] font-black uppercase text-zinc-500 mb-1 flex items-center gap-1"><UserCheck className="h-3.5 w-3.5"/> {responsibleLabel}</p>
+                                  <p className="font-bold text-jdt-text">{responsibleValue}</p>
                                 </div>
                                 {(eq.assignedProjectName || eq.assignedTruck) && (
                                   <div>
@@ -166,27 +243,65 @@ export default function EquipmentBoard({ starterEquipment, openDrawer, openModal
                                 )}
                               </div>
                               <div className={`space-y-4 rounded-lg border p-3 ${Number(eq.serviceDueHours ?? Number.POSITIVE_INFINITY) < 100 ? riskSurfaceClass('watch') : 'border-[#D5AA6E] bg-[#FBF1E7] text-[#7A4A12]'}`}>
-                                <div>
-                                  <p className="text-[10px] font-black uppercase opacity-75 mb-1 flex items-center gap-1"><Activity className="h-3.5 w-3.5"/> Engine Hours</p>
-                                  <p className="text-3xl font-black">{typeof eq.hours === 'number' ? eq.hours.toLocaleString() : (eq.hours || '-')}</p>
-                                </div>
-                                <div>
-                                  <p className="text-[10px] font-black uppercase opacity-75 mb-1 flex items-center gap-1"><Clock className="h-3.5 w-3.5"/> Service Due In</p>
-                                  <p className="text-xl font-black">{eq.serviceDueHours ?? eq.nextServiceDue ?? '-'}{eq.serviceDueHours ? ' hrs' : ''}</p>
-                                </div>
+                                {showRuntime ? (
+                                  <>
+                                    <div>
+                                      <p className="text-[10px] font-black uppercase opacity-75 mb-1 flex items-center gap-1"><Activity className="h-3.5 w-3.5"/> {assetCategory === 'Truck' ? 'Mileage / Hours' : 'Engine Hours'}</p>
+                                      <p className="text-3xl font-black">{typeof eq.hours === 'number' ? eq.hours.toLocaleString() : (eq.hours || '-')}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[10px] font-black uppercase opacity-75 mb-1 flex items-center gap-1"><Clock className="h-3.5 w-3.5"/> Service Due In</p>
+                                      <p className="text-xl font-black">{eq.serviceDueHours ?? eq.nextServiceDue ?? '-'}{eq.serviceDueHours ? ' hrs' : ''}</p>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div>
+                                      <p className="text-[10px] font-black uppercase opacity-75 mb-1 flex items-center gap-1"><Activity className="h-3.5 w-3.5"/> {detailLabel}</p>
+                                      <p className="text-xl font-black leading-snug">{detailValue}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[10px] font-black uppercase opacity-75 mb-1 flex items-center gap-1"><Clock className="h-3.5 w-3.5"/> Readiness</p>
+                                      <p className="text-xl font-black">{eq.status || 'Available'}</p>
+                                    </div>
+                                  </>
+                                )}
                               </div>
                            </div>
-                           {(eq.compatibleImplementTypes?.length || eq.attachedImplementNames?.length || eq.implementType) && (
+                           {dispatchCompatibility.length > 0 && (
                               <div className="mt-4 rounded-lg border border-jdt-border bg-white p-3">
-                                <p className="text-[10px] font-black uppercase text-zinc-500">Implements</p>
-                                <div className="mt-2 flex flex-wrap gap-1.5">
-                                  {eq.implementType && <span className="rounded bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-800">{eq.implementType}</span>}
-                                  {(eq.attachedImplementNames || []).map((name: string) => <span key={`attached-${name}`} className="rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">Attached: {name}</span>)}
-                                  {(eq.compatibleImplementTypes || []).map((name: string) => <span key={`compatible-${name}`} className="rounded bg-zinc-100 px-2 py-1 text-[9px] font-black uppercase text-zinc-700">{name}</span>)}
+                                <p className="text-[10px] font-black uppercase text-zinc-500">Dispatch Compatibility</p>
+                                <div className="mt-2 grid gap-2">
+                                  {dispatchCompatibility.map((group) => (
+                                    <div key={group.label}>
+                                      <p className="mb-1 text-[9px] font-black uppercase text-zinc-400">{group.label}</p>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {group.values.map((name) => <span key={`${group.label}-${name}`} className="rounded bg-zinc-100 px-2 py-1 text-[9px] font-black uppercase text-zinc-700">{name}</span>)}
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
                               </div>
                            )}
-                           {(equipmentCategory(eq) === 'Trailer' || eq.trailerMaintenanceCategories?.length || eq.trailerServiceNotes) && (
+                           {(assetCategory === 'Machine' && eq.attachedImplementNames?.length) && (
+                              <div className="mt-4 rounded-lg border border-jdt-border bg-white p-3">
+                                <p className="text-[10px] font-black uppercase text-zinc-500">Attached Implements</p>
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {(eq.attachedImplementNames || []).map((name: string) => <span key={`attached-${name}`} className="rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">Attached: {name}</span>)}
+                                </div>
+                              </div>
+                           )}
+                           {(['Implement', 'Tool', 'Support'].includes(assetCategory)) && (
+                              <div className="mt-4 rounded-lg border border-jdt-border bg-white p-3">
+                                <p className="text-[10px] font-black uppercase text-zinc-500">{assetCategory === 'Support' ? 'Support Details' : detailLabel}</p>
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  <span className="rounded bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-800">{detailValue}</span>
+                                  {eq.assignedTruck && <span className="rounded bg-zinc-100 px-2 py-1 text-[9px] font-black uppercase text-zinc-700">Truck: {eq.assignedTruck}</span>}
+                                  {eq.assignedProjectName && <span className="rounded bg-zinc-100 px-2 py-1 text-[9px] font-black uppercase text-zinc-700">Project: {eq.assignedProjectName}</span>}
+                                </div>
+                              </div>
+                           )}
+                           {(assetCategory === 'Trailer' || eq.trailerMaintenanceCategories?.length || eq.trailerServiceNotes) && (
                               <div className="mt-4 rounded-lg border border-jdt-border bg-white p-3">
                                 <p className="text-[10px] font-black uppercase text-zinc-500">Trailer Service Areas</p>
                                 <div className="mt-2 flex flex-wrap gap-1.5">

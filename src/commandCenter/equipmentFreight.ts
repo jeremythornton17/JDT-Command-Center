@@ -70,6 +70,26 @@ export const implementTypeOptions = [
   'Other',
 ];
 
+export const toolTypeOptions = [
+  'Chainsaw',
+  'Hand Tool',
+  'Power Tool',
+  'Pump',
+  'Sprayer',
+  'Hose / Watering Tool',
+  'Measuring / Layout Tool',
+  'Other',
+];
+
+export const supportTypeOptions = [
+  'Fuel / Water Support',
+  'Parts / Service Support',
+  'Safety Support',
+  'Office / Field Support',
+  'Storage / Staging',
+  'Other',
+];
+
 export const equipmentStatusOptions = ['Available', 'Assigned', 'In Use', 'Maintenance', 'Inspection', 'Needs Service', 'Down', 'Retired'];
 export const equipmentLocationTypeOptions = ['Farm', 'Job Site', 'Shop', 'In Transit', 'Unknown'];
 export const freightStatusOptions = ['Scheduled', 'Dispatched', 'At Pickup', 'Loaded', 'In Transit', 'At Delivery', 'Delivered', 'Completed', 'Delayed', 'Cancelled'];
@@ -203,11 +223,15 @@ export function equipmentCategory(equipment: EquipmentRecord): string {
     equipment.truckType,
     equipment.trailerType,
     equipment.implementType,
+    equipment.toolType,
+    equipment.supportType,
     equipment.name,
   ].map((value) => String(value || '').toLowerCase());
   if (signals.some((value) => value.includes('trailer') || trailerTypeOptions.some((option) => value === option.toLowerCase()))) return 'Trailer';
   if (signals.some((value) => value.includes('truck') || truckTypeOptions.some((option) => value === option.toLowerCase()))) return 'Truck';
   if (signals.some((value) => value.includes('implement') || implementTypeOptions.some((option) => value === option.toLowerCase()))) return 'Implement';
+  if (signals.some((value) => value.includes('tool') || toolTypeOptions.some((option) => value === option.toLowerCase()))) return 'Tool';
+  if (signals.some((value) => value.includes('support') || supportTypeOptions.some((option) => value === option.toLowerCase()))) return 'Support';
   return equipment.category || 'Machine';
 }
 

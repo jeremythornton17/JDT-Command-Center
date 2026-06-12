@@ -312,12 +312,17 @@ export type EquipmentRecord = CommandRecord & {
   category?: 'Machine' | 'Truck' | 'Trailer' | 'Implement' | 'Tool' | 'Support' | string;
   truckType?: string;
   trailerType?: string;
+  compatibleTruckTypes?: string[];
+  compatibleTrailerTypes?: string[];
   trailerMaintenanceCategories?: string[];
   trailerServiceNotes?: string;
   implementType?: string;
+  compatibleMachineTypes?: string[];
   compatibleImplementTypes?: string[];
   attachedImplementIds?: string[];
   attachedImplementNames?: string[];
+  toolType?: string;
+  supportType?: string;
   currentLocationType?: 'Farm' | 'Job Site' | 'Shop' | 'In Transit' | 'Unknown' | string;
   currentLocationName?: string;
   currentLocation?: string;

@@ -493,6 +493,28 @@ test('equipment forms show category-specific dispatch compatibility fields', () 
       openModal={() => undefined}
       onSaveRecord={() => undefined}
       data={{ name: 'Root Pruner', category: 'Implement', implementType: 'Cutter Blade' }}
+      equipmentList={[
+        { id: 'machine-komatsu-500-1', name: 'Komatsu 500 - 1', category: 'Machine', eqType: 'Loader' },
+        { id: 'machine-mini-x', name: 'Kubota Mini X', category: 'Machine', eqType: 'Excavator' },
+      ]}
+    />,
+  );
+  const toolHtml = renderToString(
+    <EntityForms
+      type="equipment"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{ name: 'Chainsaw', category: 'Tool', toolType: 'Saw', assignedCrewName: 'Carlos Reyes' }}
+    />,
+  );
+  const supportHtml = renderToString(
+    <EntityForms
+      type="equipment"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{ name: 'Fuel Tank', category: 'Support', supportType: 'Fuel / Water Support', assignedCrewName: 'Jack Belcher' }}
     />,
   );
 
@@ -527,8 +549,25 @@ test('equipment forms show category-specific dispatch compatibility fields', () 
   assert.doesNotMatch(trailerHtml, />Equipment Type<\/span>/);
 
   assert.match(implementHtml, />Implement Type<\/span>/);
-  assert.match(implementHtml, /Compatible Machine Types/);
+  assert.match(implementHtml, /Compatible Machines/);
+  assert.match(implementHtml, />Komatsu 500 - 1<\/span>/);
+  assert.match(implementHtml, />Kubota Mini X<\/span>/);
+  assert.doesNotMatch(implementHtml, />Loader<\/span>/);
   assert.doesNotMatch(implementHtml, /Vehicle Compliance/);
+
+  assert.match(toolHtml, />Tool Type<\/span>/);
+  assert.match(toolHtml, /Assigned Crew \/ Driver/);
+  assert.doesNotMatch(toolHtml, /Vehicle Compliance/);
+  assert.doesNotMatch(toolHtml, /Trailer Maintenance Categories/);
+  assert.doesNotMatch(toolHtml, /Compatible Trucks/);
+  assert.doesNotMatch(toolHtml, />Hours<\/span>/);
+
+  assert.match(supportHtml, />Support Type<\/span>/);
+  assert.match(supportHtml, /Assigned Crew \/ Driver/);
+  assert.doesNotMatch(supportHtml, /Vehicle Compliance/);
+  assert.doesNotMatch(supportHtml, /Trailer Maintenance Categories/);
+  assert.doesNotMatch(supportHtml, /Compatible Trailers/);
+  assert.doesNotMatch(supportHtml, />Service Due Hours<\/span>/);
 });
 
 test('equipment forms split saved location names from addresses and project access pins', () => {

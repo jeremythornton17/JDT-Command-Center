@@ -1185,6 +1185,84 @@ describe("work order UI wiring", () => {
     assert.doesNotMatch(html, /<h3[^>]*>Inspection<\/h3>/);
   });
 
+  it("shows category-specific equipment card details instead of machine fields on every asset", () => {
+    const equipment: EquipmentRecord[] = [
+      {
+        id: "equipment-komatsu-500",
+        name: "Komatsu 500 - 1",
+        category: "Machine",
+        eqType: "Loader",
+        status: "Available",
+        hours: 3200,
+        serviceDueHours: 75,
+        compatibleTruckTypes: ["Semi #1"],
+        compatibleTrailerTypes: ["Black Lowboy"],
+      },
+      {
+        id: "equipment-chevy-colorado",
+        name: "Chevy Colorado",
+        category: "Truck",
+        truckType: "Pickup",
+        status: "Assigned",
+        operator: "Max Norman",
+        compatibleTrailerTypes: ["Small Utility Trailer"],
+      },
+      {
+        id: "equipment-black-lowboy",
+        name: "Black Lowboy",
+        category: "Trailer",
+        trailerType: "black lowboy",
+        status: "Available",
+        vehicleLoadState: "Empty",
+        assignedTruck: "Semi #1",
+        compatibleTruckTypes: ["Semi #1"],
+        trailerMaintenanceCategories: ["Trailer Tires"],
+      },
+      {
+        id: "equipment-root-pruner",
+        name: "Root Pruner",
+        category: "Implement",
+        implementType: "Cutter Blade",
+        status: "Available",
+        compatibleMachineTypes: ["Komatsu 500 - 1"],
+        assignedTruck: "Service Truck",
+      },
+      {
+        id: "equipment-chainsaw",
+        name: "Chainsaw",
+        category: "Tool",
+        toolType: "Saw",
+        status: "Available",
+        assignedCrewName: "Carlos Reyes",
+      },
+      {
+        id: "equipment-fuel-tank",
+        name: "Fuel Tank",
+        category: "Support",
+        supportType: "Fuel / Water Support",
+        status: "In Use",
+        assignedProjectName: "Boca West Course 1 Renovation",
+      },
+    ];
+
+    const html = renderToString(
+      <EquipmentBoard starterEquipment={equipment} openDrawer={() => undefined} openModal={() => undefined} />,
+    );
+
+    assert.match(html, /Driver \/ Operator/);
+    assert.match(html, /Driver \/ Truck/);
+    assert.match(html, /Attached \/ Assigned To/);
+    assert.match(html, /Responsible Crew/);
+    assert.match(html, /Asset Support/);
+    assert.match(html, /Engine Hours/);
+    assert.match(html, /Load State/);
+    assert.match(html, /Dispatch Compatibility/);
+    assert.match(html, /Compatible Machines/);
+    assert.match(html, /Tool Details/);
+    assert.match(html, /Support Details/);
+    assert.match(html, /Fuel \/ Water Support/);
+  });
+
   it("shows vehicle registration and insurance compliance on equipment cards", () => {
     const equipment: EquipmentRecord[] = [
       {

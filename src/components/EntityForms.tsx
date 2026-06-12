@@ -11,9 +11,11 @@ import {
   implementTypeOptions,
   jdtHomeBase,
   normalizeDelimitedList as normalizeResourceList,
+  supportTypeOptions,
   trailerMaintenanceCategoryOptions,
   trailerTypeOptions,
   truckTypeOptions,
+  toolTypeOptions,
 } from '../commandCenter/equipmentFreight';
 import { personnelCrewAllocationOptions, personnelLanguageOptions, personnelRoleOptions } from '../commandCenter/personnel';
 import { relocationInstallationDivisionLabel, relocationInstallationJobTypes } from '../commandCenter/relocationInstallation';
@@ -130,6 +132,10 @@ function isImplementProfile(formData: Record<string, unknown>) {
 
 function isToolProfile(formData: Record<string, unknown>) {
   return equipmentProfileCategory(formData) === 'Tool';
+}
+
+function isSupportProfile(formData: Record<string, unknown>) {
+  return equipmentProfileCategory(formData) === 'Support';
 }
 
 function isVehicleProfile(formData: Record<string, unknown>) {
@@ -480,7 +486,8 @@ const fieldSets: Record<string, FieldConfig[]> = {
     { key: 'truckType', label: 'Truck Type', type: 'select', options: truckTypeOptions, section: 'Category Details', showWhen: isTruckProfile },
     { key: 'trailerType', label: 'Trailer Type', type: 'select', options: trailerTypeOptions, section: 'Category Details', showWhen: isTrailerProfile },
     { key: 'implementType', label: 'Implement Type', type: 'select', options: implementTypeOptions, section: 'Category Details', showWhen: isImplementProfile },
-    { key: 'toolType', label: 'Tool Type', section: 'Category Details', showWhen: isToolProfile },
+    { key: 'toolType', label: 'Tool Type', type: 'select', options: toolTypeOptions, section: 'Category Details', showWhen: isToolProfile },
+    { key: 'supportType', label: 'Support Type', type: 'select', options: supportTypeOptions, section: 'Category Details', showWhen: isSupportProfile },
     {
       key: 'compatibleTruckTypes',
       label: 'Compatible Trucks',
@@ -499,7 +506,7 @@ const fieldSets: Record<string, FieldConfig[]> = {
     },
     {
       key: 'compatibleMachineTypes',
-      label: 'Compatible Machine Types',
+      label: 'Compatible Machines',
       type: 'multiselect',
       options: equipmentTypeOptions.filter((option) => !['Truck', 'Trailer', 'Implement', 'Tool'].includes(option)),
       section: 'Dispatch Compatibility',
@@ -1146,6 +1153,7 @@ function enrichFieldsWithSuggestions(
   const truckNames = uniqueTextOptions(namesForEquipmentCategory(equipmentList, 'Truck'));
   const trailerNames = uniqueTextOptions(namesForEquipmentCategory(equipmentList, 'Trailer'));
   const implementNames = uniqueTextOptions(namesForEquipmentCategory(equipmentList, 'Implement'));
+  const machineNames = uniqueTextOptions(namesForEquipmentCategory(equipmentList, 'Machine'));
   const truckTypeNames = uniqueTextOptions([
     ...truckTypeOptions,
     ...valuesFromRecords(equipmentList.filter((equipment) => equipmentCategory(equipment) === 'Truck'), ['truckType', 'type', 'eqType']),
@@ -1161,6 +1169,14 @@ function enrichFieldsWithSuggestions(
   const implementTypeNames = uniqueTextOptions([
     ...implementTypeOptions,
     ...valuesFromRecords(equipmentList.filter((equipment) => equipmentCategory(equipment) === 'Implement'), ['implementType', 'type', 'eqType']),
+  ]);
+  const toolTypeNames = uniqueTextOptions([
+    ...toolTypeOptions,
+    ...valuesFromRecords(equipmentList.filter((equipment) => equipmentCategory(equipment) === 'Tool'), ['toolType', 'type', 'eqType']),
+  ]);
+  const supportTypeNames = uniqueTextOptions([
+    ...supportTypeOptions,
+    ...valuesFromRecords(equipmentList.filter((equipment) => equipmentCategory(equipment) === 'Support'), ['supportType', 'type', 'eqType']),
   ]);
   const siteContacts = clientsList.flatMap((client) => [
     ...(Array.isArray(client?.members) ? client.members : []),
@@ -1203,11 +1219,13 @@ function enrichFieldsWithSuggestions(
     if (field.key === 'trailerMaintenanceCategories') return { ...field, suggestions: listWithCurrent(trailerMaintenanceCategoryOptions, currentValue) };
     if (field.key === 'truckType') return { ...field, options: listWithCurrent(truckTypeNames, currentValue) };
     if (field.key === 'trailerType') return { ...field, options: listWithCurrent(trailerTypeNames, currentValue) };
-    if (field.key === 'eqType') return { ...field, options: listWithCurrent(equipmentTypeOptions, currentValue) };
+    if (field.key === 'eqType') return { ...field, options: listWithCurrent(machineTypeNames, currentValue) };
     if (field.key === 'implementType') return { ...field, options: listWithCurrent(implementTypeNames, currentValue) };
+    if (field.key === 'toolType') return { ...field, options: listWithCurrent(toolTypeNames, currentValue) };
+    if (field.key === 'supportType') return { ...field, options: listWithCurrent(supportTypeNames, currentValue) };
     if (field.key === 'compatibleTruckTypes') return { ...field, options: listWithCurrent(truckNames, currentValue) };
     if (field.key === 'compatibleTrailerTypes') return { ...field, options: listWithCurrent(trailerNames, currentValue) };
-    if (field.key === 'compatibleMachineTypes') return { ...field, options: listWithCurrent(machineTypeNames, currentValue) };
+    if (field.key === 'compatibleMachineTypes') return { ...field, options: listWithCurrent(machineNames, currentValue) };
     if (['projectName', 'assignedProjectName'].includes(field.key)) return { ...field, suggestions: listWithCurrent(projectNames, currentValue) };
     if (['jobName', 'job'].includes(field.key)) return { ...field, suggestions: listWithCurrent(jobNames, currentValue) };
     if (['client', 'clientName', 'company'].includes(field.key)) return { ...field, suggestions: listWithCurrent(clientNames, currentValue) };
