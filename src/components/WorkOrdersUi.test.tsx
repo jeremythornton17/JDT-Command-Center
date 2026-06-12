@@ -239,6 +239,28 @@ describe("work order UI wiring", () => {
     assert.match(html, /App generated/);
   });
 
+  it("shows a spreadsheet-style paste grid for selected import columns", () => {
+    const html = renderToString(
+      <SyncBoard
+        sources={[]}
+        mappings={[]}
+        openModal={() => undefined}
+        projectImportContext={{
+          clientName: "A Cut Above",
+          projectId: "ACA-061126-CARMAX",
+          projectName: "Carmax",
+        }}
+      />,
+    );
+
+    assert.match(html, /Spreadsheet Paste Grid/);
+    assert.match(html, /Paste each workbook column separately/);
+    assert.match(html, /Tree_Type column values/);
+    assert.match(html, /Tag column values/);
+    assert.match(html, /DBH_IN column values/);
+    assert.doesNotMatch(html, /placeholder="Tree_Type\\tTag\\tDBH_IN/);
+  });
+
   it("builds project-scoped address options for assignment forms launched from a project profile", () => {
     const context = projectModalContextForRecord({
       id: "job-frenchmans-driving-range",

@@ -8,6 +8,13 @@ import {
   type DataSyncDraft,
 } from '../commandCenter/syncDraft';
 import {
+  columnTextsToDelimitedRows,
+  delimitedRowsToColumnTexts,
+  emptyColumnTexts,
+  previewRowsFromColumnTexts,
+  type ImportPasteGridColumns,
+} from '../commandCenter/importPasteGrid';
+import {
   buildImportPreview,
   isProjectWorkbookTemplateId,
   pasteHeadersForTemplate,
@@ -117,9 +124,8 @@ function exampleValueForHeader(header: string): string {
   return examples[header] || '';
 }
 
-function placeholderForHeaders(headers: string[]): string {
-  const exampleRow = headers.map(exampleValueForHeader);
-  return `${headers.join('\t')}\n${exampleRow.some(Boolean) ? exampleRow.join('\t') : '...'}`;
+function alignColumnTexts(headers: string[], columns: ImportPasteGridColumns): ImportPasteGridColumns {
+  return Object.fromEntries(headers.map((header) => [header, columns[header] || '']));
 }
 
 export default function SyncBoard({
@@ -140,14 +146,17 @@ export default function SyncBoard({
 }: SyncBoardProps) {
   const [initialDraft] = useState(readInitialDataSyncDraft);
   const initialTemplateId = initialDraft?.templateId || (projectImportContext ? 'jdt_project_flow_tree_assets' : 'inventory');
+  const initialImportHeaders = initialDraft?.includedHeaders ? normalizeSelectedHeaders(initialTemplateId, initialDraft.includedHeaders) : [];
+  const initialSelectedHeaders = initialImportHeaders.length
+    ? initialImportHeaders
+    : defaultHeadersForTemplate(initialTemplateId, projectImportContext || initialDraft?.projectContext || null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<SheetImportTemplateId>(initialTemplateId);
-  const [selectedImportHeaders, setSelectedImportHeaders] = useState<string[]>(() => {
-    const normalizedDraftHeaders = initialDraft?.includedHeaders ? normalizeSelectedHeaders(initialTemplateId, initialDraft.includedHeaders) : [];
-    return normalizedDraftHeaders.length
-      ? normalizedDraftHeaders
-      : defaultHeadersForTemplate(initialTemplateId, projectImportContext || initialDraft?.projectContext || null);
-  });
-  const [pastedRows, setPastedRows] = useState(initialDraft?.pastedRows || '');
+  const [selectedImportHeaders, setSelectedImportHeaders] = useState<string[]>(initialSelectedHeaders);
+  const [columnPasteValues, setColumnPasteValues] = useState<ImportPasteGridColumns>(() => (
+    initialDraft?.pastedRows
+      ? delimitedRowsToColumnTexts(initialSelectedHeaders, initialDraft.pastedRows)
+      : emptyColumnTexts(initialSelectedHeaders)
+  ));
   const [preview, setPreview] = useState<ImportPreview | null>(() => previewFromDraft(initialDraft));
   const [activeProjectContext, setActiveProjectContext] = useState<ProjectImportContext | null>(projectImportContext || initialDraft?.projectContext || null);
   const [error, setError] = useState('');
@@ -160,6 +169,8 @@ export default function SyncBoard({
   const selectedTemplate = useMemo(() => sheetImportTemplates.find((template) => template.id === selectedTemplateId) || sheetImportTemplates[0], [selectedTemplateId]);
   const workbookColumnOptions = useMemo(() => pasteHeadersForTemplate(selectedTemplate), [selectedTemplate]);
   const selectedPasteHeaders = selectedImportHeaders.length ? selectedImportHeaders : workbookColumnOptions;
+  const pastedRows = useMemo(() => columnTextsToDelimitedRows(selectedPasteHeaders, columnPasteValues), [selectedPasteHeaders, columnPasteValues]);
+  const gridPreviewRows = useMemo(() => previewRowsFromColumnTexts(selectedPasteHeaders, columnPasteValues), [selectedPasteHeaders, columnPasteValues]);
   const selectedProjectContext = isProjectWorkbookTemplateId(selectedTemplateId) ? activeProjectContext : null;
   const previewWarnings = useMemo(() => preview ? Array.from(new Set([...preview.warnings, ...preview.targets.flatMap((target) => target.warnings)])) : [], [preview]);
   const previewRecordCount = preview?.targets.reduce((sum, target) => sum + target.records.length, 0) || 0;
@@ -177,9 +188,11 @@ export default function SyncBoard({
   useEffect(() => {
     if (projectImportContext) {
       const nextTemplateId = isProjectWorkbookTemplateId(selectedTemplateId) ? selectedTemplateId : 'jdt_project_flow_tree_assets';
+      const nextHeaders = defaultHeadersForTemplate(nextTemplateId, projectImportContext);
       setActiveProjectContext(projectImportContext);
       setSelectedTemplateId(nextTemplateId);
-      setSelectedImportHeaders(defaultHeadersForTemplate(nextTemplateId, projectImportContext));
+      setSelectedImportHeaders(nextHeaders);
+      setColumnPasteValues((current) => alignColumnTexts(nextHeaders, current));
       setPreview(null);
       setError('');
     }
@@ -244,7 +257,7 @@ export default function SyncBoard({
     try {
       await onImportPreview(preview);
       clearDataSyncDraft();
-      setPastedRows('');
+      setColumnPasteValues(emptyColumnTexts(selectedPasteHeaders));
       setPreview(null);
       setDraftRestored(false);
     } catch (err) {
@@ -308,23 +321,43 @@ export default function SyncBoard({
 
   const toggleImportHeader = (header: string) => {
     setSelectedImportHeaders((current) => {
-      if (current.includes(header)) return current.filter((item) => item !== header);
-      return workbookColumnOptions.filter((option) => [...current, header].includes(option));
+      const next = current.includes(header)
+        ? current.filter((item) => item !== header)
+        : workbookColumnOptions.filter((option) => [...current, header].includes(option));
+      setColumnPasteValues((columns) => alignColumnTexts(next.length ? next : workbookColumnOptions, columns));
+      return next;
     });
     setPreview(null);
     setError('');
   };
 
   const useDefaultImportHeaders = () => {
-    setSelectedImportHeaders(defaultHeadersForTemplate(selectedTemplateId, selectedProjectContext));
+    const nextHeaders = defaultHeadersForTemplate(selectedTemplateId, selectedProjectContext);
+    setSelectedImportHeaders(nextHeaders);
+    setColumnPasteValues((current) => alignColumnTexts(nextHeaders, current));
     setPreview(null);
     setError('');
   };
 
   const selectAllImportHeaders = () => {
     setSelectedImportHeaders(workbookColumnOptions);
+    setColumnPasteValues((current) => alignColumnTexts(workbookColumnOptions, current));
     setPreview(null);
     setError('');
+  };
+
+  const clearPasteGrid = () => {
+    setColumnPasteValues(emptyColumnTexts(selectedPasteHeaders));
+    setPreview(null);
+    setError('');
+    setDraftRestored(false);
+  };
+
+  const updateGridColumn = (header: string, value: string) => {
+    setColumnPasteValues((current) => ({ ...current, [header]: value }));
+    setPreview(null);
+    setError('');
+    setDraftRestored(false);
   };
 
   return (
@@ -387,8 +420,10 @@ export default function SyncBoard({
               onChange={(event) => {
                 const nextTemplateId = event.target.value as SheetImportTemplateId;
                 const nextProjectContext = isProjectWorkbookTemplateId(nextTemplateId) ? activeProjectContext : null;
+                const nextHeaders = defaultHeadersForTemplate(nextTemplateId, nextProjectContext);
                 setSelectedTemplateId(nextTemplateId);
-                setSelectedImportHeaders(defaultHeadersForTemplate(nextTemplateId, nextProjectContext));
+                setSelectedImportHeaders(nextHeaders);
+                setColumnPasteValues(emptyColumnTexts(nextHeaders));
                 setPreview(null);
                 setError('');
                 setDraftRestored(false);
@@ -481,17 +516,84 @@ export default function SyncBoard({
                 <p className="mt-1 break-words font-mono text-xs font-bold text-jdt-text">{selectedPasteHeaders.join(' | ') || 'Choose at least one workbook column'}</p>
               </div>
             </div>
-            <textarea
-              value={pastedRows}
-              onChange={(event) => {
-                setPastedRows(event.target.value);
-                setPreview(null);
-                setError('');
-                setDraftRestored(false);
-              }}
-              placeholder={placeholderForHeaders(selectedPasteHeaders)}
-              className="min-h-[220px] w-full resize-y rounded-lg border border-jdt-border bg-white p-3 font-mono text-xs text-jdt-text outline-none focus:border-jdt-olive"
-            />
+            <div className="rounded-lg border border-jdt-border bg-white">
+              <div className="flex flex-col gap-2 border-b border-jdt-border px-3 py-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wide text-jdt-primary">Spreadsheet Paste Grid</p>
+                  <p className="mt-1 text-xs font-bold text-zinc-500">Paste each workbook column separately. Rows line up by line number, then Preview assembles the import rows.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded bg-jdt-sand px-2 py-1 text-[10px] font-black uppercase text-zinc-500">{gridPreviewRows.length} rows staged</span>
+                  <button
+                    type="button"
+                    onClick={clearPasteGrid}
+                    className="rounded-lg border border-jdt-border bg-jdt-panel px-3 py-1.5 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive"
+                  >
+                    Clear Grid
+                  </button>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <div
+                  className="grid min-w-[680px] border-b border-jdt-border"
+                  style={{ gridTemplateColumns: `repeat(${selectedPasteHeaders.length}, minmax(180px, 1fr))` }}
+                >
+                  {selectedPasteHeaders.map((header) => {
+                    const example = exampleValueForHeader(header);
+                    return (
+                      <div key={header} className="border-r border-jdt-border last:border-r-0">
+                        <div className="border-b border-jdt-border bg-jdt-sand px-3 py-2">
+                          <p className="text-[10px] font-black uppercase tracking-wide text-jdt-primary">{header}</p>
+                          <p className="mt-0.5 text-[10px] font-bold text-zinc-500">{example ? `Example: ${example}` : 'Paste one value per line'}</p>
+                        </div>
+                        <textarea
+                          aria-label={`${header} column values`}
+                          value={columnPasteValues[header] || ''}
+                          onChange={(event) => updateGridColumn(header, event.target.value)}
+                          placeholder={`${header} column values${example ? `\n${example}\n${example}` : ''}`}
+                          rows={10}
+                          className="block h-56 w-full resize-y border-0 bg-white p-3 font-mono text-xs leading-6 text-jdt-text outline-none focus:bg-jdt-panel"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="px-3 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-zinc-500">Row Preview</p>
+                  {gridPreviewRows.length > 6 && <p className="text-[10px] font-black uppercase text-zinc-400">Showing 6 of {gridPreviewRows.length}</p>}
+                </div>
+                {gridPreviewRows.length > 0 ? (
+                  <div className="mt-2 overflow-x-auto rounded-lg border border-jdt-border">
+                    <table className="min-w-full divide-y divide-jdt-border text-left text-xs">
+                      <thead className="bg-jdt-sand">
+                        <tr>
+                          <th className="w-12 px-2 py-2 text-[10px] font-black uppercase text-zinc-500">Row</th>
+                          {selectedPasteHeaders.map((header) => (
+                            <th key={header} className="px-2 py-2 text-[10px] font-black uppercase text-jdt-primary">{header}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-jdt-border bg-white">
+                        {gridPreviewRows.slice(0, 6).map((row) => (
+                          <tr key={row.rowNumber}>
+                            <td className="px-2 py-2 font-black text-zinc-400">{row.rowNumber}</td>
+                            {row.cells.map((cell, index) => (
+                              <td key={`${row.rowNumber}-${selectedPasteHeaders[index]}`} className="px-2 py-2 font-mono text-jdt-text">{cell || '-'}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="mt-2 rounded-lg border border-dashed border-jdt-border bg-jdt-panel px-3 py-4 text-center text-xs font-bold text-zinc-500">
+                    Paste values into one or more selected columns to stage rows.
+                  </p>
+                )}
+              </div>
+            </div>
             {draftRestored && pastedRows.trim() && (
               <p className="rounded-lg border border-jdt-border bg-jdt-sand px-3 py-2 text-xs font-black text-jdt-primary">Unsaved draft restored from this browser.</p>
             )}
