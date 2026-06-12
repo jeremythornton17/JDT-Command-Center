@@ -6,6 +6,7 @@ import {
   handleRevealGpsWebhook,
   revealWebhookCredentialsConfigured,
 } from './server/revealTelematics.js';
+import { revealApiCredentialsConfigured } from './server/revealApi.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,6 +31,20 @@ app.get('/api/integrations/reveal/gps/health', (_request, response) => {
       credentialsConfigured: revealWebhookCredentialsConfigured(process.env),
       firestoreProjectId,
       firestoreDatabaseId,
+    });
+});
+
+app.get('/api/integrations/reveal/api/health', (_request, response) => {
+  response
+    .type('application/json')
+    .set('Cache-Control', 'no-store')
+    .send({
+      ok: true,
+      provider: 'Reveal',
+      api: 'Vehicle API',
+      credentialsConfigured: revealApiCredentialsConfigured(process.env),
+      tokenEndpointConfigured: true,
+      vehicleEndpointConfigured: true,
     });
 });
 
