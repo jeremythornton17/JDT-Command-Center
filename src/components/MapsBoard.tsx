@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   ClipboardList,
   Compass,
   Crosshair,
   Download,
+  Eye,
+  Layers,
   Globe2,
   LocateFixed,
   MapPin,
@@ -11,10 +14,12 @@ import {
   Plus,
   Route,
   Save,
+  Search,
   Target,
   Truck,
   TreePine,
   Upload,
+  Wrench,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -51,8 +56,15 @@ import {
 import { useAuth } from '../AuthProvider';
 import { useFirestoreSyncState } from '../useFirestoreCollection';
 import { defaultJdtFarmLocations, jdtHomeBase, mergeLocationLibrary } from '../commandCenter/equipmentFreight';
-import type { EquipmentRecord, FleetTelematicsEventRecord } from '../commandCenter/records';
+import type { EquipmentRecord, FleetTelematicsEventRecord, LoadRecord } from '../commandCenter/records';
 import { buildLiveVehicleMapMarkers, type LiveVehicleMapMarker } from '../commandCenter/telematicsIntelligence';
+import {
+  buildLiveGpsAssets,
+  filterLiveGpsAssets,
+  isolateLiveGpsAsset,
+  type LiveGpsAsset,
+  type LiveGpsCategory,
+} from '../commandCenter/liveGpsMap';
 
 const defaultFieldCenter = jdtHomeBase.coordinates;
 
@@ -69,8 +81,16 @@ const siteLocationAccessTypes: SiteLocationAccessType[] = [
 ];
 
 const siteLocationDivisionOptions = ['Relocation & Installation', 'Crew', 'Freight', 'Equipment', 'Nursery'];
+const liveGpsCategoryOptions: Array<{ id: LiveGpsCategory; label: string }> = [
+  { id: 'vehicle', label: 'Vehicles' },
+  { id: 'equipment', label: 'Equipment' },
+  { id: 'freight', label: 'Freight' },
+  { id: 'unmatched', label: 'Unmatched GPS' },
+];
+const liveGpsStatusOptions = ['Moving', 'Idle', 'Stopped', 'Stale', 'No Signal', 'Needs Match', 'In Transit'];
 
 type MapViewMode = 'map' | 'earth';
+type MapWorkspaceMode = 'locations' | 'project' | 'liveGps';
 
 const profileSiteLocationFields: Array<{ key: string; accessType: SiteLocationAccessType; label: string }> = [
   { key: 'location', accessType: 'Main Jobsite Address', label: 'Main Jobsite Address' },
@@ -143,7 +163,7 @@ function sourceTextForSiteLocation(location: any) {
 
 type MapsBoardProps = {
   jobs?: any[];
-  loads?: any[];
+  loads?: LoadRecord[];
   equipment?: EquipmentRecord[];
   fleetTelematicsEvents?: FleetTelematicsEventRecord[];
   ranchOaks?: any[];
@@ -156,6 +176,8 @@ type MapsBoardProps = {
   initialSavedLocations?: any[];
   locationsList?: any[];
   initialAddPinOpen?: boolean;
+  initialMapMode?: MapWorkspaceMode;
+  initialSelectedGpsAssetId?: string;
 };
 
 type SelectedPin = {
@@ -165,6 +187,7 @@ type SelectedPin = {
 
 export default function MapsBoard({
   jobs = [],
+  loads = [],
   ranchOaks,
   treeRelocationRecords = [],
   equipment = [],
@@ -177,6 +200,8 @@ export default function MapsBoard({
   initialSavedLocations,
   locationsList,
   initialAddPinOpen = false,
+  initialMapMode,
+  initialSelectedGpsAssetId,
 }: MapsBoardProps) {
   const { user } = useAuth();
   const [syncedRanchOaks, setSyncedRanchOaks] = useFirestoreSyncState<any>('ranchOaks', [], !!user && !ranchOaks);
@@ -191,15 +216,17 @@ export default function MapsBoard({
   );
   const relocationJobOptions = useMemo(() => buildRelocationJobOptions(jobs), [jobs]);
   const [selectedJobId, setSelectedJobId] = useState(initialSelectedJobId);
+  const [mapMode, setMapMode] = useState<MapWorkspaceMode>(() => initialMapMode || (initialSelectedJobId === 'all' ? 'locations' : 'project'));
   const filteredTreeRecords = useMemo(
     () => filterTreesForRelocationJob(treeRecords, selectedJobId, jobs),
     [treeRecords, selectedJobId, jobs],
   );
   const selectedJob = jobs.find(job => String(job.id || job.jobId || job.projectId) === selectedJobId);
-  const isAllLocationsView = selectedJobId === 'all';
-  const isRelocationJobView = Boolean(selectedJob);
+  const isLiveGpsView = mapMode === 'liveGps';
+  const isAllLocationsView = mapMode === 'locations' || (selectedJobId === 'all' && mapMode !== 'liveGps');
+  const isRelocationJobView = mapMode === 'project' && Boolean(selectedJob);
   const showTreeMapPanels = isRelocationJobView;
-  const showSavedLocationsPanel = isAllLocationsView || isRelocationJobView;
+  const showSavedLocationsPanel = !isLiveGpsView && (isAllLocationsView || isRelocationJobView);
   const savedLocationsTitle = isAllLocationsView ? 'All Saved Locations' : 'Saved Site Locations';
   const savedLocationsListLabel = isAllLocationsView ? 'All Saved Pins' : 'Project Pins';
   const mapsConfig = useMemo(() => getGoogleMapsConfig(), []);
@@ -267,6 +294,29 @@ export default function MapsBoard({
     () => buildLiveVehicleMapMarkers(equipment, fleetTelematicsEvents),
     [equipment, fleetTelematicsEvents],
   );
+  const liveGpsAssets = useMemo(
+    () => buildLiveGpsAssets({ equipment, events: fleetTelematicsEvents, loads }),
+    [equipment, fleetTelematicsEvents, loads],
+  );
+  const [gpsSearch, setGpsSearch] = useState('');
+  const [activeGpsCategories, setActiveGpsCategories] = useState<LiveGpsCategory[]>(['vehicle', 'equipment', 'freight', 'unmatched']);
+  const [activeGpsStatuses, setActiveGpsStatuses] = useState<string[]>([]);
+  const [selectedGpsAssetId, setSelectedGpsAssetId] = useState(initialSelectedGpsAssetId || '');
+  const [isolatedGpsAssetId, setIsolatedGpsAssetId] = useState(initialSelectedGpsAssetId || '');
+  const filteredGpsAssets = useMemo(
+    () => filterLiveGpsAssets(liveGpsAssets, {
+      categories: activeGpsCategories,
+      statuses: activeGpsStatuses,
+      search: gpsSearch,
+    }),
+    [liveGpsAssets, activeGpsCategories, activeGpsStatuses, gpsSearch],
+  );
+  const visibleGpsAssets = useMemo(
+    () => isolateLiveGpsAsset(filteredGpsAssets, isolatedGpsAssetId),
+    [filteredGpsAssets, isolatedGpsAssetId],
+  );
+  const selectedGpsAsset = liveGpsAssets.find((asset) => asset.id === (selectedGpsAssetId || isolatedGpsAssetId));
+  const isolatedGpsAsset = liveGpsAssets.find((asset) => asset.id === isolatedGpsAssetId);
   const [siteLocationForm, setSiteLocationForm] = useState({
     label: '',
     accessType: 'Load / Unload Pin' as SiteLocationAccessType,
@@ -392,7 +442,7 @@ export default function MapsBoard({
     return () => {
       cancelled = true;
     };
-  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, filteredTreeRecords, scopedSavedLocations, liveVehicleMarkers, selectedTreeId, zoomLevel, mapViewMode, selectedJobId, selectedJobMapTarget]);
+  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, filteredTreeRecords, scopedSavedLocations, liveVehicleMarkers, visibleGpsAssets, selectedTreeId, zoomLevel, mapViewMode, selectedJobId, selectedJobMapTarget, isLiveGpsView, showTreeMapPanels]);
 
   useEffect(() => {
     focusMapOnSelectedJob();
@@ -412,35 +462,37 @@ export default function MapsBoard({
     googleMarkerRefs.current.forEach(marker => marker.setMap?.(null));
     googleMarkerRefs.current = [];
 
-    filteredTreeRecords.forEach(tree => {
-      const status = getTreeRelocationStatus(tree);
-      (['source', 'destination'] as TreeRelocationPointType[]).forEach(pointType => {
-        const point = tree.relocationMap?.[pointType];
-        if (!point) return;
+    if (showTreeMapPanels) {
+      filteredTreeRecords.forEach(tree => {
+        const status = getTreeRelocationStatus(tree);
+        (['source', 'destination'] as TreeRelocationPointType[]).forEach(pointType => {
+          const point = tree.relocationMap?.[pointType];
+          if (!point) return;
 
-        const marker = new maps.Marker({
-          position: { lat: point.lat, lng: point.lng },
-          map,
-          title: `${tree.treeId || tree.id} ${pointType}`,
-          label: pointType === 'source' ? 'S' : 'D',
-          draggable: true,
-        });
-        marker.addListener('click', () => {
-          selectExistingPin(tree, pointType, status);
-        });
-        marker.addListener('dragend', (event: any) => {
-          if (!event.latLng) return;
-          markTreePoint(tree.treeId ?? tree.id, pointType, {
-            lat: event.latLng.lat(),
-            lng: event.latLng.lng(),
-            label: pointType === 'source' ? 'Moved source pin' : 'Moved destination pin',
+          const marker = new maps.Marker({
+            position: { lat: point.lat, lng: point.lng },
+            map,
+            title: `${tree.treeId || tree.id} ${pointType}`,
+            label: pointType === 'source' ? 'S' : 'D',
+            draggable: true,
           });
+          marker.addListener('click', () => {
+            selectExistingPin(tree, pointType, status);
+          });
+          marker.addListener('dragend', (event: any) => {
+            if (!event.latLng) return;
+            markTreePoint(tree.treeId ?? tree.id, pointType, {
+              lat: event.latLng.lat(),
+              lng: event.latLng.lng(),
+              label: pointType === 'source' ? 'Moved source pin' : 'Moved destination pin',
+            });
+          });
+          googleMarkerRefs.current.push(marker);
         });
-        googleMarkerRefs.current.push(marker);
       });
-    });
+    }
 
-    scopedSavedLocations.forEach((location) => {
+    if (!isLiveGpsView || scopedSavedLocations.length > 0) scopedSavedLocations.forEach((location) => {
       const point = pointFromSavedSiteLocation(location);
       if (!point) return;
 
@@ -457,19 +509,36 @@ export default function MapsBoard({
       googleMarkerRefs.current.push(marker);
     });
 
-    liveVehicleMarkers.forEach((vehicle) => {
-      const marker = new maps.Marker({
-        position: { lat: vehicle.lat, lng: vehicle.lng },
-        map,
-        title: `${vehicle.label} ${vehicle.status}`,
-        label: 'V',
-        draggable: false,
+    if (isLiveGpsView) {
+      visibleGpsAssets.forEach((asset) => {
+        if (asset.lat === undefined || asset.lng === undefined) return;
+        const marker = new maps.Marker({
+          position: { lat: asset.lat, lng: asset.lng },
+          map,
+          title: `${asset.name} ${asset.status}`,
+          label: liveGpsMarkerLabel(asset.category),
+          draggable: false,
+        });
+        marker.addListener('click', () => {
+          focusLiveGpsAsset(asset);
+        });
+        googleMarkerRefs.current.push(marker);
       });
-      marker.addListener('click', () => {
-        focusVehicleMarker(vehicle);
+    } else {
+      liveVehicleMarkers.forEach((vehicle) => {
+        const marker = new maps.Marker({
+          position: { lat: vehicle.lat, lng: vehicle.lng },
+          map,
+          title: `${vehicle.label} ${vehicle.status}`,
+          label: 'V',
+          draggable: false,
+        });
+        marker.addListener('click', () => {
+          focusVehicleMarker(vehicle);
+        });
+        googleMarkerRefs.current.push(marker);
       });
-      googleMarkerRefs.current.push(marker);
-    });
+    }
   };
 
   const beginPinEdit = (pointType: TreeRelocationPointType) => {
@@ -726,6 +795,63 @@ export default function MapsBoard({
     setFieldStatus(`${vehicle.label} focused at ${formatTreeCoordinate({ lat: vehicle.lat, lng: vehicle.lng })}.`);
   };
 
+  const focusLiveGpsAsset = (asset: LiveGpsAsset) => {
+    setSelectedGpsAssetId(asset.id);
+    setMapMode('liveGps');
+    setMapViewMode('earth');
+    const map = googleMapInstanceRef.current;
+    if (map && asset.lat !== undefined && asset.lng !== undefined) {
+      map.setCenter({ lat: asset.lat, lng: asset.lng });
+      map.setZoom(Math.max(zoomLevel, 17));
+      setFieldStatus(`${asset.name} focused at ${formatTreeCoordinate({ lat: asset.lat, lng: asset.lng })}.`);
+      return;
+    }
+    setFieldStatus(`${asset.name} selected. This asset does not have a current GPS coordinate yet.`);
+  };
+
+  const isolateLiveGpsAssetOnMap = (asset: LiveGpsAsset) => {
+    setSelectedGpsAssetId(asset.id);
+    setIsolatedGpsAssetId(asset.id);
+    focusLiveGpsAsset(asset);
+  };
+
+  const openLiveGpsAssetInMaps = (asset: LiveGpsAsset) => {
+    if (asset.lat === undefined || asset.lng === undefined) {
+      setFieldStatus(`${asset.name} does not have coordinates to open in Google Maps.`);
+      return;
+    }
+    window.open(`https://www.google.com/maps/search/?api=1&query=${asset.lat},${asset.lng}`, '_blank', 'noopener,noreferrer');
+    setFieldStatus(`Opened ${asset.name} coordinates in Google Maps.`);
+  };
+
+  const copyLiveGpsCoordinates = async (asset: LiveGpsAsset) => {
+    if (asset.lat === undefined || asset.lng === undefined) {
+      setFieldStatus(`${asset.name} does not have coordinates to copy.`);
+      return;
+    }
+    const coordinates = `${asset.lat.toFixed(6)}, ${asset.lng.toFixed(6)}`;
+    try {
+      await navigator.clipboard?.writeText(coordinates);
+      setFieldStatus(`Copied ${asset.name} coordinates: ${coordinates}.`);
+    } catch {
+      setFieldStatus(`${asset.name} coordinates: ${coordinates}.`);
+    }
+  };
+
+  const toggleLiveGpsCategory = (category: LiveGpsCategory) => {
+    setActiveGpsCategories((current) => {
+      if (current.includes(category)) return current.filter((item) => item !== category);
+      return [...current, category];
+    });
+  };
+
+  const toggleLiveGpsStatus = (status: string) => {
+    setActiveGpsStatuses((current) => {
+      if (current.includes(status)) return current.filter((item) => item !== status);
+      return [...current, status];
+    });
+  };
+
   const downloadProjectKml = () => {
     if (!earthMapPackage.pinnedTreeCount) {
       setFieldStatus('Add at least one source or destination pin before exporting this project to Google Earth.');
@@ -873,6 +999,29 @@ export default function MapsBoard({
           title={`${vehicle.label} ${vehicle.status}`}
         >
           <Truck className="h-4 w-4 text-white" />
+        </button>
+      );
+    });
+  };
+
+  const renderFallbackLiveGpsPins = () => {
+    return visibleGpsAssets.map((asset) => {
+      if (asset.lat === undefined || asset.lng === undefined) return null;
+      const percent = latLngToMapPercent({ lat: asset.lat, lng: asset.lng });
+      const Icon = liveGpsIcon(asset.category);
+      return (
+        <button
+          key={asset.id}
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            focusLiveGpsAsset(asset);
+          }}
+          className={`absolute flex h-9 w-9 items-center justify-center rounded-full border-2 border-white shadow-xl ring-4 transition-all hover:scale-110 z-10 ${liveGpsPinClass(asset.category)}`}
+          style={{ left: `${percent.x}%`, top: `${percent.y}%` }}
+          title={`${asset.name} ${asset.status}`}
+        >
+          <Icon className="h-4 w-4 text-white" />
         </button>
       );
     });
@@ -1077,8 +1226,12 @@ export default function MapsBoard({
     <div className="space-y-6">
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-jdt-border pb-5">
         <div>
-          <h2 className="text-2xl font-black text-jdt-primary">Field Maps & Tree Relocation</h2>
-          <p className="text-sm font-bold text-zinc-500 mt-1">Pin source trees, destination locations, GPS field marks, and relocation tasks</p>
+          <h2 className="text-2xl font-black text-jdt-primary">{isLiveGpsView ? 'Live GPS Map' : 'Field Maps & Tree Relocation'}</h2>
+          <p className="text-sm font-bold text-zinc-500 mt-1">
+            {isLiveGpsView
+              ? 'Track Verizon GPS vehicles, equipment, freight moves, and unmatched GPS assets'
+              : 'Pin source trees, destination locations, GPS field marks, and relocation tasks'}
+          </p>
         </div>
         <div className="flex items-center gap-2 bg-jdt-panel border border-jdt-border rounded-lg p-1 shadow-sm">
           <button onClick={() => setZoomLevel(z => Math.max(9, z - 1))} className="p-1.5 hover:bg-jdt-sand rounded text-zinc-600" title="Zoom Out"><ZoomOut className="h-4 w-4" /></button>
@@ -1091,24 +1244,63 @@ export default function MapsBoard({
         <div className="space-y-4">
           <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <label className="block flex-1">
-                <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5">Current Map View</span>
-                <select
-                  value={selectedJobId}
-                  onChange={(event) => {
-                    setSelectedJobId(event.target.value);
-                    setSelectedPin(null);
-                    setPinMode(null);
-                    setFieldStatus(event.target.value === 'all' ? 'Showing all saved JDT map locations.' : 'Map focused to the selected relocation job.');
-                  }}
-                  className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-black text-jdt-text outline-none focus:border-jdt-olive"
-                >
-                  <option value="all">All JD Thornton Locations</option>
-                  {relocationJobOptions.map((job) => (
-                    <option key={job.id} value={job.id}>{job.label}</option>
-                  ))}
-                </select>
-              </label>
+              <div className="flex-1 space-y-3">
+                <div>
+                  <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5">Map Mode</span>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMapMode('locations');
+                        setSelectedJobId('all');
+                        setFieldStatus('Showing all saved JDT map locations.');
+                      }}
+                      className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${mapMode === 'locations' ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-white text-zinc-600 hover:border-jdt-olive'}`}
+                    >
+                      Locations
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMapMode('project');
+                        setFieldStatus(selectedJob ? 'Map focused to the selected relocation job.' : 'Select a relocation job to see project tree and site pins.');
+                      }}
+                      className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${mapMode === 'project' ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-white text-zinc-600 hover:border-jdt-olive'}`}
+                    >
+                      Project / Trees
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMapMode('liveGps');
+                        setFieldStatus('Showing live GPS assets from Verizon Reveal and JDT dispatch records.');
+                      }}
+                      className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${mapMode === 'liveGps' ? 'border-sky-700 bg-sky-700 text-white' : 'border-jdt-border bg-white text-zinc-600 hover:border-sky-500'}`}
+                    >
+                      Live GPS
+                    </button>
+                  </div>
+                </div>
+                <label className="block">
+                  <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5">Current Map View</span>
+                  <select
+                    value={selectedJobId}
+                    onChange={(event) => {
+                      setSelectedJobId(event.target.value);
+                      setMapMode(event.target.value === 'all' ? 'locations' : 'project');
+                      setSelectedPin(null);
+                      setPinMode(null);
+                      setFieldStatus(event.target.value === 'all' ? 'Showing all saved JDT map locations.' : 'Map focused to the selected relocation job.');
+                    }}
+                    className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-black text-jdt-text outline-none focus:border-jdt-olive"
+                  >
+                    <option value="all">All JD Thornton Locations</option>
+                    {relocationJobOptions.map((job) => (
+                      <option key={job.id} value={job.id}>{job.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -1144,9 +1336,9 @@ export default function MapsBoard({
                 />
                 <div className="absolute inset-0 bg-jdt-dark/20" />
                 {showTreeMapPanels && renderSelectedTreeLine()}
-                {renderFallbackTreePins()}
+                {showTreeMapPanels && renderFallbackTreePins()}
                 {renderFallbackSiteLocationPins()}
-                {renderFallbackVehiclePins()}
+                {isLiveGpsView ? renderFallbackLiveGpsPins() : renderFallbackVehiclePins()}
               </div>
             )}
 
@@ -1192,6 +1384,146 @@ export default function MapsBoard({
         </div>
 
         <aside className="space-y-4">
+          {isLiveGpsView && (
+            <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5">
+                    <Layers className="h-4 w-4 text-sky-700" /> Live GPS Assets
+                  </h3>
+                  <p className="mt-1 text-[11px] font-bold text-zinc-500">
+                    Verizon GPS layered with JDT equipment, freight, and project context.
+                  </p>
+                </div>
+                <span className="rounded bg-white px-2 py-0.5 text-[9px] font-black uppercase text-zinc-500">{visibleGpsAssets.length}/{liveGpsAssets.length}</span>
+              </div>
+
+              {isolatedGpsAsset && (
+                <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
+                  <p className="text-[10px] font-black uppercase text-sky-800">{`Isolating ${isolatedGpsAsset.name}`}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsolatedGpsAssetId('');
+                      setSelectedGpsAssetId(isolatedGpsAsset.id);
+                      setFieldStatus('Showing all live GPS assets again.');
+                    }}
+                    className="mt-2 rounded-md border border-sky-200 bg-white px-2 py-1.5 text-[9px] font-black uppercase text-sky-800 hover:border-sky-500"
+                  >
+                    Show All GPS Assets
+                  </button>
+                </div>
+              )}
+
+              <label className="mb-3 block">
+                <span className="mb-1 block text-[10px] font-black uppercase text-zinc-400">Search Live GPS</span>
+                <div className="flex items-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2">
+                  <Search className="h-4 w-4 text-zinc-400" />
+                  <input
+                    value={gpsSearch}
+                    onChange={(event) => setGpsSearch(event.target.value)}
+                    placeholder="Vehicle, equipment, driver, project..."
+                    className="min-w-0 flex-1 bg-transparent text-xs font-bold text-jdt-text outline-none"
+                  />
+                </div>
+              </label>
+
+              <div className="mb-3">
+                <p className="mb-1.5 text-[10px] font-black uppercase text-zinc-400">Categories</p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {liveGpsCategoryOptions.map((category) => {
+                    const active = activeGpsCategories.includes(category.id);
+                    const count = liveGpsAssets.filter((asset) => asset.category === category.id).length;
+                    return (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={() => toggleLiveGpsCategory(category.id)}
+                        className={`rounded-lg border px-2 py-2 text-left text-[10px] font-black uppercase ${active ? liveGpsCategoryButtonClass(category.id) : 'border-jdt-border bg-white text-zinc-500'}`}
+                      >
+                        {category.label} <span className="opacity-70">({count})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mb-3">
+                <p className="mb-1.5 text-[10px] font-black uppercase text-zinc-400">Status</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {liveGpsStatusOptions.map((status) => {
+                    const active = activeGpsStatuses.includes(status);
+                    return (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => toggleLiveGpsStatus(status)}
+                        className={`rounded-md border px-2 py-1 text-[9px] font-black uppercase ${active ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-white text-zinc-500'}`}
+                      >
+                        {status}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mb-3 rounded-lg border border-jdt-border bg-white p-3">
+                <p className="mb-2 text-[10px] font-black uppercase text-zinc-400">Map Layers</p>
+                <div className="grid grid-cols-2 gap-2 text-[10px] font-black uppercase text-zinc-600">
+                  <span className="flex items-center gap-1.5"><Eye className="h-3.5 w-3.5 text-amber-600" /> Saved Locations</span>
+                  <span className="flex items-center gap-1.5"><Truck className="h-3.5 w-3.5 text-sky-700" /> Vehicles</span>
+                  <span className="flex items-center gap-1.5"><Wrench className="h-3.5 w-3.5 text-violet-700" /> Equipment</span>
+                  <span className="flex items-center gap-1.5"><Route className="h-3.5 w-3.5 text-teal-700" /> Freight</span>
+                </div>
+              </div>
+
+              <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
+                {visibleGpsAssets.length > 0 ? visibleGpsAssets.map((asset) => (
+                  <div
+                    key={asset.id}
+                    className={`rounded-lg border bg-white p-3 ${selectedGpsAsset?.id === asset.id ? 'border-jdt-primary ring-2 ring-jdt-primary/20' : 'border-jdt-border'}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => focusLiveGpsAsset(asset)}
+                      className="w-full text-left"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-black text-jdt-text">{asset.name}</p>
+                          <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{liveGpsAssetSubtitle(asset)}</p>
+                        </div>
+                        <span className={`shrink-0 rounded border px-2 py-0.5 text-[9px] font-black uppercase ${liveGpsStatusClass(asset.status)}`}>{asset.status}</span>
+                      </div>
+                      <p className="mt-2 text-[11px] font-bold leading-snug text-zinc-500">{asset.address || asset.currentAddress || (asset.lat !== undefined && asset.lng !== undefined ? formatTreeCoordinate({ lat: asset.lat, lng: asset.lng }) : 'No GPS coordinate')}</p>
+                      {asset.lastUpdatedAt && <p className="mt-1 text-[10px] font-bold text-zinc-400">Latest GPS {asset.lastUpdatedAt}</p>}
+                    </button>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button type="button" onClick={() => focusLiveGpsAsset(asset)} className="rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Zoom To</button>
+                      <button type="button" onClick={() => isolateLiveGpsAssetOnMap(asset)} className="rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Isolate</button>
+                      <button type="button" onClick={() => openLiveGpsAssetInMaps(asset)} className="rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Open Maps</button>
+                      <button type="button" onClick={() => void copyLiveGpsCoordinates(asset)} className="rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Copy GPS</button>
+                      {asset.equipmentId && openDrawer && (
+                        <button type="button" onClick={() => openDrawer('equipment', asset.equipmentId || '')} className="rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive">View Equipment</button>
+                      )}
+                      {asset.freightMoveId && openDrawer && (
+                        <button type="button" onClick={() => openDrawer('freight', asset.freightMoveId || '')} className="rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive">View Freight</button>
+                      )}
+                      {asset.category === 'unmatched' && (
+                        <button type="button" onClick={() => setFieldStatus(`${asset.name} needs to be matched to a JDT equipment record from the Equipment page.`)} className="col-span-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[9px] font-black uppercase text-amber-900 hover:border-amber-400">Match GPS</button>
+                      )}
+                    </div>
+                  </div>
+                )) : (
+                  <div className="rounded-lg border border-dashed border-jdt-border bg-white p-4 text-center">
+                    <p className="text-xs font-black uppercase text-jdt-text">No live GPS assets visible</p>
+                    <p className="mt-1 text-[11px] font-bold text-zinc-500">Adjust filters, sync Verizon Reveal, or match GPS trackers to equipment records.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {showTreeMapPanels && (
             <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
             <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5 mb-3"><TreePine className="h-4 w-4 text-emerald-700" /> Tree Pin List</h3>
@@ -1222,7 +1554,7 @@ export default function MapsBoard({
           </div>
           )}
 
-          {liveVehicleMarkers.length > 0 && (
+          {!isLiveGpsView && liveVehicleMarkers.length > 0 && (
             <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5">
@@ -1524,4 +1856,52 @@ function mergeMapTreeRecords(baseTrees: any[] = [], relocationTrees: any[] = [])
 function treeMapSubtitle(tree: any): string {
   const parts = [tree.farm, tree.zone, tree.ranchOakType || tree.type || tree.treeType].filter(Boolean);
   return parts.length ? parts.join(' - ') : 'Project tree asset';
+}
+
+function liveGpsMarkerLabel(category: LiveGpsCategory): string {
+  if (category === 'equipment') return 'E';
+  if (category === 'freight') return 'F';
+  if (category === 'unmatched') return '?';
+  return 'V';
+}
+
+function liveGpsIcon(category: LiveGpsCategory): any {
+  if (category === 'equipment') return Wrench;
+  if (category === 'freight') return Route;
+  if (category === 'unmatched') return AlertTriangle;
+  return Truck;
+}
+
+function liveGpsPinClass(category: LiveGpsCategory): string {
+  if (category === 'equipment') return 'bg-violet-700 ring-violet-200';
+  if (category === 'freight') return 'bg-teal-700 ring-teal-200';
+  if (category === 'unmatched') return 'bg-amber-600 ring-amber-200';
+  return 'bg-sky-700 ring-sky-200';
+}
+
+function liveGpsCategoryButtonClass(category: LiveGpsCategory): string {
+  if (category === 'equipment') return 'border-violet-300 bg-violet-50 text-violet-900';
+  if (category === 'freight') return 'border-teal-300 bg-teal-50 text-teal-900';
+  if (category === 'unmatched') return 'border-amber-300 bg-amber-50 text-amber-900';
+  return 'border-sky-300 bg-sky-50 text-sky-900';
+}
+
+function liveGpsStatusClass(status: string): string {
+  if (/needs match|no signal|stale/i.test(status)) return 'border-amber-200 bg-amber-50 text-amber-900';
+  if (/moving|in transit|active/i.test(status)) return 'border-sky-200 bg-sky-50 text-sky-900';
+  if (/stopped|idle|scheduled/i.test(status)) return 'border-zinc-200 bg-zinc-50 text-zinc-700';
+  if (/delayed|blocked|down/i.test(status)) return 'border-red-200 bg-red-50 text-red-800';
+  return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+}
+
+function liveGpsAssetSubtitle(asset: LiveGpsAsset): string {
+  const category = liveGpsCategoryOptions.find((option) => option.id === asset.category)?.label || asset.category;
+  const details = [
+    category,
+    asset.assignedDriver,
+    asset.assignedProjectName,
+    asset.freightMoveTitle,
+    asset.currentLocationName,
+  ].filter(Boolean);
+  return details.join(' - ');
 }

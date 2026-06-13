@@ -295,4 +295,70 @@ describe("MapsBoard relocation pin editing", () => {
     assert.match(html, /Christian Crespo/);
     assert.match(html, /Boca West truck access/);
   });
+
+  it("shows the Live GPS map with vehicles, equipment, freight, and unmatched GPS filters", () => {
+    const html = renderToString(
+      <MapsBoard
+        initialMapMode="liveGps"
+        jobs={[]}
+        loads={[{
+          id: "load-boca-equipment",
+          title: "Christian Crespo - Semi #1 - Boca West equipment moves",
+          truckId: "equipment-semi-1",
+          truck: "Semi #1",
+          driver: "Christian Crespo",
+          status: "In Transit",
+        }]}
+        equipment={[
+          { id: "equipment-semi-1", name: "Semi #1", category: "Truck", revealVehicleId: "veh-1" },
+          { id: "equipment-komatsu-500-1", name: "Komatsu 500 - 1", category: "Machine", revealVehicleId: "asset-komatsu-1" },
+        ]}
+        fleetTelematicsEvents={[
+          { id: "evt-semi", providerVehicleId: "veh-1", vehicleName: "Semi #1", latitude: 26.38, longitude: -80.17, speedMph: 18, driverName: "Christian Crespo", eventAt: "2026-06-13T14:00:00.000Z" },
+          { id: "evt-komatsu", providerVehicleId: "asset-komatsu-1", vehicleName: "Komatsu 500 - 1", latitude: 26.75, longitude: -80.98, speedMph: 0, eventAt: "2026-06-13T14:00:00.000Z" },
+          { id: "evt-unmatched", providerVehicleId: "unknown-9", vehicleName: "Unknown Reveal tracker", latitude: 26.76, longitude: -80.91, eventAt: "2026-06-13T14:00:00.000Z" },
+        ]}
+        ranchOaks={[]}
+        treeRelocationRecords={[]}
+        onUpdateTreeLocation={() => undefined}
+        openDrawer={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Live GPS Map/);
+    assert.match(html, /Vehicles/);
+    assert.match(html, /Equipment/);
+    assert.match(html, /Freight/);
+    assert.match(html, /Unmatched GPS/);
+    assert.match(html, /Semi #1/);
+    assert.match(html, /Komatsu 500 - 1/);
+    assert.match(html, /Christian Crespo - Semi #1 - Boca West equipment moves/);
+    assert.match(html, /Unknown Reveal tracker/);
+  });
+
+  it("can isolate a single live GPS asset from the map entry point", () => {
+    const html = renderToString(
+      <MapsBoard
+        initialMapMode="liveGps"
+        initialSelectedGpsAssetId="equipment-komatsu-500-1"
+        jobs={[]}
+        loads={[]}
+        equipment={[
+          { id: "equipment-semi-1", name: "Semi #1", category: "Truck", revealVehicleId: "veh-1" },
+          { id: "equipment-komatsu-500-1", name: "Komatsu 500 - 1", category: "Machine", revealVehicleId: "asset-komatsu-1" },
+        ]}
+        fleetTelematicsEvents={[
+          { id: "evt-semi", providerVehicleId: "veh-1", vehicleName: "Semi #1", latitude: 26.38, longitude: -80.17, speedMph: 18, eventAt: "2026-06-13T14:00:00.000Z" },
+          { id: "evt-komatsu", providerVehicleId: "asset-komatsu-1", vehicleName: "Komatsu 500 - 1", latitude: 26.75, longitude: -80.98, speedMph: 0, eventAt: "2026-06-13T14:00:00.000Z" },
+        ]}
+        ranchOaks={[]}
+        treeRelocationRecords={[]}
+        onUpdateTreeLocation={() => undefined}
+        openDrawer={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Isolating Komatsu 500 - 1/);
+    assert.match(html, /Show All GPS Assets/);
+  });
 });
