@@ -4,12 +4,14 @@ import { describe, it } from 'node:test';
 import {
   buildRevealApiAuthorizationHeader,
   buildRevealEquipmentRecordForVehicle,
+  buildRevealMatchApprovalWrites,
   buildRevealRecommendedApiFirestoreRecords,
   buildRevealRecommendedApiStatus,
   buildRevealVehicleMatchCandidates,
   fetchRevealApiToken,
   fetchRevealConfiguredApiResource,
   fetchRevealVehicles,
+  handleRevealVehicleMatchApprovalRequest,
   handleRevealVehicleMatchPreviewRequest,
   handleRevealRecommendedApisSyncRequest,
   handleRevealVehiclesSyncRequest,
@@ -352,6 +354,100 @@ describe('Reveal API helpers', () => {
       newVehicle: 0,
     });
     assert.equal(calls.some((call) => call.url.endsWith('/documents:commit')), false);
+  });
+
+  it('builds locked Reveal identity writes for approved vehicle matches', () => {
+    const result = buildRevealMatchApprovalWrites({
+      approvals: [{ revealVehicleId: 'veh-456', jdtEquipmentId: 'equipment-chevy-colorado' }],
+      vehicles: [{
+        providerVehicleId: 'veh-456',
+        name: 'Chevy Colorado',
+        vehicleNumber: 'MAX',
+        registrationNumber: 'TAG-1',
+        vin: 'VIN456',
+        make: 'Chevrolet',
+        model: 'Colorado',
+        year: 2024,
+      }],
+      projectId: 'jdt-command-board',
+      databaseId: 'database-1',
+      nowIso: '2026-06-13T15:00:00.000Z',
+      actorEmail: 'jeremy@jdtnurseries.com',
+    });
+
+    assert.equal(result.approved.length, 1);
+    assert.deepEqual(result.skipped, []);
+    assert.equal(result.writes.length, 1);
+    assert.equal(result.writes[0].update.name.endsWith('/documents/equipment/equipment-chevy-colorado'), true);
+    assert.equal(result.writes[0].update.fields.revealVehicleId.stringValue, 'veh-456');
+    assert.equal(result.writes[0].update.fields.verizonVehicleId.stringValue, 'veh-456');
+    assert.equal(result.writes[0].update.fields.revealVehicleNumber.stringValue, 'MAX');
+    assert.equal(result.writes[0].update.fields.revealMatchStatus.stringValue, 'approved');
+    assert.equal(result.writes[0].update.fields.revealMatchApprovedBy.stringValue, 'jeremy@jdtnurseries.com');
+    assert.deepEqual(result.writes[0].updateMask.fieldPaths.sort(), [
+      'make',
+      'model',
+      'registrationNumber',
+      'revealMatchApprovedAt',
+      'revealMatchApprovedBy',
+      'revealMatchStatus',
+      'revealSyncedAt',
+      'revealVehicleId',
+      'revealVehicleNumber',
+      'telematicsProvider',
+      'vehicleNumber',
+      'verizonVehicleId',
+      'vin',
+      'year',
+    ].sort());
+  });
+
+  it('approves selected Reveal matches for owner admins and commits locked identity fields', async () => {
+    const calls = [];
+    const result = await handleRevealVehicleMatchApprovalRequest({
+      headers: { authorization: 'Bearer OWNER_TOKEN' },
+      firebaseApiKey: 'firebase-api-key',
+      projectId: 'jdt-command-board',
+      databaseId: 'database-1',
+      now: new Date('2026-06-13T15:00:00Z'),
+      body: {
+        approvals: [
+          { revealVehicleId: 'veh-456', jdtEquipmentId: 'equipment-chevy-colorado' },
+          { revealVehicleId: 'missing-reveal-id', jdtEquipmentId: 'equipment-missing' },
+        ],
+      },
+      env: {
+        REVEAL_API_USERNAME: 'REST_JDT@example.com',
+        REVEAL_API_PASSWORD: 'top-secret',
+        REVEAL_API_APP_ID: 'fleetmatics-p-us-app',
+        GOOGLE_OAUTH_ACCESS_TOKEN: 'GOOGLE_TOKEN',
+      },
+      fetchImpl: async (url, options = {}) => {
+        calls.push({ url: String(url), options });
+        if (String(url).includes('identitytoolkit.googleapis.com')) {
+          return responseJson({ users: [{ email: 'jeremy@jdtnurseries.com' }] });
+        }
+        if (String(url).endsWith('/token')) return responseText('TOKEN_VALUE');
+        if (String(url).endsWith('/cmd/v1/vehicles')) {
+          return responseJson([{ VehicleId: 'veh-456', Name: 'Chevy Colorado', VehicleNumber: 'MAX' }]);
+        }
+        if (String(url).endsWith('/documents:commit')) return responseJson({ commitTime: '2026-06-13T15:00:01Z' });
+        throw new Error(`Unexpected URL ${url}`);
+      },
+    });
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.body.ok, true);
+    assert.equal(result.body.approved.length, 1);
+    assert.equal(result.body.skipped.length, 1);
+    assert.equal(result.body.approved[0].jdtEquipmentId, 'equipment-chevy-colorado');
+    assert.equal(result.body.skipped[0].reason, 'Reveal vehicle was not returned by the Vehicle API.');
+
+    const commitCall = calls.find((call) => call.url.endsWith('/documents:commit'));
+    assert.ok(commitCall);
+    const commit = JSON.parse(commitCall.options.body);
+    assert.equal(commit.writes.length, 1);
+    assert.equal(commit.writes[0].update.fields.revealMatchStatus.stringValue, 'approved');
   });
 
   it('requires an owner admin Firebase user before running the live sync', async () => {

@@ -114,6 +114,8 @@ type EquipmentBoardProps = {
   isPreviewingRevealMatches?: boolean;
   revealMatchReviewStatus?: string;
   onPreviewRevealMatches?: () => void | Promise<void>;
+  isApprovingRevealMatches?: boolean;
+  onApproveRevealMatches?: (candidates: RevealVehicleMatchCandidate[]) => void | Promise<void>;
   revealMatchCandidates?: RevealVehicleMatchCandidate[];
 };
 
@@ -147,6 +149,8 @@ export default function EquipmentBoard({
   isPreviewingRevealMatches = false,
   revealMatchReviewStatus = '',
   onPreviewRevealMatches,
+  isApprovingRevealMatches = false,
+  onApproveRevealMatches,
   revealMatchCandidates = [],
 }: EquipmentBoardProps) {
   const standardCategories = ['Machine', 'Truck', 'Trailer', 'Implement', 'Tool'];
@@ -180,6 +184,12 @@ export default function EquipmentBoard({
     acc[candidate.status] = (acc[candidate.status] || 0) + 1;
     return acc;
   }, {});
+  const approvableRevealMatches = revealMatchCandidates.filter((candidate) => (
+    Boolean(candidate.revealVehicleId)
+    && Boolean(candidate.jdtEquipmentId)
+    && candidate.status !== 'newVehicle'
+    && candidate.confidence !== 'Approved'
+  ));
 
   return (
     <div className="space-y-8">
@@ -262,10 +272,20 @@ export default function EquipmentBoard({
               </p>
               <p className="mt-1 text-xs font-bold opacity-80">Approve high-confidence matches before letting Reveal update JDT equipment records automatically.</p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <span className="rounded-md border border-[#99F6E4] bg-white/80 px-2.5 py-1 text-[10px] font-black uppercase">Matched {revealMatchSummary.matched || 0}</span>
               <span className="rounded-md border border-[#FDE68A] bg-white/80 px-2.5 py-1 text-[10px] font-black uppercase">Needs Review {revealMatchSummary.needsReview || 0}</span>
               <span className="rounded-md border border-[#CBD5E1] bg-white/80 px-2.5 py-1 text-[10px] font-black uppercase">New {revealMatchSummary.newVehicle || 0}</span>
+              {onApproveRevealMatches && approvableRevealMatches.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void onApproveRevealMatches(approvableRevealMatches)}
+                  disabled={isApprovingRevealMatches}
+                  className="rounded-md border border-[#155E75] bg-[#155E75] px-3 py-1.5 text-[10px] font-black uppercase text-white hover:bg-[#164E63] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isApprovingRevealMatches ? 'Approving Matches' : 'Approve All Safe Matches'}
+                </button>
+              )}
             </div>
           </div>
 
@@ -288,7 +308,19 @@ export default function EquipmentBoard({
                   <p className="text-xs font-black text-jdt-text">{candidate.jdtEquipmentName || 'No JDT equipment match yet'}</p>
                   {candidate.matchField && <p className="mt-1 text-[10px] font-bold text-zinc-500">{candidate.matchField}: {candidate.matchValue || '-'}</p>}
                 </div>
-                <p className="mt-2 text-xs font-bold leading-snug text-[#155E75]">{candidate.recommendedAction}</p>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs font-bold leading-snug text-[#155E75]">{candidate.recommendedAction}</p>
+                  {onApproveRevealMatches && candidate.revealVehicleId && candidate.jdtEquipmentId && candidate.status !== 'newVehicle' && candidate.confidence !== 'Approved' && (
+                    <button
+                      type="button"
+                      onClick={() => void onApproveRevealMatches([candidate])}
+                      disabled={isApprovingRevealMatches}
+                      className="shrink-0 rounded-md border border-[#155E75] bg-[#E0F7FA] px-2.5 py-1.5 text-[9px] font-black uppercase text-[#155E75] hover:bg-[#BAE6FD] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Approve Match
+                    </button>
+                  )}
+                </div>
               </article>
             ))}
           </div>

@@ -535,6 +535,7 @@ export default function App() {
   const [isSyncingRevealRecommendedApis, setIsSyncingRevealRecommendedApis] = useState(false);
   const [revealRecommendedSyncStatus, setRevealRecommendedSyncStatus] = useState('Ready to sync Reveal driver, asset, geofence, inspection, GPS history, and segment APIs');
   const [isPreviewingRevealMatches, setIsPreviewingRevealMatches] = useState(false);
+  const [isApprovingRevealMatches, setIsApprovingRevealMatches] = useState(false);
   const [revealMatchReviewStatus, setRevealMatchReviewStatus] = useState('Review Reveal vehicle matches before trusting live GPS updates.');
   const [revealMatchCandidates, setRevealMatchCandidates] = useState<RevealVehicleMatchCandidate[]>([]);
 
@@ -1315,6 +1316,74 @@ export default function App() {
     }
   };
 
+  const handleApproveRevealMatches = async (candidates: RevealVehicleMatchCandidate[]) => {
+    if (user === null) {
+      addToast('Sign in before approving Reveal matches', 'error');
+      return;
+    }
+
+    const approvals = candidates
+      .map((candidate) => ({
+        revealVehicleId: candidate.revealVehicleId,
+        jdtEquipmentId: candidate.jdtEquipmentId,
+      }))
+      .filter((approval): approval is { revealVehicleId: string; jdtEquipmentId: string } => Boolean(approval.revealVehicleId && approval.jdtEquipmentId));
+
+    if (approvals.length === 0) {
+      addToast('Select a Reveal vehicle match with a JDT equipment record before approving.', 'info');
+      return;
+    }
+
+    setIsApprovingRevealMatches(true);
+    setRevealMatchReviewStatus(`Approving ${approvals.length} Reveal match${approvals.length === 1 ? '' : 'es'}...`);
+
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/integrations/reveal/vehicles/matches/approve', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ source: 'equipment-board', approvals }),
+      });
+      const result = await response.json() as {
+        ok?: boolean;
+        approved?: Array<{ revealVehicleId: string; jdtEquipmentId: string }>;
+        skipped?: Array<{ revealVehicleId?: string; jdtEquipmentId?: string; reason: string }>;
+        error?: string;
+      };
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || 'Reveal match approval failed.');
+      }
+
+      const approvedMatches = result.approved || [];
+      const skippedCount = result.skipped?.length || 0;
+      const approvedKeys = new Set(approvedMatches.map((approval) => `${approval.revealVehicleId}:${approval.jdtEquipmentId}`));
+      setRevealMatchCandidates((previous) => previous.map((candidate) => (
+        approvedKeys.has(`${candidate.revealVehicleId || ''}:${candidate.jdtEquipmentId || ''}`)
+          ? {
+            ...candidate,
+            confidence: 'Approved',
+            status: 'matched',
+            recommendedAction: 'Approved match. Reveal can update this JDT equipment record.',
+          }
+          : candidate
+      )));
+
+      const summary = `${approvedMatches.length} Reveal match${approvedMatches.length === 1 ? '' : 'es'} approved.${skippedCount ? ` ${skippedCount} skipped.` : ''}`;
+      setRevealMatchReviewStatus(summary);
+      addToast(summary, approvedMatches.length ? 'success' : 'info');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Reveal match approval failed.';
+      setRevealMatchReviewStatus(message);
+      addToast(message, 'error');
+    } finally {
+      setIsApprovingRevealMatches(false);
+    }
+  };
+
   const renderActiveBoard = () => {
     switch (activeTab) {
       case 'tracker':
@@ -1340,6 +1409,8 @@ export default function App() {
             isPreviewingRevealMatches={isPreviewingRevealMatches}
             revealMatchReviewStatus={revealMatchReviewStatus}
             onPreviewRevealMatches={handlePreviewRevealMatches}
+            isApprovingRevealMatches={isApprovingRevealMatches}
+            onApproveRevealMatches={handleApproveRevealMatches}
             revealMatchCandidates={revealMatchCandidates}
           />
         );

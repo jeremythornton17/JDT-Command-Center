@@ -338,6 +338,64 @@ export function buildRevealVehicleMatchCandidates(vehicles = [], equipment = [])
   });
 }
 
+export function buildRevealMatchApprovalWrites({
+  approvals = [],
+  vehicles = [],
+  projectId,
+  databaseId,
+  nowIso = new Date().toISOString(),
+  actorEmail = '',
+} = {}) {
+  const vehiclesById = new Map(vehicles.map((vehicle) => [coerceText(vehicle.providerVehicleId), vehicle]).filter(([id]) => id));
+  const seen = new Set();
+  const writes = [];
+  const approved = [];
+  const skipped = [];
+
+  approvals.forEach((approval) => {
+    const revealVehicleId = coerceText(approval?.revealVehicleId);
+    const jdtEquipmentId = coerceText(approval?.jdtEquipmentId);
+    const approvalKey = `${revealVehicleId}:${jdtEquipmentId}`;
+
+    if (!revealVehicleId || !jdtEquipmentId) {
+      skipped.push({ revealVehicleId: revealVehicleId || '', jdtEquipmentId: jdtEquipmentId || '', reason: 'Approval requires both Reveal vehicle ID and JDT equipment ID.' });
+      return;
+    }
+    if (seen.has(approvalKey)) return;
+    seen.add(approvalKey);
+
+    const vehicle = vehiclesById.get(revealVehicleId);
+    if (!vehicle) {
+      skipped.push({ revealVehicleId, jdtEquipmentId, reason: 'Reveal vehicle was not returned by the Vehicle API.' });
+      return;
+    }
+
+    const identityRecord = stripUndefined({
+      ...buildRevealEquipmentRecordForVehicle(vehicle, { documentId: jdtEquipmentId, nowIso, createNew: false }),
+      revealMatchStatus: 'approved',
+      revealMatchApprovedAt: nowIso,
+      revealMatchApprovedBy: actorEmail,
+    });
+    const fieldPaths = Object.keys(identityRecord).filter((field) => field !== 'id');
+
+    writes.push({
+      update: {
+        name: firestoreDocumentName(projectId, databaseId, 'equipment', jdtEquipmentId),
+        fields: toFirestoreFields(identityRecord),
+      },
+      updateMask: { fieldPaths },
+    });
+    approved.push({
+      revealVehicleId,
+      jdtEquipmentId,
+      revealVehicleName: vehicle.name || vehicle.vehicleNumber || revealVehicleId,
+      revealVehicleNumber: vehicle.vehicleNumber || '',
+    });
+  });
+
+  return { writes, approved, skipped };
+}
+
 export async function handleRevealVehiclesSyncRequest({
   headers = {},
   env = process.env,
@@ -356,6 +414,40 @@ export async function handleRevealVehiclesSyncRequest({
   }
 
   const result = await syncRevealVehiclesToFirestore({
+    env,
+    fetchImpl,
+    projectId,
+    databaseId,
+    now,
+    actorEmail: verification.email,
+  });
+
+  return {
+    statusCode: 200,
+    body: { ok: true, actorEmail: verification.email, ...result },
+  };
+}
+
+export async function handleRevealVehicleMatchApprovalRequest({
+  headers = {},
+  body = {},
+  env = process.env,
+  fetchImpl = globalThis.fetch,
+  projectId,
+  databaseId,
+  firebaseApiKey,
+  now = new Date(),
+} = {}) {
+  const verification = await verifyRevealSyncAdminRequest({ headers, env, fetchImpl, firebaseApiKey });
+  if (!verification.ok) {
+    return {
+      statusCode: verification.statusCode,
+      body: { ok: false, error: verification.error },
+    };
+  }
+
+  const result = await approveRevealVehicleMatchesInFirestore({
+    approvals: Array.isArray(body?.approvals) ? body.approvals : [],
     env,
     fetchImpl,
     projectId,
@@ -412,6 +504,45 @@ export async function handleRevealVehicleMatchPreviewRequest({
       },
       reviewCandidates,
     },
+  };
+}
+
+export async function approveRevealVehicleMatchesInFirestore({
+  approvals = [],
+  env = process.env,
+  fetchImpl = globalThis.fetch,
+  projectId,
+  databaseId,
+  now = new Date(),
+  actorEmail,
+} = {}) {
+  const vehicles = await fetchRevealVehicles({ env, fetchImpl });
+  const { writes, approved, skipped } = buildRevealMatchApprovalWrites({
+    approvals,
+    vehicles,
+    projectId,
+    databaseId,
+    nowIso: normalizeIso(now),
+    actorEmail,
+  });
+
+  if (writes.length > 0) {
+    const accessToken = await getGoogleAccessToken({ env, fetchImpl });
+    await firestoreRequest({
+      method: 'POST',
+      path: 'documents:commit',
+      body: { writes },
+      accessToken,
+      projectId,
+      databaseId,
+      fetchImpl,
+    });
+  }
+
+  return {
+    requested: approvals.length,
+    approved,
+    skipped,
   };
 }
 

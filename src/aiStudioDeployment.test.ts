@@ -31,9 +31,11 @@ describe("AI Studio deployment source guard", () => {
     const serverSource = readProjectFile("server.js");
 
     assert.match(serverSource, /\/api\/integrations\/reveal\/vehicles\/matches\/preview/);
+    assert.match(serverSource, /\/api\/integrations\/reveal\/vehicles\/matches\/approve/);
     assert.match(serverSource, /\/api\/integrations\/reveal\/recommended\/sync/);
     assert.match(serverSource, /\/api\/integrations\/reveal\/alerts/);
     assert.match(serverSource, /handleRevealVehicleMatchPreviewRequest/);
+    assert.match(serverSource, /handleRevealVehicleMatchApprovalRequest/);
     assert.match(serverSource, /handleRevealRecommendedApisSyncRequest/);
     assert.match(serverSource, /handleRevealAlertWebhook/);
   });

@@ -1235,6 +1235,7 @@ describe("work order UI wiring", () => {
         onSyncRevealRecommendedApis={async () => undefined}
         revealMatchReviewStatus="2 Reveal vehicles need review before live GPS is trusted"
         onPreviewRevealMatches={async () => undefined}
+        onApproveRevealMatches={async () => undefined}
         revealMatchCandidates={[
           {
             revealVehicleId: "veh-123",
@@ -1256,6 +1257,8 @@ describe("work order UI wiring", () => {
     assert.match(allowedHtml, /Sync Verizon Vehicles/);
     assert.match(allowedHtml, /Sync Reveal APIs/);
     assert.match(allowedHtml, /Review Reveal Matches/);
+    assert.match(allowedHtml, /Approve All Safe Matches/);
+    assert.match(allowedHtml, /Approve Match/);
     assert.match(allowedHtml, /2 Reveal vehicles need review/);
     assert.match(allowedHtml, /Reveal Match Review/);
     assert.match(allowedHtml, /Semi #1/);
@@ -1274,6 +1277,7 @@ describe("work order UI wiring", () => {
     assert.doesNotMatch(blockedHtml, /Sync Verizon Vehicles/);
     assert.doesNotMatch(blockedHtml, /Sync Reveal APIs/);
     assert.doesNotMatch(blockedHtml, /Review Reveal Matches/);
+    assert.doesNotMatch(blockedHtml, /Approve All Safe Matches/);
   });
 
   it("shows Reveal GPS freshness on the equipment page", () => {
