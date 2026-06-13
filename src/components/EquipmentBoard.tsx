@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Wrench, MapPin, UserCheck, AlertTriangle, Clock, Activity, QrCode, ClipboardList, PenTool, RefreshCw } from 'lucide-react';
+import { Wrench, MapPin, UserCheck, AlertTriangle, Clock, Activity, QrCode, ClipboardList, PenTool, RefreshCw, LocateFixed } from 'lucide-react';
 import { complianceBadgeClass, vehicleComplianceSummary, type ComplianceStatus } from '../commandCenter/compliance';
 import type { FleetTelematicsEventRecord } from '../commandCenter/records';
 import { equipmentCategory, equipmentCategoryOptions, equipmentDisplayName } from '../commandCenter/equipmentFreight';
@@ -80,6 +80,18 @@ function showRuntimePanel(eq: any, category: string) {
   return category === 'Machine' || category === 'Truck' || Boolean(eq.hours) || Boolean(eq.serviceDueHours);
 }
 
+function hasGpsTracking(eq: any) {
+  return Boolean(
+    eq.revealVehicleId
+    || eq.verizonVehicleId
+    || eq.vehicleNumber
+    || eq.revealVehicleNumber
+    || eq.telematicsProvider
+    || eq.lastTelematicsLatitude
+    || eq.lastTelematicsLongitude
+  );
+}
+
 function compatibilityGroups(eq: any, category: string) {
   const groups = [
     ...(category === 'Machine' || category === 'Trailer'
@@ -117,6 +129,7 @@ type EquipmentBoardProps = {
   isApprovingRevealMatches?: boolean;
   onApproveRevealMatches?: (candidates: RevealVehicleMatchCandidate[]) => void | Promise<void>;
   revealMatchCandidates?: RevealVehicleMatchCandidate[];
+  onOpenLiveMap?: (assetId?: string) => void;
 };
 
 type RevealVehicleMatchCandidate = {
@@ -152,6 +165,7 @@ export default function EquipmentBoard({
   isApprovingRevealMatches = false,
   onApproveRevealMatches,
   revealMatchCandidates = [],
+  onOpenLiveMap,
 }: EquipmentBoardProps) {
   const standardCategories = ['Machine', 'Truck', 'Trailer', 'Implement', 'Tool'];
   const discoveredCategories = starterEquipment
@@ -202,6 +216,16 @@ export default function EquipmentBoard({
             </div>
          </div>
          <div className="flex flex-wrap items-center gap-2">
+           {onOpenLiveMap && (
+             <button
+               type="button"
+               onClick={() => onOpenLiveMap()}
+               className="inline-flex items-center gap-2 rounded-lg border border-sky-600 bg-sky-50 px-4 py-2.5 text-xs font-black uppercase text-sky-800 hover:border-sky-700 hover:bg-sky-100"
+             >
+               <LocateFixed className="h-4 w-4" />
+               Open Live Map
+             </button>
+           )}
            {canSyncRevealVehicles && onSyncRevealVehicles && (
              <button
                type="button"
@@ -548,6 +572,16 @@ export default function EquipmentBoard({
                         
                         <div className="p-4 border-t border-jdt-border bg-jdt-panel/50 flex flex-wrap gap-2">
                            <button onClick={() => openModal('set_eq_status', eq)} className="flex-1 rounded-md bg-jdt-primary py-2 px-2 text-[10px] font-black uppercase text-white shadow-sm hover:bg-jdt-dark whitespace-nowrap text-center">Set Status</button>
+                           {onOpenLiveMap && hasGpsTracking(eq) && (
+                             <button
+                               type="button"
+                               onClick={() => onOpenLiveMap(eq.id || eq.assetId || equipmentDisplayName(eq))}
+                               className="flex-1 rounded-md border border-sky-600 bg-sky-50 py-2 px-2 text-[10px] font-black uppercase text-sky-800 shadow-sm hover:bg-sky-100 whitespace-nowrap flex justify-center items-center gap-1.5"
+                             >
+                               <LocateFixed className="h-3 w-3" />
+                               Track Asset
+                             </button>
+                           )}
                            <button onClick={() => openModal('report_vehicle_issue', eq)} className="flex-1 rounded-md bg-jdt-panel border border-jdt-border py-2 px-2 text-[10px] font-black uppercase text-zinc-800 shadow-sm hover:bg-jdt-panel whitespace-nowrap flex justify-center items-center gap-1.5"><PenTool className="h-3 w-3" /> Report Issue</button>
                            <button onClick={() => openModal('edit_equipment', eq)} className="flex-1 rounded-md bg-jdt-panel border border-jdt-border py-2 px-2 text-[10px] font-black uppercase text-zinc-800 shadow-sm hover:bg-jdt-panel whitespace-nowrap text-center">Edit</button>
                            <button onClick={() => openModal('delete_equipment', eq)} className="flex-1 rounded-md bg-red-50 border border-red-200 text-red-700 py-2 px-2 text-[10px] font-black uppercase shadow-sm hover:bg-red-100 whitespace-nowrap text-center">Delete</button>

@@ -121,12 +121,14 @@ export default function FreightBoard({
   workOrders = [],
   openDrawer,
   openModal,
+  onOpenLiveMap,
 }: {
   loads: any[];
   equipment?: EquipmentRecord[];
   workOrders?: WorkOrderRecord[];
   openDrawer: (type: string, id: string) => void;
   openModal: (type: string, data?: any) => void;
+  onOpenLiveMap?: () => void;
 }) {
   const fleetVehicles = equipment.map(withHomeBaseEquipmentDefaults).filter(isFreightVehicle);
 
@@ -140,9 +142,21 @@ export default function FreightBoard({
               <p className="text-sm font-bold text-zinc-500 mt-1">Truck, trailer, equipment move, and delivery tracking</p>
             </div>
          </div>
-         <button onClick={() => openModal('load')} className="rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white hover:bg-jdt-dark">
-           Create Freight Move
-         </button>
+         <div className="flex flex-wrap items-center gap-2">
+           {onOpenLiveMap && (
+             <button
+               type="button"
+               onClick={onOpenLiveMap}
+               className="inline-flex items-center gap-2 rounded-lg border border-sky-600 bg-sky-50 px-4 py-2.5 text-xs font-black uppercase text-sky-800 hover:border-sky-700 hover:bg-sky-100"
+             >
+               <Route className="h-4 w-4" />
+               Open Live Map
+             </button>
+           )}
+           <button onClick={() => openModal('load')} className="rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white hover:bg-jdt-dark">
+             Create Freight Move
+           </button>
+         </div>
       </div>
 
       <section className="space-y-3">

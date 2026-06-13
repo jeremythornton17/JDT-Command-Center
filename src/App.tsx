@@ -175,6 +175,11 @@ type RevealVehicleMatchCandidate = {
   recommendedAction: string;
 };
 
+type MapsIntent = {
+  mode: 'locations' | 'project' | 'liveGps';
+  selectedGpsAssetId?: string;
+};
+
 function upsertRecord<T extends CommandRecord>(items: T[], record: Partial<T>, fallbackPrefix: string, matcher?: (item: T) => boolean) {
   const id = record.id || makeId(fallbackPrefix);
   const existing = items.find((item) => matcher ? matcher(item) : item.id === id);
@@ -538,6 +543,7 @@ export default function App() {
   const [isApprovingRevealMatches, setIsApprovingRevealMatches] = useState(false);
   const [revealMatchReviewStatus, setRevealMatchReviewStatus] = useState('Review Reveal vehicle matches before trusting live GPS updates.');
   const [revealMatchCandidates, setRevealMatchCandidates] = useState<RevealVehicleMatchCandidate[]>([]);
+  const [mapsIntent, setMapsIntent] = useState<MapsIntent | null>(null);
 
   const [jobs, setJobs] = useFirestoreSyncState<JobRecord>('jobs', [], !!user);
   const [projects, setProjects] = useFirestoreSyncState<ProjectRecord>('projects', [], !!user);
@@ -637,6 +643,12 @@ export default function App() {
 
   const openModal = (type: string, data?: CommandRecord) => {
     setModalConfig({ isOpen: true, type, data });
+  };
+
+  const openLiveGpsMap = (selectedGpsAssetId?: string) => {
+    setMapsIntent({ mode: 'liveGps', selectedGpsAssetId });
+    setActiveTab('maps');
+    setIsSidebarOpen(false);
   };
 
   const onDeleteRecord = (recordType: string, id: string) => {
@@ -1389,7 +1401,7 @@ export default function App() {
       case 'tracker':
         return <TrackerBoard projects={projects} jobs={jobs} workOrders={workOrders} projectMaterialItems={projectMaterialItems} openDrawer={openDrawer} openModal={openModal} />;
       case 'freight':
-        return <FreightBoard loads={loadsWithTelematics} equipment={equipmentWithDefaults} workOrders={workOrders} openDrawer={openDrawer} openModal={openModal} />;
+        return <FreightBoard loads={loadsWithTelematics} equipment={equipmentWithDefaults} workOrders={workOrders} openDrawer={openDrawer} openModal={openModal} onOpenLiveMap={() => openLiveGpsMap()} />;
       case 'inventory':
         return <NurseryBoard starterRanchOaks={nurseryInventory} inventoryItems={inventoryItems} ranchOaks={ranchOaks} openDrawer={openDrawer} openModal={openModal} />;
       case 'equipment':
@@ -1412,6 +1424,7 @@ export default function App() {
             isApprovingRevealMatches={isApprovingRevealMatches}
             onApproveRevealMatches={handleApproveRevealMatches}
             revealMatchCandidates={revealMatchCandidates}
+            onOpenLiveMap={openLiveGpsMap}
           />
         );
       case 'crews':
@@ -1438,7 +1451,23 @@ export default function App() {
       case 'calendar':
         return <CalendarBoard jobs={jobs} loads={loadsWithTelematics} workOrders={workOrders} scheduleTasks={scheduleTasks} treeRelocationRecords={treeRelocationRecords} equipment={equipmentWithDefaults} openDrawer={openDrawer} />;
       case 'maps':
-        return <MapsBoard jobs={jobs} ranchOaks={nurseryInventory} treeRelocationRecords={treeRelocationRecords} locationsList={locationsWithDefaults} equipment={equipmentWithDefaults} fleetTelematicsEvents={fleetTelematicsEvents} onUpdateTreeLocation={handleUpdateTreeLocation} onImportTreePins={handleImportTreePinsFromMap} openDrawer={openDrawer} />;
+        return (
+          <MapsBoard
+            key={`maps-${mapsIntent?.mode || 'default'}-${mapsIntent?.selectedGpsAssetId || 'all'}`}
+            jobs={jobs}
+            loads={loadsWithTelematics}
+            ranchOaks={nurseryInventory}
+            treeRelocationRecords={treeRelocationRecords}
+            locationsList={locationsWithDefaults}
+            equipment={equipmentWithDefaults}
+            fleetTelematicsEvents={fleetTelematicsEvents}
+            initialMapMode={mapsIntent?.mode}
+            initialSelectedGpsAssetId={mapsIntent?.selectedGpsAssetId}
+            onUpdateTreeLocation={handleUpdateTreeLocation}
+            onImportTreePins={handleImportTreePinsFromMap}
+            openDrawer={openDrawer}
+          />
+        );
       case 'reports':
         return <ReportsBoard jobs={jobs} projects={projects} workOrders={workOrders} loads={loadsWithTelematics} ranchOaks={nurseryInventory} equipment={equipmentWithDefaults} alerts={alertsWithTelematics} clients={clients} fieldUpdates={fieldUpdates} scheduleTasks={scheduleTasks} treeRelocationRecords={treeRelocationRecords} documents={documents} fleetTelematicsEvents={fleetTelematicsEvents} importBatches={importBatches} />;
       case 'documents':
