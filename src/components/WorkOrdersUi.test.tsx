@@ -1231,11 +1231,15 @@ describe("work order UI wiring", () => {
         canSyncRevealVehicles
         revealVehicleSyncStatus="Ready to sync Verizon Reveal vehicles"
         onSyncRevealVehicles={async () => undefined}
+        revealRecommendedSyncStatus="Ready to sync Reveal driver, asset, geofence, inspection, GPS history, and segment APIs"
+        onSyncRevealRecommendedApis={async () => undefined}
       />,
     );
 
     assert.match(allowedHtml, /Reveal Vehicle Sync/);
     assert.match(allowedHtml, /Sync Verizon Vehicles/);
+    assert.match(allowedHtml, /Sync Reveal APIs/);
+    assert.match(allowedHtml, /driver, asset, geofence, inspection, GPS history, and segment APIs/);
     assert.match(allowedHtml, /Ready to sync Verizon Reveal vehicles/);
 
     const blockedHtml = renderToString(
@@ -1247,6 +1251,7 @@ describe("work order UI wiring", () => {
     );
 
     assert.doesNotMatch(blockedHtml, /Sync Verizon Vehicles/);
+    assert.doesNotMatch(blockedHtml, /Sync Reveal APIs/);
   });
 
   it("shows Reveal GPS freshness on the equipment page", () => {

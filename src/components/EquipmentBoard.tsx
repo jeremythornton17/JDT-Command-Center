@@ -108,6 +108,9 @@ type EquipmentBoardProps = {
   isSyncingRevealVehicles?: boolean;
   revealVehicleSyncStatus?: string;
   onSyncRevealVehicles?: () => void | Promise<void>;
+  isSyncingRevealRecommendedApis?: boolean;
+  revealRecommendedSyncStatus?: string;
+  onSyncRevealRecommendedApis?: () => void | Promise<void>;
 };
 
 export default function EquipmentBoard({
@@ -119,6 +122,9 @@ export default function EquipmentBoard({
   isSyncingRevealVehicles = false,
   revealVehicleSyncStatus = '',
   onSyncRevealVehicles,
+  isSyncingRevealRecommendedApis = false,
+  revealRecommendedSyncStatus = '',
+  onSyncRevealRecommendedApis,
 }: EquipmentBoardProps) {
   const standardCategories = ['Machine', 'Truck', 'Trailer', 'Implement', 'Tool'];
   const discoveredCategories = starterEquipment
@@ -170,6 +176,17 @@ export default function EquipmentBoard({
                {isSyncingRevealVehicles ? 'Syncing Verizon' : 'Sync Verizon Vehicles'}
              </button>
            )}
+           {canSyncRevealVehicles && onSyncRevealRecommendedApis && (
+             <button
+               type="button"
+               onClick={() => void onSyncRevealRecommendedApis()}
+               disabled={isSyncingRevealRecommendedApis}
+               className="inline-flex items-center gap-2 rounded-lg border border-[#7C3AED] bg-[#F3E8FF] px-4 py-2.5 text-xs font-black uppercase text-[#4C1D95] hover:border-[#5B21B6] disabled:cursor-not-allowed disabled:opacity-60"
+             >
+               <RefreshCw className={`h-4 w-4 ${isSyncingRevealRecommendedApis ? 'animate-spin' : ''}`} />
+               {isSyncingRevealRecommendedApis ? 'Syncing Reveal APIs' : 'Sync Reveal APIs'}
+             </button>
+           )}
            <button onClick={() => openModal('equipment')} className="rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white hover:bg-jdt-dark">
              Add Equipment
            </button>
@@ -182,6 +199,9 @@ export default function EquipmentBoard({
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Reveal Vehicle Sync</p>
               <p className="mt-1 text-sm font-bold text-jdt-text">{revealVehicleSyncStatus || 'Ready to sync Verizon Reveal vehicles'}</p>
+              {onSyncRevealRecommendedApis && (
+                <p className="mt-1 text-xs font-bold text-zinc-500">{revealRecommendedSyncStatus || 'Ready to sync Reveal driver, asset, geofence, inspection, GPS history, and segment APIs'}</p>
+              )}
             </div>
             <span className="inline-flex w-fit items-center gap-1.5 rounded-md border border-[#7C3AED] bg-[#F3E8FF] px-2.5 py-1 text-[10px] font-black uppercase text-[#4C1D95]">
               <RefreshCw className="h-3.5 w-3.5" />

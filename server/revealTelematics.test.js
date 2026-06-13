@@ -4,7 +4,9 @@ import { describe, it } from 'node:test';
 import {
   buildEquipmentPatchFromRevealEvent,
   buildFirestoreCommitBody,
+  buildRevealAlertCommitBody,
   buildRevealTelematicsEventId,
+  normalizeRevealAlertPayloads,
   normalizeRevealGpsPayloads,
   parseBasicAuthorization,
   revealEquipmentMatchCandidates,
@@ -170,5 +172,50 @@ describe('Reveal telematics webhook helpers', () => {
     });
     assert.equal(parseBasicAuthorization('Bearer abc'), null);
     assert.equal(parseBasicAuthorization(''), null);
+  });
+
+  it('normalizes Reveal alert webhook payloads into app alert records', () => {
+    const [alert] = normalizeRevealAlertPayloads({
+      Alerts: [{
+        AlertId: 'alert-1',
+        AlertType: 'Vehicle entered geofence',
+        VehicleName: 'Semi #1',
+        DriverName: 'Christian Crespo',
+        Severity: 'High',
+        Address: '25 Acre Farm',
+        DateTime: '2026-06-13T08:15:00Z',
+      }],
+    }, '2026-06-13T08:15:10Z');
+
+    assert.equal(alert.id, 'reveal-alert-alert-1');
+    assert.equal(alert.title, 'Vehicle entered geofence');
+    assert.equal(alert.severity, 'High');
+    assert.equal(alert.status, 'Needs Review');
+    assert.equal(alert.relatedEntityType, 'equipment');
+    assert.equal(alert.targetTab, 'equipment');
+    assert.match(alert.body, /Semi #1/);
+    assert.match(alert.body, /Christian Crespo/);
+    assert.match(alert.body, /25 Acre Farm/);
+    assert.equal(alert.time, '2026-06-13T08:15:00.000Z');
+  });
+
+  it('builds Firestore commit writes for Reveal alert webhooks without credentials', () => {
+    const [alert] = normalizeRevealAlertPayloads({
+      AlertId: 'alert-1',
+      AlertType: 'Vehicle entered geofence',
+      VehicleName: 'Semi #1',
+      Secret: 'do-not-store-this',
+    }, '2026-06-13T08:15:10Z');
+
+    const commit = buildRevealAlertCommitBody({
+      projectId: 'jdt-command-board',
+      databaseId: 'database-1',
+      alert,
+    });
+
+    assert.equal(commit.writes.length, 1);
+    assert.match(commit.writes[0].update.name, /documents\/alerts\/reveal-alert-alert-1$/);
+    assert.equal(commit.writes[0].update.fields.title.stringValue, 'Vehicle entered geofence');
+    assert.equal(commit.writes[0].update.fields.body.stringValue.includes('do-not-store-this'), false);
   });
 });

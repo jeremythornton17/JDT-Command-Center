@@ -517,6 +517,8 @@ export default function App() {
   const [projectImportContext, setProjectImportContext] = useState<ProjectImportContext | null>(null);
   const [isSyncingRevealVehicles, setIsSyncingRevealVehicles] = useState(false);
   const [revealVehicleSyncStatus, setRevealVehicleSyncStatus] = useState('Ready to sync Verizon Reveal vehicles');
+  const [isSyncingRevealRecommendedApis, setIsSyncingRevealRecommendedApis] = useState(false);
+  const [revealRecommendedSyncStatus, setRevealRecommendedSyncStatus] = useState('Ready to sync Reveal driver, asset, geofence, inspection, GPS history, and segment APIs');
 
   const [jobs, setJobs] = useFirestoreSyncState<JobRecord>('jobs', [], !!user);
   const [projects, setProjects] = useFirestoreSyncState<ProjectRecord>('projects', [], !!user);
@@ -1199,6 +1201,54 @@ export default function App() {
     }
   };
 
+  const handleSyncRevealRecommendedApis = async () => {
+    if (user === null) {
+      addToast('Sign in before syncing Reveal APIs', 'error');
+      return;
+    }
+
+    setIsSyncingRevealRecommendedApis(true);
+    setRevealRecommendedSyncStatus('Syncing recommended Reveal APIs...');
+
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/integrations/reveal/recommended/sync', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ source: 'equipment-board' }),
+      });
+      const result = await response.json() as {
+        ok?: boolean;
+        totalFetched?: number;
+        totalWritten?: number;
+        apis?: Array<{ id: string; label: string; written: number }>;
+        skipped?: Array<{ label: string; reason: string }>;
+        error?: string;
+      };
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || 'Reveal API sync failed.');
+      }
+
+      const syncedLabels = (result.apis || []).map((api) => `${api.label}: ${api.written}`).join(', ');
+      const skippedCount = result.skipped?.length || 0;
+      const summary = syncedLabels
+        ? `${result.totalWritten || 0} Reveal record${result.totalWritten === 1 ? '' : 's'} synced (${syncedLabels}).${skippedCount ? ` ${skippedCount} API${skippedCount === 1 ? '' : 's'} skipped until endpoint paths are configured.` : ''}`
+        : `No recommended Reveal API endpoint paths are configured yet. ${skippedCount} API${skippedCount === 1 ? '' : 's'} skipped.`;
+      setRevealRecommendedSyncStatus(summary);
+      addToast(summary, result.totalWritten ? 'success' : 'info');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Reveal API sync failed.';
+      setRevealRecommendedSyncStatus(message);
+      addToast(message, 'error');
+    } finally {
+      setIsSyncingRevealRecommendedApis(false);
+    }
+  };
+
   const renderActiveBoard = () => {
     switch (activeTab) {
       case 'tracker':
@@ -1218,6 +1268,9 @@ export default function App() {
             isSyncingRevealVehicles={isSyncingRevealVehicles}
             revealVehicleSyncStatus={revealVehicleSyncStatus}
             onSyncRevealVehicles={handleSyncRevealVehicles}
+            isSyncingRevealRecommendedApis={isSyncingRevealRecommendedApis}
+            revealRecommendedSyncStatus={revealRecommendedSyncStatus}
+            onSyncRevealRecommendedApis={handleSyncRevealRecommendedApis}
           />
         );
       case 'crews':

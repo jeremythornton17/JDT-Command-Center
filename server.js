@@ -3,10 +3,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  handleRevealAlertWebhook,
   handleRevealGpsWebhook,
+  revealAlertWebhookCredentialsConfigured,
   revealWebhookCredentialsConfigured,
 } from './server/revealTelematics.js';
 import {
+  buildRevealRecommendedApiStatus,
+  handleRevealRecommendedApisSyncRequest,
   handleRevealVehiclesSyncRequest,
   revealApiCredentialsConfigured,
 } from './server/revealApi.js';
@@ -38,6 +42,7 @@ app.get('/api/integrations/reveal/gps/health', (_request, response) => {
 });
 
 app.get('/api/integrations/reveal/api/health', (_request, response) => {
+  const recommendedApiStatus = buildRevealRecommendedApiStatus(process.env);
   response
     .type('application/json')
     .set('Cache-Control', 'no-store')
@@ -48,6 +53,9 @@ app.get('/api/integrations/reveal/api/health', (_request, response) => {
       credentialsConfigured: revealApiCredentialsConfigured(process.env),
       tokenEndpointConfigured: true,
       vehicleEndpointConfigured: true,
+      recommendedApis: recommendedApiStatus.supported,
+      configuredRecommendedApis: recommendedApiStatus.configured,
+      alertWebhookConfigured: revealAlertWebhookCredentialsConfigured(process.env),
     });
 });
 
@@ -80,6 +88,36 @@ app.post('/api/integrations/reveal/vehicles/sync', express.json({ limit: '64kb',
   }
 });
 
+app.post('/api/integrations/reveal/recommended/sync', express.json({ limit: '64kb', type: ['application/json', 'application/*+json'] }), async (request, response) => {
+  try {
+    const result = await handleRevealRecommendedApisSyncRequest({
+      headers: request.headers,
+      env: process.env,
+      projectId: firestoreProjectId,
+      databaseId: firestoreDatabaseId,
+      firebaseApiKey: firebaseConfig.apiKey,
+      now: new Date(),
+      enabledApis: request.body?.enabledApis,
+    });
+
+    response
+      .status(result.statusCode)
+      .type('application/json')
+      .set('Cache-Control', 'no-store')
+      .send(result.body);
+  } catch (error) {
+    console.error('Reveal recommended API sync failed', error);
+    response
+      .status(500)
+      .type('application/json')
+      .set('Cache-Control', 'no-store')
+      .send({
+        ok: false,
+        error: error instanceof Error ? error.message : 'Reveal recommended API sync failed.',
+      });
+  }
+});
+
 app.post('/api/integrations/reveal/gps', express.json({ limit: '2mb', type: ['application/json', 'application/*+json'] }), async (request, response) => {
   try {
     const result = await handleRevealGpsWebhook({
@@ -106,6 +144,36 @@ app.post('/api/integrations/reveal/gps', express.json({ limit: '2mb', type: ['ap
       .send({
         ok: false,
         error: error instanceof Error ? error.message : 'Reveal GPS webhook failed.',
+      });
+  }
+});
+
+app.post('/api/integrations/reveal/alerts', express.json({ limit: '2mb', type: ['application/json', 'application/*+json'] }), async (request, response) => {
+  try {
+    const result = await handleRevealAlertWebhook({
+      body: request.body,
+      headers: request.headers,
+      env: process.env,
+      projectId: firestoreProjectId,
+      databaseId: firestoreDatabaseId,
+      now: new Date(),
+    });
+
+    Object.entries(result.headers || {}).forEach(([key, value]) => response.set(key, value));
+    response
+      .status(result.statusCode)
+      .type('application/json')
+      .set('Cache-Control', 'no-store')
+      .send(result.body);
+  } catch (error) {
+    console.error('Reveal Alert webhook failed', error);
+    response
+      .status(500)
+      .type('application/json')
+      .set('Cache-Control', 'no-store')
+      .send({
+        ok: false,
+        error: error instanceof Error ? error.message : 'Reveal Alert webhook failed.',
       });
   }
 });

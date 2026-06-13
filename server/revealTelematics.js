@@ -56,12 +56,23 @@ const headingAliases = ['Heading', 'heading', 'Direction', 'direction', 'Bearing
 const statusAliases = ['Status', 'status', 'IgnitionStatus', 'ignitionStatus', 'VehicleStatus', 'vehicleStatus'];
 const driverNameAliases = ['DriverName', 'driverName', 'driver.name', 'AssignedDriver', 'assignedDriver'];
 const odometerAliases = ['Odometer', 'odometer', 'OdometerMiles', 'odometerMiles'];
+const alertIdAliases = ['AlertId', 'alertId', 'Id', 'id', 'EventId', 'eventId'];
+const alertTypeAliases = ['AlertType', 'alertType', 'Type', 'type', 'Name', 'name'];
+const alertSeverityAliases = ['Severity', 'severity', 'Priority', 'priority', 'Level', 'level'];
+const alertNotesAliases = ['Notes', 'notes', 'Description', 'description', 'Message', 'message'];
 
 export function normalizeRevealGpsPayloads(payload, receivedAt = new Date().toISOString()) {
   const receivedAtIso = normalizeTimestamp(receivedAt) || new Date().toISOString();
   return getPayloadItems(payload)
     .map((item) => normalizeRevealGpsPayloadItem(item, receivedAtIso))
     .filter((event) => event.providerVehicleId || event.vehicleNumber || event.vehicleName || event.coordinateText);
+}
+
+export function normalizeRevealAlertPayloads(payload, receivedAt = new Date().toISOString()) {
+  const receivedAtIso = normalizeTimestamp(receivedAt) || new Date().toISOString();
+  return getAlertItems(payload)
+    .map((item) => normalizeRevealAlertPayloadItem(item, receivedAtIso))
+    .filter((alert) => alert.title || alert.body);
 }
 
 function normalizeRevealGpsPayloadItem(item, receivedAtIso) {
@@ -93,6 +104,44 @@ function normalizeRevealGpsPayloadItem(item, receivedAtIso) {
   });
 }
 
+function normalizeRevealAlertPayloadItem(item, receivedAtIso) {
+  const alertId = coerceText(firstValue(item, alertIdAliases));
+  const alertType = coerceText(firstValue(item, alertTypeAliases)) || 'Reveal fleet alert';
+  const vehicleId = coerceText(firstValue(item, vehicleIdAliases));
+  const vehicleNumber = coerceText(firstValue(item, vehicleNumberAliases));
+  const vehicleName = coerceText(firstValue(item, vehicleNameAliases));
+  const driverName = coerceText(firstValue(item, driverNameAliases));
+  const address = coerceText(firstValue(item, addressAliases));
+  const notes = coerceText(firstValue(item, alertNotesAliases));
+  const eventAt = normalizeTimestamp(firstValue(item, timestampAliases)) || receivedAtIso;
+  const severity = coerceText(firstValue(item, alertSeverityAliases)) || severityForAlert(alertType, notes);
+  const title = alertType;
+  const id = `reveal-alert-${slugify(alertId || `${vehicleId || vehicleNumber || vehicleName}-${alertType}-${eventAt}`)}`;
+
+  return stripUndefined({
+    id,
+    title,
+    name: title,
+    body: [
+      vehicleName || vehicleNumber || vehicleId ? `Vehicle: ${vehicleName || vehicleNumber || vehicleId}` : '',
+      driverName ? `Driver: ${driverName}` : '',
+      address ? `Location: ${address}` : '',
+      notes,
+    ].filter(Boolean).join('\n') || title,
+    severity,
+    status: 'Needs Review',
+    time: eventAt,
+    targetTab: 'equipment',
+    relatedEntityType: 'equipment',
+    relatedEntityId: vehicleId,
+    provider: providerName,
+    revealAlertId: alertId,
+    revealVehicleId: vehicleId,
+    revealVehicleNumber: vehicleNumber,
+    receivedAt: receivedAtIso,
+  });
+}
+
 function getPayloadItems(payload) {
   if (Array.isArray(payload)) return payload;
   if (!payload || typeof payload !== 'object') return [];
@@ -117,6 +166,18 @@ function getPayloadItems(payload) {
   for (const alias of collectionAliases) {
     const value = firstValue(payload, [alias]);
     if (Array.isArray(value)) return value;
+  }
+
+  return [payload];
+}
+
+function getAlertItems(payload) {
+  if (Array.isArray(payload)) return payload.filter((item) => item && typeof item === 'object');
+  if (!payload || typeof payload !== 'object') return [];
+
+  for (const alias of ['Alerts', 'alerts', 'Alert', 'alert', 'Events', 'events', 'Items', 'items', 'Data', 'data']) {
+    const value = firstValue(payload, [alias]);
+    if (Array.isArray(value)) return value.filter((item) => item && typeof item === 'object');
   }
 
   return [payload];
@@ -220,6 +281,17 @@ export function buildFirestoreCommitBody({ projectId, databaseId, event, rawPayl
   return { writes };
 }
 
+export function buildRevealAlertCommitBody({ projectId, databaseId, alert }) {
+  return {
+    writes: [{
+      update: {
+        name: firestoreDocumentName(projectId, databaseId, 'alerts', alert.id),
+        fields: toFirestoreFields(alert),
+      },
+    }],
+  };
+}
+
 export function parseBasicAuthorization(headerValue) {
   const value = String(headerValue || '').trim();
   if (!value.toLowerCase().startsWith('basic ')) return null;
@@ -267,6 +339,37 @@ export function revealWebhookCredentialsConfigured(env = process.env) {
   );
 }
 
+export function revealAlertWebhookCredentialsConfigured(env = process.env) {
+  return Boolean(
+    firstEnv(env, ['REVEAL_ALERT_WEBHOOK_TOKEN', 'VERIZON_REVEAL_ALERT_WEBHOOK_TOKEN'])
+    || (
+      firstEnv(env, ['REVEAL_ALERT_WEBHOOK_USERNAME', 'VERIZON_REVEAL_ALERT_WEBHOOK_USERNAME'])
+      && firstEnv(env, ['REVEAL_ALERT_WEBHOOK_PASSWORD', 'VERIZON_REVEAL_ALERT_WEBHOOK_PASSWORD'])
+    )
+    || revealWebhookCredentialsConfigured(env)
+  );
+}
+
+export function isRevealAlertWebhookAuthorized(headers, env = process.env) {
+  const configuredToken = firstEnv(env, ['REVEAL_ALERT_WEBHOOK_TOKEN', 'VERIZON_REVEAL_ALERT_WEBHOOK_TOKEN']);
+  const configuredUsername = firstEnv(env, ['REVEAL_ALERT_WEBHOOK_USERNAME', 'VERIZON_REVEAL_ALERT_WEBHOOK_USERNAME']);
+  const configuredPassword = firstEnv(env, ['REVEAL_ALERT_WEBHOOK_PASSWORD', 'VERIZON_REVEAL_ALERT_WEBHOOK_PASSWORD']);
+  const authHeader = getHeader(headers, 'authorization');
+
+  if (configuredToken) {
+    const bearer = String(authHeader || '').replace(/^Bearer\s+/i, '').trim();
+    if (safeTextEqual(bearer, configuredToken)) return true;
+  }
+
+  if (configuredUsername && configuredPassword) {
+    const parsed = parseBasicAuthorization(authHeader);
+    if (!parsed) return false;
+    return safeTextEqual(parsed.username, configuredUsername) && safeTextEqual(parsed.password, configuredPassword);
+  }
+
+  return isRevealWebhookAuthorized(headers, env);
+}
+
 export async function handleRevealGpsWebhook({ body, headers = {}, env = process.env, fetchImpl = globalThis.fetch, projectId, databaseId, now = new Date() }) {
   if (!revealWebhookCredentialsConfigured(env)) {
     return {
@@ -312,6 +415,53 @@ export async function handleRevealGpsWebhook({ body, headers = {}, env = process
       matchedEquipment: results.filter((result) => result.matchedEquipmentDocumentName).length,
       unmatchedEquipment: results.filter((result) => !result.matchedEquipmentDocumentName).length,
       eventIds: results.map((result) => result.eventId),
+    },
+  };
+}
+
+export async function handleRevealAlertWebhook({ body, headers = {}, env = process.env, fetchImpl = globalThis.fetch, projectId, databaseId, now = new Date() }) {
+  if (!revealAlertWebhookCredentialsConfigured(env)) {
+    return {
+      statusCode: 503,
+      body: { ok: false, error: 'Reveal Alert webhook credentials are not configured.' },
+    };
+  }
+
+  if (!isRevealAlertWebhookAuthorized(headers, env)) {
+    return {
+      statusCode: 401,
+      body: { ok: false, error: 'Unauthorized Reveal Alert webhook request.' },
+      headers: { 'WWW-Authenticate': 'Basic realm="JDT Reveal Alert Webhook"' },
+    };
+  }
+
+  const alerts = normalizeRevealAlertPayloads(body, now.toISOString());
+  if (alerts.length === 0) {
+    return {
+      statusCode: 202,
+      body: { ok: true, accepted: 0, written: 0, warning: 'No Reveal alert records were found in the payload.' },
+    };
+  }
+
+  const accessToken = await getGoogleAccessToken({ env, fetchImpl });
+  const writes = alerts.flatMap((alert) => buildRevealAlertCommitBody({ projectId, databaseId, alert }).writes);
+  await firestoreRequest({
+    method: 'POST',
+    path: 'documents:commit',
+    body: { writes },
+    accessToken,
+    projectId,
+    databaseId,
+    fetchImpl,
+  });
+
+  return {
+    statusCode: 202,
+    body: {
+      ok: true,
+      accepted: alerts.length,
+      written: writes.length,
+      alertIds: alerts.map((alert) => alert.id),
     },
   };
 }
@@ -494,6 +644,13 @@ function normalizeTimestamp(value) {
     ? new Date(value > 100000000000 ? value : value * 1000)
     : new Date(String(value));
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+function severityForAlert(type, notes) {
+  const text = `${type || ''} ${notes || ''}`.toLowerCase();
+  if (/crash|collision|panic|stolen|unauthorized|tow|critical/.test(text)) return 'Critical';
+  if (/speed|harsh|geofence|enter|exit|late|idle|maintenance|fault/.test(text)) return 'High';
+  return 'Medium';
 }
 
 function formatCoordinateText(latitude, longitude) {

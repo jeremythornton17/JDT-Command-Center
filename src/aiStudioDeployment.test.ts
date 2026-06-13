@@ -27,6 +27,15 @@ describe("AI Studio deployment source guard", () => {
     assert.match(serverSource, /sendFile\(path\.join\(distDir,\s*'index\.html'\)\)/);
   });
 
+  it("exposes the Reveal recommended API sync and alert webhook routes from Cloud Run", () => {
+    const serverSource = readProjectFile("server.js");
+
+    assert.match(serverSource, /\/api\/integrations\/reveal\/recommended\/sync/);
+    assert.match(serverSource, /\/api\/integrations\/reveal\/alerts/);
+    assert.match(serverSource, /handleRevealRecommendedApisSyncRequest/);
+    assert.match(serverSource, /handleRevealAlertWebhook/);
+  });
+
   it("keeps the maps board on tree relocation instead of removed fleet providers", () => {
     const mapsBoard = readProjectFile("src/components/MapsBoard.tsx");
 
