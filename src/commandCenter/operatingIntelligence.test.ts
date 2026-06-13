@@ -190,6 +190,7 @@ describe("operating intelligence", () => {
         ["freightReadiness", [["Active Loads", "1"], ["Dispatch Gaps", "1"], ["Proof Needed", "1"]]],
         ["equipmentReadiness", [["Fleet Records", "1"], ["Service Holds", "1"], ["Down / Repair", "1"]]],
         ["treeLifecycle", [["Relocation Trees", "2"], ["Ready", "1"], ["Root Pruning", "1"], ["Installed", "0"]]],
+        ["revealTelematics", [["Reveal Vehicles", "0"], ["Live GPS", "0"], ["Stale GPS", "0"], ["GPS Events", "0"]]],
         ["dataQuality", [["Relationship Issues", "1"], ["Seed Records", "1"], ["Import Warnings", "1"]]],
       ],
     );

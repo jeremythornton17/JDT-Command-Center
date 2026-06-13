@@ -252,4 +252,47 @@ describe("MapsBoard relocation pin editing", () => {
     assert.match(html, /Location Label/);
     assert.match(html, /Save Site Location/);
   });
+
+  it("shows the live Reveal vehicle map layer from equipment GPS", () => {
+    const html = renderToString(
+      <MapsBoard
+        jobs={[]}
+        equipment={[
+          {
+            id: "equipment-semi-1",
+            name: "Semi #1",
+            category: "Truck",
+            telematicsProvider: "Reveal",
+            revealVehicleId: "veh-1",
+            vehicleNumber: "S1",
+            lastTelematicsLatitude: 26.387315,
+            lastTelematicsLongitude: -80.171258,
+            lastTelematicsAt: "2026-06-12T12:00:00.000Z",
+          },
+        ]}
+        fleetTelematicsEvents={[
+          {
+            id: "reveal-veh-1",
+            provider: "Reveal",
+            providerVehicleId: "veh-1",
+            vehicleName: "Semi #1",
+            vehicleNumber: "S1",
+            latitude: 26.387315,
+            longitude: -80.171258,
+            address: "Boca West truck access",
+            eventAt: "2026-06-12T12:05:00.000Z",
+            driverName: "Christian Crespo",
+          },
+        ]}
+        ranchOaks={[]}
+        treeRelocationRecords={[]}
+        onUpdateTreeLocation={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Live Vehicle Layer/);
+    assert.match(html, /Semi #1/);
+    assert.match(html, /Christian Crespo/);
+    assert.match(html, /Boca West truck access/);
+  });
 });

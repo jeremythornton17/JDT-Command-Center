@@ -18,6 +18,7 @@ describe("command center data model", () => {
         "documents",
         "equipment",
         "fieldUpdates",
+        "fleetTelematicsEvents",
         "importBatches",
         "inventoryItems",
         "jobs",
@@ -49,6 +50,9 @@ describe("command center data model", () => {
     assert.equal(appCollections.fieldUpdates.label, "Crew Field Updates");
     assert.equal(appCollections.fieldUpdates.primaryBoard, "Crew View");
     assert.equal(appCollections.fieldUpdates.resetGroup, "field_updates");
+    assert.equal(appCollections.fleetTelematicsEvents.label, "Fleet Telematics Events");
+    assert.equal(appCollections.fleetTelematicsEvents.primaryBoard, "Maps");
+    assert.equal(appCollections.fleetTelematicsEvents.resetGroup, "equipment");
     assert.equal(appCollections.documents.importable, true);
   });
 
@@ -66,6 +70,7 @@ describe("command center data model", () => {
     assert.equal(collections.includes("workOrders"), true);
     assert.equal(collections.includes("projectMaterialItems"), true);
     assert.equal(collections.includes("fieldUpdates"), true);
+    assert.equal(collections.includes("fleetTelematicsEvents"), true);
     assert.deepEqual(collectionNamesForClear("projects"), ["projects", "jobs", "workOrders", "projectMaterialItems"]);
     assert.deepEqual(collectionNamesForClear("work_orders"), ["workOrders"]);
     assert.deepEqual(collectionNamesForClear("project_material_items"), ["projectMaterialItems"]);

@@ -6,6 +6,7 @@ import type {
   DocumentRecord,
   EquipmentRecord,
   FieldUpdateRecord,
+  FleetTelematicsEventRecord,
   ImportBatchRecord,
   InventoryItemRecord,
   JobRecord,
@@ -30,6 +31,7 @@ import {
 } from "./operatingIntelligence";
 import { buildTreeLifecycleAlerts, type TreeLifecycleAlert } from "./treeLifecycle";
 import { buildFieldCloseoutReviewQueue, type FieldCloseoutReviewItem } from "./fieldCloseout";
+import { buildTelematicsExceptionAlerts } from "./telematicsIntelligence";
 
 export type DashboardPipelineStage = {
   id: "inquiries" | "siteVisits" | "estimates" | "approved" | "scheduled" | "completed" | "invoiced";
@@ -108,6 +110,7 @@ export type DashboardSummaryInput = {
   treeRelocationRecords?: TreeRelocationRecord[];
   documents?: DocumentRecord[];
   alerts?: AlertRecord[];
+  fleetTelematicsEvents?: FleetTelematicsEventRecord[];
   fieldUpdates?: FieldUpdateRecord[];
   importBatches?: ImportBatchRecord[];
   todayIso?: string;
@@ -126,6 +129,7 @@ const emptyArrays: Required<DashboardSummaryInput> = {
   treeRelocationRecords: [],
   documents: [],
   alerts: [],
+  fleetTelematicsEvents: [],
   fieldUpdates: [],
   importBatches: [],
   todayIso: "",
@@ -329,9 +333,10 @@ function buildOwnerReviewQueue(jobs: JobRecord[], loads: LoadRecord[], equipment
       assignee: alert.createdBy,
       status: alert.severity || alert.status,
       detail: alert.body || alert.notes || alert.time,
-      targetTab: "alerts",
-      drawerType: "alert",
-      tone: "task",
+      targetTab: alert.targetTab || "alerts",
+      drawerType: alert.relatedEntityType === "equipment" ? "equipment" : "alert",
+      recordId: alert.relatedEntityId || alert.id,
+      tone: alert.relatedEntityType === "equipment" ? "equipment" : "task",
     }));
 
   const fieldUpdateIssues = fieldUpdates
@@ -372,10 +377,19 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
     treeRelocationRecords,
     documents,
     alerts,
+    fleetTelematicsEvents,
     fieldUpdates,
     importBatches,
     todayIso,
   } = { ...emptyArrays, ...input };
+
+  const telematicsAlerts = buildTelematicsExceptionAlerts({
+    equipment,
+    loads,
+    events: fleetTelematicsEvents,
+    now: todayIso ? `${todayIso}T23:59:59.000Z` : undefined,
+  });
+  const alertsForDashboard = [...telematicsAlerts, ...alerts];
 
   const intelligenceInput = {
     clients,
@@ -388,7 +402,8 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
     scheduleTasks,
     treeRelocationRecords,
     documents,
-    alerts,
+    alerts: alertsForDashboard,
+    fleetTelematicsEvents,
     importBatches,
     ranchOaks: trees as RanchOakRecord[],
     todayIso,
@@ -411,9 +426,9 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
   const treeLifecycleAlerts = buildTreeLifecycleAlerts({ trees: treeRelocationRecords, jobs, workOrders, todayIso });
   const todaySchedule = buildTodaySchedule(jobs, loads, scheduleTasks);
   const tomorrowQueue = buildTomorrowQueue(jobs, scheduleTasks);
-  const ownerReviewQueue = buildOwnerReviewQueue(jobs, loads, equipment, alerts, fieldUpdates, treeLifecycleAlerts);
+  const ownerReviewQueue = buildOwnerReviewQueue(jobs, loads, equipment, alertsForDashboard, fieldUpdates, treeLifecycleAlerts);
   const fieldUpdateReviewCount = fieldUpdates.filter(isFieldUpdateNeedingReview).length;
-  const blockedCount = jobs.filter(isBlockedRecord).length + loads.filter(isBlockedRecord).length + equipment.filter(isEquipmentHold).length + alerts.filter((alert) => !isInactive(alert)).length + fieldUpdateReviewCount;
+  const blockedCount = jobs.filter(isBlockedRecord).length + loads.filter(isBlockedRecord).length + equipment.filter(isEquipmentHold).length + alertsForDashboard.filter((alert) => !isInactive(alert)).length + fieldUpdateReviewCount;
   const approvedUnscheduledCount = jobs.filter(isApprovedUnscheduledJob).length;
   const treeLifecycleCount = treeLifecycleAlerts.length;
   const crewGapCount = scheduleTasks.filter(isCrewDispatchGap).length + loads.filter((load) => !isInactive(load) && !load.driver).length + fieldUpdateReviewCount;

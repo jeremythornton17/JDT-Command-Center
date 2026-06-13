@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import React from "react";
 import { renderToString } from "react-dom/server";
-import type { CrewRecord, DocumentRecord, EquipmentRecord, FieldUpdateRecord, JobRecord, LoadRecord, ProjectMaterialItemRecord, TreeRelocationRecord, WorkOrderRecord } from "../commandCenter/records";
+import type { CrewRecord, DocumentRecord, EquipmentRecord, FieldUpdateRecord, FleetTelematicsEventRecord, JobRecord, LoadRecord, ProjectMaterialItemRecord, TreeRelocationRecord, WorkOrderRecord } from "../commandCenter/records";
 import { Dashboard, TrackerBoard } from "../App";
 import { buildDashboardSummary } from "../commandCenter/dashboard";
 import CommandDrawer, { filterTreeAssets, projectModalContextForRecord, projectSiteMapUrl } from "./CommandDrawer";
@@ -39,6 +39,34 @@ describe("work order UI wiring", () => {
     equipmentNames: ["CAT 299D"],
     implementNames: ["Root Pruner"],
     loadNames: ["Lowboy move"],
+  };
+
+  const revealSemi: EquipmentRecord = {
+    id: "equipment-semi-1",
+    name: "Semi #1",
+    category: "Truck",
+    telematicsProvider: "Reveal",
+    revealVehicleId: "veh-1",
+    vehicleNumber: "S1",
+    assignedProjectName: "Boca West Relocation",
+    currentLocationName: "Boca West Relocation",
+    currentLocation: "20583 Boca W Dr, Boca Raton, FL 33434",
+    lastTelematicsLatitude: 26.387315,
+    lastTelematicsLongitude: -80.171258,
+    lastTelematicsAt: "2026-06-12T12:00:00.000Z",
+  };
+
+  const revealGpsEvent: FleetTelematicsEventRecord = {
+    id: "reveal-veh-1",
+    provider: "Reveal",
+    providerVehicleId: "veh-1",
+    vehicleName: "Semi #1",
+    vehicleNumber: "S1",
+    latitude: 26.387315,
+    longitude: -80.171258,
+    address: "Boca West truck access",
+    eventAt: "2026-06-12T12:05:00.000Z",
+    driverName: "Christian Crespo",
   };
 
   it("shows project-specific site access addresses and pins inside the project overview", () => {
@@ -171,6 +199,43 @@ describe("work order UI wiring", () => {
     assert.match(html, /Resource Conflicts/);
     assert.match(html, /Christian Crespo/);
     assert.match(html, /Boca West equipment move \/ Waterford tree delivery/);
+  });
+
+  it("shows Reveal telematics exceptions on the command board", () => {
+    const dashboardSummary = buildDashboardSummary({
+      jobs: [bocaJob],
+      loads: [{
+        id: "load-boca-west",
+        title: "Boca West delivery",
+        truck: "Semi #1",
+        truckId: "equipment-semi-1",
+        status: "In Transit",
+        delivery: "Boca West Relocation",
+      }],
+      equipment: [{
+        ...revealSemi,
+        currentLocationName: "25 Acre Farm",
+        currentLocation: "25 Acre Farm",
+        lastTelematicsAddress: "25 Acre Farm",
+        lastTelematicsAt: "2026-06-12T06:00:00.000Z",
+      }],
+      fleetTelematicsEvents: [],
+      todayIso: "2026-06-12",
+    });
+
+    const html = renderToString(
+      <Dashboard
+        recentRecords={[]}
+        dashboardSummary={dashboardSummary}
+        workOrders={[]}
+        openModal={() => undefined}
+        openDrawer={() => undefined}
+        setActiveTab={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Semi #1 away from assigned project/);
+    assert.match(html, /Semi #1 stale GPS/);
   });
 
   it("builds project modal context from project records that only have a project id", () => {
@@ -1182,6 +1247,21 @@ describe("work order UI wiring", () => {
     );
 
     assert.doesNotMatch(blockedHtml, /Sync Verizon Vehicles/);
+  });
+
+  it("shows Reveal GPS freshness on the equipment page", () => {
+    const html = renderToString(
+      <EquipmentBoard
+        starterEquipment={[revealSemi, { ...revealSemi, id: "equipment-semi-2", name: "Semi #2", revealVehicleId: "veh-2", lastTelematicsAt: "2026-06-10T06:00:00.000Z" }]}
+        fleetTelematicsEvents={[revealGpsEvent]}
+        openDrawer={() => undefined}
+        openModal={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Reveal Telematics Status/);
+    assert.match(html, /1 live, 1 stale/);
+    assert.match(html, /Latest GPS/);
   });
 
   it("groups the equipment page by equipment category instead of status", () => {

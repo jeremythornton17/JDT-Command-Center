@@ -63,6 +63,7 @@ import type {
   DocumentRecord,
   EquipmentRecord,
   FieldUpdateRecord,
+  FleetTelematicsEventRecord,
   ImportBatchRecord,
   InventoryItemRecord,
   JobRecord,
@@ -83,6 +84,7 @@ import type {
 import { defaultJdtPersonnelRoster, mergePersonnelRecords } from './commandCenter/personnel';
 import { buildDashboardSummary, type DashboardCommandAlert, type DashboardWorkItem, type FeaturedOperation } from './commandCenter/dashboard';
 import { filterSeedRecords } from './commandCenter/operatingIntelligence';
+import { applyTelematicsEventsToFreightLoads, buildTelematicsExceptionAlerts } from './commandCenter/telematicsIntelligence';
 import { defaultRelocationStatus } from './commandCenter/treeLifecycle';
 import { normalizeProjectImportContext, pasteHeadersForTemplate, sheetImportTemplates, type ImportPreview, type ProjectImportContext, type SheetImportTemplateId } from './commandCenter/sheetImport';
 import { dataSyncDraftStorageKey, serializeDataSyncDraft } from './commandCenter/syncDraft';
@@ -533,6 +535,7 @@ export default function App() {
   const [treeRelocationRecords, setTreeRelocationRecords] = useFirestoreSyncState<TreeRelocationRecord>('treeRelocationRecords', [], !!user);
   const [fieldUpdates, setFieldUpdates] = useFirestoreSyncState<FieldUpdateRecord>('fieldUpdates', [], !!user);
   const [alerts, setAlerts] = useFirestoreSyncState<AlertRecord>('alerts', [], !!user);
+  const [fleetTelematicsEvents] = useFirestoreSyncState<FleetTelematicsEventRecord>('fleetTelematicsEvents', [], !!user);
   const [documents, setDocuments] = useFirestoreSyncState<DocumentRecord>('documents', [], !!user);
   const [syncSources, setSyncSources] = useFirestoreSyncState<SyncSourceRecord>('syncSources', [], !!user);
   const [syncMappings, setSyncMappings] = useFirestoreSyncState<SyncMappingRecord>('syncMappings', [], !!user);
@@ -541,12 +544,21 @@ export default function App() {
   const nurseryInventory = useMemo<RanchOakRecord[]>(() => [...inventoryItems, ...ranchOaks], [inventoryItems, ranchOaks]);
   const equipmentWithDefaults = useMemo<EquipmentRecord[]>(() => equipment.map(withHomeBaseEquipmentDefaults), [equipment]);
   const locationsWithDefaults = useMemo<LocationRecord[]>(() => mergeLocationLibrary(defaultJdtFarmLocations, locations), [locations]);
+  const loadsWithTelematics = useMemo(
+    () => applyTelematicsEventsToFreightLoads(loads, equipmentWithDefaults, fleetTelematicsEvents),
+    [loads, equipmentWithDefaults, fleetTelematicsEvents],
+  );
+  const telematicsAlerts = useMemo(
+    () => buildTelematicsExceptionAlerts({ equipment: equipmentWithDefaults, loads: loadsWithTelematics, events: fleetTelematicsEvents }),
+    [equipmentWithDefaults, loadsWithTelematics, fleetTelematicsEvents],
+  );
+  const alertsWithTelematics = useMemo(() => [...telematicsAlerts, ...alerts], [telematicsAlerts, alerts]);
 
   const activeNav = navItems.find((item) => item.id === activeTab) || navItems[0];
 
   const dashboardSummary = useMemo(() => buildDashboardSummary({
     jobs,
-    loads,
+    loads: loadsWithTelematics,
     trees: nurseryInventory,
     equipment: equipmentWithDefaults,
     crew: personnel,
@@ -556,20 +568,21 @@ export default function App() {
     scheduleTasks,
     treeRelocationRecords,
     documents,
-    alerts,
+    alerts: alertsWithTelematics,
     fieldUpdates,
+    fleetTelematicsEvents,
     importBatches,
-  }), [jobs, loads, nurseryInventory, equipmentWithDefaults, personnel, clients, projects, workOrders, scheduleTasks, treeRelocationRecords, documents, alerts, fieldUpdates, importBatches]);
+  }), [jobs, loadsWithTelematics, nurseryInventory, equipmentWithDefaults, personnel, clients, projects, workOrders, scheduleTasks, treeRelocationRecords, documents, alertsWithTelematics, fieldUpdates, fleetTelematicsEvents, importBatches]);
 
   const recentRecords = useMemo(() => [
     ...jobs.map((item) => ({ type: 'job', label: item.title || item.client || 'Untitled project', meta: item.status || item.date || 'Project', id: item.id || item.title })),
-    ...loads.map((item) => ({ type: 'freight', label: item.title || item.id || 'Untitled load', meta: item.status || item.eta || 'Freight', id: item.id || item.title })),
+    ...loadsWithTelematics.map((item) => ({ type: 'freight', label: item.title || item.id || 'Untitled load', meta: item.status || item.eta || 'Freight', id: item.id || item.title })),
     ...nurseryInventory.map((item) => ({ type: 'tree', label: item.treeId || item.name || 'Tree record', meta: item.status || item.farm || 'Tree', id: item.id || item.treeId })),
     ...treeRelocationRecords.map((item) => ({ type: 'tree', label: item.title || item.tag || 'Relocation tree', meta: item.status || item.jobId || 'Relocation', id: item.id || item.tag })),
     ...equipmentWithDefaults.map((item) => ({ type: 'equipment', label: item.name || item.type || 'Equipment record', meta: item.status || item.operator || 'Equipment', id: item.id || item.name })),
     ...fieldUpdates.map((item) => ({ type: 'fieldUpdate', label: item.relatedTitle || item.title || 'Crew field update', meta: item.fieldStatus || item.updateType || 'Field update', id: item.id || item.title })),
     ...documents.map((item) => ({ type: 'document', label: item.name || item.title || 'Document', meta: item.category || item.job || 'Document', id: item.id || item.name })),
-  ].slice(0, 8), [jobs, loads, nurseryInventory, treeRelocationRecords, equipmentWithDefaults, fieldUpdates, documents]);
+  ].slice(0, 8), [jobs, loadsWithTelematics, nurseryInventory, treeRelocationRecords, equipmentWithDefaults, fieldUpdates, documents]);
 
   const addToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     const id = `toast-${Date.now()}`;
@@ -1191,13 +1204,14 @@ export default function App() {
       case 'tracker':
         return <TrackerBoard projects={projects} jobs={jobs} workOrders={workOrders} projectMaterialItems={projectMaterialItems} openDrawer={openDrawer} openModal={openModal} />;
       case 'freight':
-        return <FreightBoard loads={loads} equipment={equipmentWithDefaults} workOrders={workOrders} openDrawer={openDrawer} openModal={openModal} />;
+        return <FreightBoard loads={loadsWithTelematics} equipment={equipmentWithDefaults} workOrders={workOrders} openDrawer={openDrawer} openModal={openModal} />;
       case 'inventory':
         return <NurseryBoard starterRanchOaks={nurseryInventory} inventoryItems={inventoryItems} ranchOaks={ranchOaks} openDrawer={openDrawer} openModal={openModal} />;
       case 'equipment':
         return (
           <EquipmentBoard
             starterEquipment={equipmentWithDefaults}
+            fleetTelematicsEvents={fleetTelematicsEvents}
             openDrawer={openDrawer}
             openModal={openModal}
             canSyncRevealVehicles={permissions.canManageSources}
@@ -1212,7 +1226,7 @@ export default function App() {
         return (
           <CrewViewBoard
             crews={personnel}
-            loads={loads}
+            loads={loadsWithTelematics}
             workOrders={workOrders}
             jobs={jobs}
             equipment={equipmentWithDefaults}
@@ -1226,13 +1240,13 @@ export default function App() {
       case 'clients':
         return <ClientsBoard clients={clients} projects={projects} jobs={jobs} openModal={openModal} openDrawer={openDrawer} />;
       case 'alerts':
-        return <AlertsBoard alerts={alerts} setAlerts={setAlerts} openModal={openModal} />;
+        return <AlertsBoard alerts={alertsWithTelematics} setAlerts={setAlerts} openModal={openModal} />;
       case 'calendar':
-        return <CalendarBoard jobs={jobs} loads={loads} workOrders={workOrders} scheduleTasks={scheduleTasks} treeRelocationRecords={treeRelocationRecords} equipment={equipmentWithDefaults} openDrawer={openDrawer} />;
+        return <CalendarBoard jobs={jobs} loads={loadsWithTelematics} workOrders={workOrders} scheduleTasks={scheduleTasks} treeRelocationRecords={treeRelocationRecords} equipment={equipmentWithDefaults} openDrawer={openDrawer} />;
       case 'maps':
-        return <MapsBoard jobs={jobs} ranchOaks={nurseryInventory} treeRelocationRecords={treeRelocationRecords} locationsList={locationsWithDefaults} onUpdateTreeLocation={handleUpdateTreeLocation} onImportTreePins={handleImportTreePinsFromMap} openDrawer={openDrawer} />;
+        return <MapsBoard jobs={jobs} ranchOaks={nurseryInventory} treeRelocationRecords={treeRelocationRecords} locationsList={locationsWithDefaults} equipment={equipmentWithDefaults} fleetTelematicsEvents={fleetTelematicsEvents} onUpdateTreeLocation={handleUpdateTreeLocation} onImportTreePins={handleImportTreePinsFromMap} openDrawer={openDrawer} />;
       case 'reports':
-        return <ReportsBoard jobs={jobs} projects={projects} workOrders={workOrders} loads={loads} ranchOaks={nurseryInventory} equipment={equipmentWithDefaults} alerts={alerts} clients={clients} fieldUpdates={fieldUpdates} scheduleTasks={scheduleTasks} treeRelocationRecords={treeRelocationRecords} documents={documents} importBatches={importBatches} />;
+        return <ReportsBoard jobs={jobs} projects={projects} workOrders={workOrders} loads={loadsWithTelematics} ranchOaks={nurseryInventory} equipment={equipmentWithDefaults} alerts={alertsWithTelematics} clients={clients} fieldUpdates={fieldUpdates} scheduleTasks={scheduleTasks} treeRelocationRecords={treeRelocationRecords} documents={documents} fleetTelematicsEvents={fleetTelematicsEvents} importBatches={importBatches} />;
       case 'documents':
         return <DocumentsBoard documents={documents} openModal={openModal} />;
       case 'sheets':
@@ -1312,7 +1326,7 @@ export default function App() {
         openDrawer={openDrawer}
         projectsList={projects}
         jobsList={jobs}
-        loadsList={loads}
+        loadsList={loadsWithTelematics}
         ranchOaksList={nurseryInventory}
         equipmentList={equipmentWithDefaults}
         crewsList={personnel}

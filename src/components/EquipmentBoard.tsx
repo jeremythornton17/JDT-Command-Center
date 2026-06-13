@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Wrench, MapPin, UserCheck, AlertTriangle, Clock, Activity, QrCode, ClipboardList, PenTool, RefreshCw } from 'lucide-react';
 import { complianceBadgeClass, vehicleComplianceSummary, type ComplianceStatus } from '../commandCenter/compliance';
+import type { FleetTelematicsEventRecord } from '../commandCenter/records';
 import { equipmentCategory, equipmentCategoryOptions, equipmentDisplayName } from '../commandCenter/equipmentFreight';
+import { buildRevealIntegrationStatus } from '../commandCenter/telematicsIntelligence';
 import { categoryAccentBorderClass, riskSurfaceClass, statusPillClass } from '../commandCenter/visualLanguage';
 import { CategoryIcon } from './CategoryIcon';
 import { IconButton } from './IconBadge';
@@ -99,6 +101,7 @@ function compatibilityGroups(eq: any, category: string) {
 
 type EquipmentBoardProps = {
   starterEquipment: any[];
+  fleetTelematicsEvents?: FleetTelematicsEventRecord[];
   openDrawer: (type: string, id: string) => void;
   openModal: (type: string, data?: any) => void;
   canSyncRevealVehicles?: boolean;
@@ -109,6 +112,7 @@ type EquipmentBoardProps = {
 
 export default function EquipmentBoard({
   starterEquipment,
+  fleetTelematicsEvents = [],
   openDrawer,
   openModal,
   canSyncRevealVehicles = false,
@@ -139,6 +143,10 @@ export default function EquipmentBoard({
   const visibleCategoryKeys = activeCategory === 'All'
     ? categoryOrder.filter((category) => grouped[category]?.length)
     : [activeCategory];
+  const revealStatus = buildRevealIntegrationStatus({
+    equipment: starterEquipment,
+    events: fleetTelematicsEvents,
+  });
 
   return (
     <div className="space-y-8">
@@ -179,6 +187,32 @@ export default function EquipmentBoard({
               <RefreshCw className="h-3.5 w-3.5" />
               Reveal
             </span>
+          </div>
+        </div>
+      )}
+
+      {revealStatus.revealVehicles > 0 && (
+        <div className="rounded-xl border border-[#7C3AED] bg-[#F3E8FF] p-4 text-[#4C1D95]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] opacity-75">Reveal Telematics Status</p>
+              <p className="mt-1 text-sm font-black">{revealStatus.healthLabel}</p>
+              <p className="mt-1 text-[11px] font-bold opacity-80">Latest GPS: {revealStatus.latestEventAt || 'No GPS event received yet'}</p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-lg border border-[#C4B5FD] bg-white/70 px-3 py-2">
+                <p className="text-lg font-black">{revealStatus.revealVehicles}</p>
+                <p className="text-[9px] font-black uppercase opacity-70">Reveal</p>
+              </div>
+              <div className="rounded-lg border border-[#C4B5FD] bg-white/70 px-3 py-2">
+                <p className="text-lg font-black">{revealStatus.vehiclesWithGps}</p>
+                <p className="text-[9px] font-black uppercase opacity-70">Live GPS</p>
+              </div>
+              <div className="rounded-lg border border-[#C4B5FD] bg-white/70 px-3 py-2">
+                <p className="text-lg font-black">{revealStatus.staleVehicles}</p>
+                <p className="text-[9px] font-black uppercase opacity-70">Stale</p>
+              </div>
+            </div>
           </div>
         </div>
       )}

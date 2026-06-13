@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { AlertTriangle, BarChart3, FileDown, Loader2, Printer } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { buildDataQualityActionQueue, buildOperatingKpis, buildWorkflowReadinessQueue } from '../commandCenter/operatingIntelligence';
-import type { AlertRecord, ClientRecord, DocumentRecord, EquipmentRecord, FieldUpdateRecord, ImportBatchRecord, JobRecord, LoadRecord, ProjectRecord, RanchOakRecord, ScheduleTaskRecord, TreeRelocationRecord, WorkOrderRecord } from '../commandCenter/records';
+import type { AlertRecord, ClientRecord, DocumentRecord, EquipmentRecord, FieldUpdateRecord, FleetTelematicsEventRecord, ImportBatchRecord, JobRecord, LoadRecord, ProjectRecord, RanchOakRecord, ScheduleTaskRecord, TreeRelocationRecord, WorkOrderRecord } from '../commandCenter/records';
 import { riskPillClass, riskSurfaceClass } from '../commandCenter/visualLanguage';
 
 type ReportsBoardProps = {
@@ -18,6 +18,7 @@ type ReportsBoardProps = {
   scheduleTasks?: ScheduleTaskRecord[];
   treeRelocationRecords?: TreeRelocationRecord[];
   documents?: DocumentRecord[];
+  fleetTelematicsEvents?: FleetTelematicsEventRecord[];
   importBatches?: ImportBatchRecord[];
 };
 
@@ -34,7 +35,7 @@ function dataQualitySeverityClass(severity: string) {
   return riskPillClass('low');
 }
 
-export default function ReportsBoard({ jobs, projects = [], workOrders = [], loads, ranchOaks, equipment, alerts, clients = [], fieldUpdates = [], scheduleTasks = [], treeRelocationRecords = [], documents = [], importBatches = [] }: ReportsBoardProps) {
+export default function ReportsBoard({ jobs, projects = [], workOrders = [], loads, ranchOaks, equipment, alerts, clients = [], fieldUpdates = [], scheduleTasks = [], treeRelocationRecords = [], documents = [], fleetTelematicsEvents = [], importBatches = [] }: ReportsBoardProps) {
   const [exporting, setExporting] = useState(false);
   const kpiGroups = buildOperatingKpis({
     clients,
@@ -48,6 +49,7 @@ export default function ReportsBoard({ jobs, projects = [], workOrders = [], loa
     treeRelocationRecords,
     documents,
     alerts,
+    fleetTelematicsEvents,
     importBatches,
   });
   const dataQualityQueue = buildDataQualityActionQueue({

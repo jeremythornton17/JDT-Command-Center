@@ -5,6 +5,7 @@ import type {
   DocumentRecord,
   EquipmentRecord,
   FieldUpdateRecord,
+  FleetTelematicsEventRecord,
   ImportBatchRecord,
   InventoryItemRecord,
   JobRecord,
@@ -16,6 +17,7 @@ import type {
   WorkOrderRecord,
 } from "./records";
 import { sameProject } from "./relationships";
+import { buildRevealTelematicsKpis } from "./telematicsIntelligence";
 
 export type RelationshipIssue = {
   id: string;
@@ -72,7 +74,7 @@ export type OperatingKpiMetric = {
 };
 
 export type OperatingKpiGroup = {
-  id: "projectHealth" | "crewCommunication" | "freightReadiness" | "equipmentReadiness" | "treeLifecycle" | "dataQuality";
+  id: "projectHealth" | "crewCommunication" | "freightReadiness" | "equipmentReadiness" | "treeLifecycle" | "revealTelematics" | "dataQuality";
   title: string;
   metrics: OperatingKpiMetric[];
 };
@@ -123,6 +125,7 @@ export type OperatingIntelligenceInput = {
   treeRelocationRecords?: TreeRelocationRecord[];
   documents?: DocumentRecord[];
   alerts?: AlertRecord[];
+  fleetTelematicsEvents?: FleetTelematicsEventRecord[];
   importBatches?: ImportBatchRecord[];
   ranchOaks?: RanchOakRecord[];
   inventoryItems?: InventoryItemRecord[];
@@ -141,6 +144,7 @@ const emptyInput: Required<OperatingIntelligenceInput> = {
   treeRelocationRecords: [],
   documents: [],
   alerts: [],
+  fleetTelematicsEvents: [],
   importBatches: [],
   ranchOaks: [],
   inventoryItems: [],
@@ -969,6 +973,16 @@ export function buildOperatingKpis(input: OperatingIntelligenceInput): Operating
         metric("Root Pruning", rootPruningTrees.length, "Trees in root pruning", "watch"),
         metric("Installed", installedTrees.length, "Trees installed or relocated", "ready"),
       ],
+    },
+    {
+      id: "revealTelematics",
+      title: "Reveal Telematics",
+      metrics: buildRevealTelematicsKpis({
+        equipment: merged.equipment,
+        events: merged.fleetTelematicsEvents,
+        loads: merged.loads,
+        now: merged.todayIso ? `${merged.todayIso}T23:59:59.000Z` : undefined,
+      }),
     },
     {
       id: "dataQuality",

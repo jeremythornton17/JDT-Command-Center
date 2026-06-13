@@ -1,10 +1,6 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
     function isSignedIn() { return request.auth != null; }
     function hasEmail() { return isSignedIn() && request.auth.token.email is string; }
     function userEmail() { return request.auth.token.email.lower(); }
@@ -28,152 +24,23 @@ service cloud.firestore {
     function canWrite(id) { return (isOwnerAdmin() || isOfficeOperator()) && isValidId(id); }
     function canSubmitFieldUpdate(id) { return isAuthorizedUser() && isValidId(id); }
     function canDelete(id) { return isAdmin() && isValidId(id); }
-
-    match /jobs/{jobId} {
-      allow read: if canRead();
-      allow create: if canWrite(jobId);
-      allow update: if canWrite(jobId);
-      allow delete: if canDelete(jobId);
+    function isAppCollection(collection) {
+      return collection in ["jobs", "projects", "workOrders", "projectMaterialItems", "loads", "ranchOaks", "inventoryItems", "equipment", "fleetTelematicsEvents", "crews", "staff", "clients", "locations", "species", "scheduleTasks", "treeRelocationRecords", "alerts", "documents", "syncSources", "syncMappings", "importBatches"];
     }
-
-    match /projects/{projectId} {
-      allow read: if canRead();
-      allow create: if canWrite(projectId);
-      allow update: if canWrite(projectId);
-      allow delete: if canDelete(projectId);
-    }
-
-    match /workOrders/{workOrderId} {
-      allow read: if canRead();
-      allow create: if canWrite(workOrderId);
-      allow update: if canWrite(workOrderId);
-      allow delete: if canDelete(workOrderId);
-    }
-
-    match /projectMaterialItems/{itemId} {
-      allow read: if canRead();
-      allow create: if canWrite(itemId);
-      allow update: if canWrite(itemId);
-      allow delete: if canDelete(itemId);
-    }
-
-    match /loads/{loadId} {
-      allow read: if canRead();
-      allow create: if canWrite(loadId);
-      allow update: if canWrite(loadId);
-      allow delete: if canDelete(loadId);
-    }
-
-    match /ranchOaks/{treeId} {
-      allow read: if canRead();
-      allow create: if canWrite(treeId);
-      allow update: if canWrite(treeId);
-      allow delete: if canDelete(treeId);
-    }
-
-    match /inventoryItems/{itemId} {
-      allow read: if canRead();
-      allow create: if canWrite(itemId);
-      allow update: if canWrite(itemId);
-      allow delete: if canDelete(itemId);
-    }
-
-    match /equipment/{itemId} {
-      allow read: if canRead();
-      allow create: if canWrite(itemId);
-      allow update: if canWrite(itemId);
-      allow delete: if canDelete(itemId);
-    }
-
     match /fieldUpdates/{updateId} {
       allow read: if canRead();
       allow create: if canSubmitFieldUpdate(updateId);
       allow update: if canWrite(updateId);
       allow delete: if canDelete(updateId);
     }
-
-    match /crews/{crewId} {
-      allow read: if canRead();
-      allow create: if canWrite(crewId);
-      allow update: if canWrite(crewId);
-      allow delete: if canDelete(crewId);
+    match /{collection}/{documentId} {
+      allow read: if isAppCollection(collection) && canRead();
+      allow create: if isAppCollection(collection) && canWrite(documentId);
+      allow update: if isAppCollection(collection) && canWrite(documentId);
+      allow delete: if isAppCollection(collection) && canDelete(documentId);
     }
-
-    match /staff/{staffId} {
-      allow read: if canRead();
-      allow create: if canWrite(staffId);
-      allow update: if canWrite(staffId);
-      allow delete: if canDelete(staffId);
-    }
-
-    match /clients/{clientId} {
-      allow read: if canRead();
-      allow create: if canWrite(clientId);
-      allow update: if canWrite(clientId);
-      allow delete: if canDelete(clientId);
-    }
-
-    match /locations/{locationId} {
-      allow read: if canRead();
-      allow create: if canWrite(locationId);
-      allow update: if canWrite(locationId);
-      allow delete: if canDelete(locationId);
-    }
-
-    match /species/{speciesId} {
-      allow read: if canRead();
-      allow create: if canWrite(speciesId);
-      allow update: if canWrite(speciesId);
-      allow delete: if canDelete(speciesId);
-    }
-
-    match /scheduleTasks/{taskId} {
-      allow read: if canRead();
-      allow create: if canWrite(taskId);
-      allow update: if canWrite(taskId);
-      allow delete: if canDelete(taskId);
-    }
-
-    match /treeRelocationRecords/{recordId} {
-      allow read: if canRead();
-      allow create: if canWrite(recordId);
-      allow update: if canWrite(recordId);
-      allow delete: if canDelete(recordId);
-    }
-
-    match /alerts/{alertId} {
-      allow read: if canRead();
-      allow create: if canWrite(alertId);
-      allow update: if canWrite(alertId);
-      allow delete: if canDelete(alertId);
-    }
-
-    match /documents/{documentId} {
-      allow read: if canRead();
-      allow create: if canWrite(documentId);
-      allow update: if canWrite(documentId);
-      allow delete: if canDelete(documentId);
-    }
-
-    match /syncSources/{sourceId} {
-      allow read: if canRead();
-      allow create: if canWrite(sourceId);
-      allow update: if canWrite(sourceId);
-      allow delete: if canDelete(sourceId);
-    }
-
-    match /syncMappings/{mappingId} {
-      allow read: if canRead();
-      allow create: if canWrite(mappingId);
-      allow update: if canWrite(mappingId);
-      allow delete: if canDelete(mappingId);
-    }
-
-    match /importBatches/{batchId} {
-      allow read: if canRead();
-      allow create: if canWrite(batchId);
-      allow update: if canWrite(batchId);
-      allow delete: if canDelete(batchId);
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

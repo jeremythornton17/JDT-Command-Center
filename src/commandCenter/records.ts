@@ -343,6 +343,23 @@ export type EquipmentRecord = CommandRecord & {
   insurancePolicyNumber?: string;
   insuranceExpirationDate?: string;
   insuranceDocumentUrl?: string;
+  telematicsProvider?: 'Reveal' | string;
+  revealVehicleId?: string;
+  verizonVehicleId?: string;
+  revealVehicleNumber?: string;
+  vehicleNumber?: string;
+  revealSyncedAt?: string;
+  revealSyncedBy?: string;
+  lastTelematicsAt?: string;
+  revealLastReceivedAt?: string;
+  lastTelematicsLatitude?: number;
+  lastTelematicsLongitude?: number;
+  lastTelematicsAddress?: string;
+  lastTelematicsSpeedMph?: number;
+  lastTelematicsHeading?: number;
+  lastTelematicsStatus?: string;
+  lastTelematicsDriverName?: string;
+  lastTelematicsOdometerMiles?: number;
   vehicleLoadState?: 'Empty' | 'Pre-loading' | 'Loaded' | 'Staged' | 'In Use' | string;
   lastSpottedBy?: string;
   lastSpottedAt?: string;
@@ -356,6 +373,28 @@ export type EquipmentRecord = CommandRecord & {
     assignedTruck?: string;
     notes?: string;
   }>;
+};
+
+export type FleetTelematicsEventRecord = CommandRecord & {
+  provider?: 'Reveal' | string;
+  providerVehicleId?: string;
+  vehicleNumber?: string;
+  vehicleName?: string;
+  registrationNumber?: string;
+  vin?: string;
+  latitude?: number;
+  longitude?: number;
+  coordinateText?: string;
+  address?: string;
+  eventAt?: string;
+  receivedAt?: string;
+  speedMph?: number;
+  heading?: number;
+  status?: string;
+  driverName?: string;
+  odometerMiles?: number;
+  matchedEquipmentDocumentName?: string;
+  rawPayload?: unknown;
 };
 
 export type FieldUpdateRecord = CommandRecord & {
@@ -511,6 +550,9 @@ export type AlertRecord = CommandRecord & {
   body?: string;
   severity?: string;
   time?: string;
+  targetTab?: string;
+  relatedEntityType?: string;
+  relatedEntityId?: string;
 };
 
 export type DocumentRecord = CommandRecord & {

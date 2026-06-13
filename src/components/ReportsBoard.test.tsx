@@ -90,4 +90,46 @@ describe("ReportsBoard operating reports", () => {
     assert.match(html, /Driver/);
     assert.match(html, /Complete freight dispatch details before sending this move to a driver/);
   });
+
+  it("shows Reveal telematics KPIs from GPS events", () => {
+    const html = renderToString(
+      <ReportsBoard
+        jobs={[]}
+        projects={[]}
+        workOrders={[]}
+        loads={[]}
+        ranchOaks={[]}
+        equipment={[{
+          id: "equipment-semi-1",
+          name: "Semi #1",
+          category: "Truck",
+          telematicsProvider: "Reveal",
+          revealVehicleId: "veh-1",
+          lastTelematicsAt: "2026-06-12T12:00:00.000Z",
+        }]}
+        fleetTelematicsEvents={[{
+          id: "reveal-veh-1",
+          provider: "Reveal",
+          providerVehicleId: "veh-1",
+          vehicleName: "Semi #1",
+          vehicleNumber: "S1",
+          latitude: 26.387315,
+          longitude: -80.171258,
+          eventAt: "2026-06-12T12:05:00.000Z",
+        }]}
+        alerts={[]}
+        clients={[]}
+        fieldUpdates={[]}
+        scheduleTasks={[]}
+        treeRelocationRecords={[]}
+        documents={[]}
+        importBatches={[]}
+      />,
+    );
+
+    assert.match(html, /Reveal Telematics/);
+    assert.match(html, /Reveal Vehicles/);
+    assert.match(html, /Live GPS/);
+    assert.match(html, /GPS Events/);
+  });
 });

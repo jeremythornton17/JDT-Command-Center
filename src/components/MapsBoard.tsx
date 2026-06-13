@@ -12,6 +12,7 @@ import {
   Route,
   Save,
   Target,
+  Truck,
   TreePine,
   Upload,
   ZoomIn,
@@ -50,6 +51,8 @@ import {
 import { useAuth } from '../AuthProvider';
 import { useFirestoreSyncState } from '../useFirestoreCollection';
 import { defaultJdtFarmLocations, jdtHomeBase, mergeLocationLibrary } from '../commandCenter/equipmentFreight';
+import type { EquipmentRecord, FleetTelematicsEventRecord } from '../commandCenter/records';
+import { buildLiveVehicleMapMarkers, type LiveVehicleMapMarker } from '../commandCenter/telematicsIntelligence';
 
 const defaultFieldCenter = jdtHomeBase.coordinates;
 
@@ -141,6 +144,8 @@ function sourceTextForSiteLocation(location: any) {
 type MapsBoardProps = {
   jobs?: any[];
   loads?: any[];
+  equipment?: EquipmentRecord[];
+  fleetTelematicsEvents?: FleetTelematicsEventRecord[];
   ranchOaks?: any[];
   treeRelocationRecords?: any[];
   openDrawer?: (type: string, id: string) => void;
@@ -162,6 +167,8 @@ export default function MapsBoard({
   jobs = [],
   ranchOaks,
   treeRelocationRecords = [],
+  equipment = [],
+  fleetTelematicsEvents = [],
   onUpdateTreeLocation,
   onImportTreePins,
   openDrawer,
@@ -255,6 +262,10 @@ export default function MapsBoard({
       ...filterSavedSiteLocationsForJob(savedLocations, selectedJob),
     ]),
     [profileSiteLocations, savedLocations, selectedJob],
+  );
+  const liveVehicleMarkers = useMemo(
+    () => buildLiveVehicleMapMarkers(equipment, fleetTelematicsEvents),
+    [equipment, fleetTelematicsEvents],
   );
   const [siteLocationForm, setSiteLocationForm] = useState({
     label: '',
@@ -381,7 +392,7 @@ export default function MapsBoard({
     return () => {
       cancelled = true;
     };
-  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, filteredTreeRecords, scopedSavedLocations, selectedTreeId, zoomLevel, mapViewMode, selectedJobId, selectedJobMapTarget]);
+  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, filteredTreeRecords, scopedSavedLocations, liveVehicleMarkers, selectedTreeId, zoomLevel, mapViewMode, selectedJobId, selectedJobMapTarget]);
 
   useEffect(() => {
     focusMapOnSelectedJob();
@@ -442,6 +453,20 @@ export default function MapsBoard({
       });
       marker.addListener('click', () => {
         focusSavedLocation(location);
+      });
+      googleMarkerRefs.current.push(marker);
+    });
+
+    liveVehicleMarkers.forEach((vehicle) => {
+      const marker = new maps.Marker({
+        position: { lat: vehicle.lat, lng: vehicle.lng },
+        map,
+        title: `${vehicle.label} ${vehicle.status}`,
+        label: 'V',
+        draggable: false,
+      });
+      marker.addListener('click', () => {
+        focusVehicleMarker(vehicle);
       });
       googleMarkerRefs.current.push(marker);
     });
@@ -691,6 +716,16 @@ export default function MapsBoard({
     setFieldStatus(`Opened ${label} in a Google Maps tab because the in-app map is not available.`);
   };
 
+  const focusVehicleMarker = (vehicle: LiveVehicleMapMarker) => {
+    const map = googleMapInstanceRef.current;
+    setMapViewMode('earth');
+    if (map) {
+      map.setCenter({ lat: vehicle.lat, lng: vehicle.lng });
+      map.setZoom(Math.max(zoomLevel, 17));
+    }
+    setFieldStatus(`${vehicle.label} focused at ${formatTreeCoordinate({ lat: vehicle.lat, lng: vehicle.lng })}.`);
+  };
+
   const downloadProjectKml = () => {
     if (!earthMapPackage.pinnedTreeCount) {
       setFieldStatus('Add at least one source or destination pin before exporting this project to Google Earth.');
@@ -817,6 +852,27 @@ export default function MapsBoard({
           title={`${location.name || location.title || 'Saved location'} ${location.locationType || ''}`}
         >
           <MapPin className="h-4 w-4 text-white" />
+        </button>
+      );
+    });
+  };
+
+  const renderFallbackVehiclePins = () => {
+    return liveVehicleMarkers.map((vehicle) => {
+      const percent = latLngToMapPercent({ lat: vehicle.lat, lng: vehicle.lng });
+      return (
+        <button
+          key={vehicle.id}
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            focusVehicleMarker(vehicle);
+          }}
+          className="absolute flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-sky-600 shadow-xl ring-4 ring-sky-100 transition-all hover:scale-110 z-10"
+          style={{ left: `${percent.x}%`, top: `${percent.y}%` }}
+          title={`${vehicle.label} ${vehicle.status}`}
+        >
+          <Truck className="h-4 w-4 text-white" />
         </button>
       );
     });
@@ -1090,6 +1146,7 @@ export default function MapsBoard({
                 {showTreeMapPanels && renderSelectedTreeLine()}
                 {renderFallbackTreePins()}
                 {renderFallbackSiteLocationPins()}
+                {renderFallbackVehiclePins()}
               </div>
             )}
 
@@ -1163,6 +1220,37 @@ export default function MapsBoard({
               )}
             </div>
           </div>
+          )}
+
+          {liveVehicleMarkers.length > 0 && (
+            <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5">
+                  <Truck className="h-4 w-4 text-sky-700" /> Live Vehicle Layer
+                </h3>
+                <span className="rounded bg-white px-2 py-0.5 text-[9px] font-black uppercase text-zinc-500">{liveVehicleMarkers.length}</span>
+              </div>
+              <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                {liveVehicleMarkers.map((vehicle) => (
+                  <button
+                    key={vehicle.id}
+                    type="button"
+                    onClick={() => focusVehicleMarker(vehicle)}
+                    className="w-full rounded-lg border border-jdt-border bg-white p-3 text-left hover:bg-sky-50"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-black text-jdt-text">{vehicle.label}</p>
+                        <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{vehicle.driverName || 'Driver not assigned'}</p>
+                      </div>
+                      <span className="shrink-0 rounded border border-sky-200 bg-sky-50 px-2 py-0.5 text-[9px] font-black uppercase text-sky-800">{vehicle.status}</span>
+                    </div>
+                    <p className="mt-2 text-[11px] font-bold leading-snug text-zinc-500">{vehicle.address || formatTreeCoordinate({ lat: vehicle.lat, lng: vehicle.lng })}</p>
+                    {vehicle.lastSeenAt && <p className="mt-1 text-[10px] font-bold text-zinc-400">Latest GPS {vehicle.lastSeenAt}</p>}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
           {showSavedLocationsPanel && (
