@@ -1229,7 +1229,7 @@ export default function MapsBoard({
           <h2 className="text-2xl font-black text-jdt-primary">{isLiveGpsView ? 'Live GPS Map' : 'Field Maps & Tree Relocation'}</h2>
           <p className="text-sm font-bold text-zinc-500 mt-1">
             {isLiveGpsView
-              ? 'Track Verizon GPS vehicles, equipment, freight moves, and unmatched GPS assets'
+              ? 'Track live GPS vehicles, equipment, freight moves, and unmatched GPS assets'
               : 'Pin source trees, destination locations, GPS field marks, and relocation tasks'}
           </p>
         </div>
@@ -1273,7 +1273,7 @@ export default function MapsBoard({
                       type="button"
                       onClick={() => {
                         setMapMode('liveGps');
-                        setFieldStatus('Showing live GPS assets from Verizon Reveal and JDT dispatch records.');
+                        setFieldStatus('Showing live GPS assets from GPS tracking and JDT dispatch records.');
                       }}
                       className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${mapMode === 'liveGps' ? 'border-sky-700 bg-sky-700 text-white' : 'border-jdt-border bg-white text-zinc-600 hover:border-sky-500'}`}
                     >
@@ -1392,7 +1392,7 @@ export default function MapsBoard({
                     <Layers className="h-4 w-4 text-sky-700" /> Live GPS Assets
                   </h3>
                   <p className="mt-1 text-[11px] font-bold text-zinc-500">
-                    Verizon GPS layered with JDT equipment, freight, and project context.
+                    Live GPS layered with JDT equipment, freight, and project context.
                   </p>
                 </div>
                 <span className="rounded bg-white px-2 py-0.5 text-[9px] font-black uppercase text-zinc-500">{visibleGpsAssets.length}/{liveGpsAssets.length}</span>
@@ -1517,7 +1517,7 @@ export default function MapsBoard({
                 )) : (
                   <div className="rounded-lg border border-dashed border-jdt-border bg-white p-4 text-center">
                     <p className="text-xs font-black uppercase text-jdt-text">No live GPS assets visible</p>
-                    <p className="mt-1 text-[11px] font-bold text-zinc-500">Adjust filters, sync Verizon Reveal, or match GPS trackers to equipment records.</p>
+                    <p className="mt-1 text-[11px] font-bold text-zinc-500">Adjust filters, sync GPS tracking data, or match GPS trackers to equipment records.</p>
                   </div>
                 )}
               </div>
