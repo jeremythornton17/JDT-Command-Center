@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Wrench, MapPin, UserCheck, AlertTriangle, Clock, Activity, QrCode, ClipboardList, PenTool } from 'lucide-react';
+import { Wrench, MapPin, UserCheck, AlertTriangle, Clock, Activity, QrCode, ClipboardList, PenTool, RefreshCw } from 'lucide-react';
 import { complianceBadgeClass, vehicleComplianceSummary, type ComplianceStatus } from '../commandCenter/compliance';
 import { equipmentCategory, equipmentCategoryOptions, equipmentDisplayName } from '../commandCenter/equipmentFreight';
 import { categoryAccentBorderClass, riskSurfaceClass, statusPillClass } from '../commandCenter/visualLanguage';
@@ -97,7 +97,25 @@ function compatibilityGroups(eq: any, category: string) {
   return groups.filter((group) => group.values.length > 0);
 }
 
-export default function EquipmentBoard({ starterEquipment, openDrawer, openModal }: { starterEquipment: any[], openDrawer: (type: string, id: string) => void, openModal: (type: string, data?: any) => void }) {
+type EquipmentBoardProps = {
+  starterEquipment: any[];
+  openDrawer: (type: string, id: string) => void;
+  openModal: (type: string, data?: any) => void;
+  canSyncRevealVehicles?: boolean;
+  isSyncingRevealVehicles?: boolean;
+  revealVehicleSyncStatus?: string;
+  onSyncRevealVehicles?: () => void | Promise<void>;
+};
+
+export default function EquipmentBoard({
+  starterEquipment,
+  openDrawer,
+  openModal,
+  canSyncRevealVehicles = false,
+  isSyncingRevealVehicles = false,
+  revealVehicleSyncStatus = '',
+  onSyncRevealVehicles,
+}: EquipmentBoardProps) {
   const standardCategories = ['Machine', 'Truck', 'Trailer', 'Implement', 'Tool'];
   const discoveredCategories = starterEquipment
     .map((equipment) => equipmentCategory(equipment))
@@ -132,10 +150,38 @@ export default function EquipmentBoard({ starterEquipment, openDrawer, openModal
               <p className="text-sm font-bold text-zinc-500 mt-1">Fleet, trailers, implements, location, and service readiness</p>
             </div>
          </div>
-         <button onClick={() => openModal('equipment')} className="rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white hover:bg-jdt-dark">
-           Add Equipment
-         </button>
+         <div className="flex flex-wrap items-center gap-2">
+           {canSyncRevealVehicles && onSyncRevealVehicles && (
+             <button
+               type="button"
+               onClick={() => void onSyncRevealVehicles()}
+               disabled={isSyncingRevealVehicles}
+               className="inline-flex items-center gap-2 rounded-lg border border-jdt-border bg-white px-4 py-2.5 text-xs font-black uppercase text-jdt-text hover:border-jdt-olive disabled:cursor-not-allowed disabled:opacity-60"
+             >
+               <RefreshCw className={`h-4 w-4 ${isSyncingRevealVehicles ? 'animate-spin' : ''}`} />
+               {isSyncingRevealVehicles ? 'Syncing Verizon' : 'Sync Verizon Vehicles'}
+             </button>
+           )}
+           <button onClick={() => openModal('equipment')} className="rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white hover:bg-jdt-dark">
+             Add Equipment
+           </button>
+         </div>
       </div>
+
+      {canSyncRevealVehicles && onSyncRevealVehicles && (
+        <div className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Reveal Vehicle Sync</p>
+              <p className="mt-1 text-sm font-bold text-jdt-text">{revealVehicleSyncStatus || 'Ready to sync Verizon Reveal vehicles'}</p>
+            </div>
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-md border border-[#7C3AED] bg-[#F3E8FF] px-2.5 py-1 text-[10px] font-black uppercase text-[#4C1D95]">
+              <RefreshCw className="h-3.5 w-3.5" />
+              Reveal
+            </span>
+          </div>
+        </div>
+      )}
 
       {starterEquipment.length === 0 && (
         <div className="rounded-xl border border-dashed border-jdt-border bg-jdt-panel p-10 text-center">

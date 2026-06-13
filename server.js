@@ -6,7 +6,10 @@ import {
   handleRevealGpsWebhook,
   revealWebhookCredentialsConfigured,
 } from './server/revealTelematics.js';
-import { revealApiCredentialsConfigured } from './server/revealApi.js';
+import {
+  handleRevealVehiclesSyncRequest,
+  revealApiCredentialsConfigured,
+} from './server/revealApi.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,6 +49,35 @@ app.get('/api/integrations/reveal/api/health', (_request, response) => {
       tokenEndpointConfigured: true,
       vehicleEndpointConfigured: true,
     });
+});
+
+app.post('/api/integrations/reveal/vehicles/sync', express.json({ limit: '64kb', type: ['application/json', 'application/*+json'] }), async (request, response) => {
+  try {
+    const result = await handleRevealVehiclesSyncRequest({
+      headers: request.headers,
+      env: process.env,
+      projectId: firestoreProjectId,
+      databaseId: firestoreDatabaseId,
+      firebaseApiKey: firebaseConfig.apiKey,
+      now: new Date(),
+    });
+
+    response
+      .status(result.statusCode)
+      .type('application/json')
+      .set('Cache-Control', 'no-store')
+      .send(result.body);
+  } catch (error) {
+    console.error('Reveal vehicle sync failed', error);
+    response
+      .status(500)
+      .type('application/json')
+      .set('Cache-Control', 'no-store')
+      .send({
+        ok: false,
+        error: error instanceof Error ? error.message : 'Reveal vehicle sync failed.',
+      });
+  }
 });
 
 app.post('/api/integrations/reveal/gps', express.json({ limit: '2mb', type: ['application/json', 'application/*+json'] }), async (request, response) => {

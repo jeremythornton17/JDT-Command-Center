@@ -1157,6 +1157,33 @@ describe("work order UI wiring", () => {
     assert.match(html, /Edit/);
   });
 
+  it("shows the Reveal vehicle sync action only when source-management access is available", () => {
+    const allowedHtml = renderToString(
+      <EquipmentBoard
+        starterEquipment={[]}
+        openDrawer={() => undefined}
+        openModal={() => undefined}
+        canSyncRevealVehicles
+        revealVehicleSyncStatus="Ready to sync Verizon Reveal vehicles"
+        onSyncRevealVehicles={async () => undefined}
+      />,
+    );
+
+    assert.match(allowedHtml, /Reveal Vehicle Sync/);
+    assert.match(allowedHtml, /Sync Verizon Vehicles/);
+    assert.match(allowedHtml, /Ready to sync Verizon Reveal vehicles/);
+
+    const blockedHtml = renderToString(
+      <EquipmentBoard
+        starterEquipment={[]}
+        openDrawer={() => undefined}
+        openModal={() => undefined}
+      />,
+    );
+
+    assert.doesNotMatch(blockedHtml, /Sync Verizon Vehicles/);
+  });
+
   it("groups the equipment page by equipment category instead of status", () => {
     const equipment: EquipmentRecord[] = [
       { id: "equipment-mini-x", name: "Kubota Mini X", category: "Machine", status: "Inspection" },

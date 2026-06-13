@@ -513,6 +513,8 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [projectImportContext, setProjectImportContext] = useState<ProjectImportContext | null>(null);
+  const [isSyncingRevealVehicles, setIsSyncingRevealVehicles] = useState(false);
+  const [revealVehicleSyncStatus, setRevealVehicleSyncStatus] = useState('Ready to sync Verizon Reveal vehicles');
 
   const [jobs, setJobs] = useFirestoreSyncState<JobRecord>('jobs', [], !!user);
   const [projects, setProjects] = useFirestoreSyncState<ProjectRecord>('projects', [], !!user);
@@ -1141,6 +1143,49 @@ export default function App() {
     addToast(saved ? 'Crew update submitted' : 'Crew update could not be saved', saved ? 'success' : 'error');
   };
 
+  const handleSyncRevealVehicles = async () => {
+    if (user === null) {
+      addToast('Sign in before syncing Verizon vehicles', 'error');
+      return;
+    }
+
+    setIsSyncingRevealVehicles(true);
+    setRevealVehicleSyncStatus('Syncing Verizon Reveal vehicles...');
+
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/integrations/reveal/vehicles/sync', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ source: 'equipment-board' }),
+      });
+      const result = await response.json() as {
+        ok?: boolean;
+        fetched?: number;
+        created?: number;
+        updated?: number;
+        error?: string;
+      };
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || 'Verizon vehicle sync failed.');
+      }
+
+      const summary = `${result.fetched || 0} Verizon vehicle${result.fetched === 1 ? '' : 's'} synced: ${result.created || 0} created, ${result.updated || 0} updated.`;
+      setRevealVehicleSyncStatus(summary);
+      addToast(summary, 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Verizon vehicle sync failed.';
+      setRevealVehicleSyncStatus(message);
+      addToast(message, 'error');
+    } finally {
+      setIsSyncingRevealVehicles(false);
+    }
+  };
+
   const renderActiveBoard = () => {
     switch (activeTab) {
       case 'tracker':
@@ -1150,7 +1195,17 @@ export default function App() {
       case 'inventory':
         return <NurseryBoard starterRanchOaks={nurseryInventory} inventoryItems={inventoryItems} ranchOaks={ranchOaks} openDrawer={openDrawer} openModal={openModal} />;
       case 'equipment':
-        return <EquipmentBoard starterEquipment={equipmentWithDefaults} openDrawer={openDrawer} openModal={openModal} />;
+        return (
+          <EquipmentBoard
+            starterEquipment={equipmentWithDefaults}
+            openDrawer={openDrawer}
+            openModal={openModal}
+            canSyncRevealVehicles={permissions.canManageSources}
+            isSyncingRevealVehicles={isSyncingRevealVehicles}
+            revealVehicleSyncStatus={revealVehicleSyncStatus}
+            onSyncRevealVehicles={handleSyncRevealVehicles}
+          />
+        );
       case 'crews':
         return <CrewsBoard crews={[...staffDirectory, ...crews]} workOrders={workOrders} openModal={openModal} openDrawer={openDrawer} />;
       case 'crewView':
