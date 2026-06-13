@@ -160,6 +160,21 @@ type ModalConfig = {
   data?: CommandRecord;
 };
 
+type RevealVehicleMatchCandidate = {
+  revealVehicleId?: string;
+  revealVehicleName: string;
+  revealVehicleNumber?: string;
+  registrationNumber?: string;
+  vin?: string;
+  jdtEquipmentId?: string;
+  jdtEquipmentName?: string;
+  confidence: string;
+  status: 'matched' | 'needsReview' | 'newVehicle' | string;
+  matchField?: string;
+  matchValue?: string;
+  recommendedAction: string;
+};
+
 function upsertRecord<T extends CommandRecord>(items: T[], record: Partial<T>, fallbackPrefix: string, matcher?: (item: T) => boolean) {
   const id = record.id || makeId(fallbackPrefix);
   const existing = items.find((item) => matcher ? matcher(item) : item.id === id);
@@ -519,6 +534,9 @@ export default function App() {
   const [revealVehicleSyncStatus, setRevealVehicleSyncStatus] = useState('Ready to sync Verizon Reveal vehicles');
   const [isSyncingRevealRecommendedApis, setIsSyncingRevealRecommendedApis] = useState(false);
   const [revealRecommendedSyncStatus, setRevealRecommendedSyncStatus] = useState('Ready to sync Reveal driver, asset, geofence, inspection, GPS history, and segment APIs');
+  const [isPreviewingRevealMatches, setIsPreviewingRevealMatches] = useState(false);
+  const [revealMatchReviewStatus, setRevealMatchReviewStatus] = useState('Review Reveal vehicle matches before trusting live GPS updates.');
+  const [revealMatchCandidates, setRevealMatchCandidates] = useState<RevealVehicleMatchCandidate[]>([]);
 
   const [jobs, setJobs] = useFirestoreSyncState<JobRecord>('jobs', [], !!user);
   const [projects, setProjects] = useFirestoreSyncState<ProjectRecord>('projects', [], !!user);
@@ -1249,6 +1267,54 @@ export default function App() {
     }
   };
 
+  const handlePreviewRevealMatches = async () => {
+    if (user === null) {
+      addToast('Sign in before reviewing Reveal matches', 'error');
+      return;
+    }
+
+    setIsPreviewingRevealMatches(true);
+    setRevealMatchReviewStatus('Reviewing Reveal vehicle matches...');
+
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/integrations/reveal/vehicles/matches/preview', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ source: 'equipment-board' }),
+      });
+      const result = await response.json() as {
+        ok?: boolean;
+        fetchedRevealVehicles?: number;
+        summary?: { matched?: number; needsReview?: number; newVehicle?: number };
+        reviewCandidates?: RevealVehicleMatchCandidate[];
+        error?: string;
+      };
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || 'Reveal match preview failed.');
+      }
+
+      const candidates = result.reviewCandidates || [];
+      setRevealMatchCandidates(candidates);
+      const matched = result.summary?.matched || 0;
+      const needsReview = result.summary?.needsReview || 0;
+      const newVehicle = result.summary?.newVehicle || 0;
+      const summary = `${result.fetchedRevealVehicles || candidates.length} Reveal vehicle${(result.fetchedRevealVehicles || candidates.length) === 1 ? '' : 's'} reviewed: ${matched} approved, ${needsReview} need review, ${newVehicle} new.`;
+      setRevealMatchReviewStatus(summary);
+      addToast(summary, needsReview || newVehicle ? 'info' : 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Reveal match preview failed.';
+      setRevealMatchReviewStatus(message);
+      addToast(message, 'error');
+    } finally {
+      setIsPreviewingRevealMatches(false);
+    }
+  };
+
   const renderActiveBoard = () => {
     switch (activeTab) {
       case 'tracker':
@@ -1271,6 +1337,10 @@ export default function App() {
             isSyncingRevealRecommendedApis={isSyncingRevealRecommendedApis}
             revealRecommendedSyncStatus={revealRecommendedSyncStatus}
             onSyncRevealRecommendedApis={handleSyncRevealRecommendedApis}
+            isPreviewingRevealMatches={isPreviewingRevealMatches}
+            revealMatchReviewStatus={revealMatchReviewStatus}
+            onPreviewRevealMatches={handlePreviewRevealMatches}
+            revealMatchCandidates={revealMatchCandidates}
           />
         );
       case 'crews':

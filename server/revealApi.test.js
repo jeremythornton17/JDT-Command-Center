@@ -6,9 +6,11 @@ import {
   buildRevealEquipmentRecordForVehicle,
   buildRevealRecommendedApiFirestoreRecords,
   buildRevealRecommendedApiStatus,
+  buildRevealVehicleMatchCandidates,
   fetchRevealApiToken,
   fetchRevealConfiguredApiResource,
   fetchRevealVehicles,
+  handleRevealVehicleMatchPreviewRequest,
   handleRevealRecommendedApisSyncRequest,
   handleRevealVehiclesSyncRequest,
   normalizeRevealVehicleRecords,
@@ -250,6 +252,106 @@ describe('Reveal API helpers', () => {
     assert.equal(commit.writes[1].update.name.endsWith('/documents/equipment/equipment-reveal-veh-999'), true);
     assert.equal(commit.writes[1].update.fields.category.stringValue, 'Truck');
     assert.equal(commit.writes[1].update.fields.currentLocationName.stringValue, 'JD Thornton Nurseries Home Base');
+  });
+
+  it('builds a safe match review between Reveal vehicles and JDT equipment records', () => {
+    const candidates = buildRevealVehicleMatchCandidates([
+      {
+        providerVehicleId: 'veh-123',
+        name: 'Semi #1',
+        vehicleNumber: 'S1',
+        registrationNumber: 'ABC123',
+        vin: '1HTMMAAL0XH000001',
+      },
+      {
+        providerVehicleId: 'veh-456',
+        name: 'Chevy Colorado',
+        vehicleNumber: 'MAX',
+      },
+      {
+        providerVehicleId: 'veh-789',
+        name: 'Mystery Pickup',
+        vehicleNumber: 'MPU',
+      },
+    ], [
+      {
+        id: 'equipment-semi-1',
+        name: 'Semi #1',
+        revealVehicleId: 'veh-123',
+        vehicleNumber: 'S1',
+      },
+      {
+        id: 'equipment-chevy-colorado',
+        name: 'Chevy Colorado',
+        asset: 'Chevy Colorado',
+        vehicleNumber: 'MAX',
+      },
+    ]);
+
+    assert.deepEqual(candidates.map((candidate) => [
+      candidate.revealVehicleName,
+      candidate.jdtEquipmentId,
+      candidate.confidence,
+      candidate.status,
+      candidate.matchField,
+    ]), [
+      ['Semi #1', 'equipment-semi-1', 'Approved', 'matched', 'revealVehicleId'],
+      ['Chevy Colorado', 'equipment-chevy-colorado', 'High', 'needsReview', 'vehicleNumber'],
+      ['Mystery Pickup', '', 'New', 'newVehicle', ''],
+    ]);
+    assert.match(candidates[1].recommendedAction, /Review and approve/i);
+    assert.match(candidates[2].recommendedAction, /Create or link/i);
+    assert.doesNotMatch(JSON.stringify(candidates), /top-secret|TOKEN_VALUE|REST_JDT/i);
+  });
+
+  it('previews Reveal vehicle matches for owner admins without writing Firestore data', async () => {
+    const calls = [];
+    const result = await handleRevealVehicleMatchPreviewRequest({
+      headers: { authorization: 'Bearer OWNER_TOKEN' },
+      firebaseApiKey: 'firebase-api-key',
+      projectId: 'jdt-command-board',
+      databaseId: 'database-1',
+      env: {
+        REVEAL_API_USERNAME: 'REST_JDT@example.com',
+        REVEAL_API_PASSWORD: 'top-secret',
+        REVEAL_API_APP_ID: 'fleetmatics-p-us-app',
+        GOOGLE_OAUTH_ACCESS_TOKEN: 'GOOGLE_TOKEN',
+      },
+      fetchImpl: async (url, options = {}) => {
+        calls.push({ url: String(url), options });
+        if (String(url).includes('identitytoolkit.googleapis.com')) {
+          return responseJson({ users: [{ email: 'jeremy@jdtnurseries.com' }] });
+        }
+        if (String(url).endsWith('/token')) return responseText('TOKEN_VALUE');
+        if (String(url).endsWith('/cmd/v1/vehicles')) {
+          return responseJson([{ VehicleId: 'veh-123', Name: 'Semi #1', VehicleNumber: 'S1' }]);
+        }
+        if (String(url).includes('/documents/equipment')) {
+          return responseJson({
+            documents: [{
+              name: 'projects/jdt-command-board/databases/database-1/documents/equipment/equipment-semi-1',
+              fields: {
+                id: { stringValue: 'equipment-semi-1' },
+                name: { stringValue: 'Semi #1' },
+                vehicleNumber: { stringValue: 'S1' },
+              },
+            }],
+          });
+        }
+        throw new Error(`Unexpected URL ${url}`);
+      },
+    });
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.body.ok, true);
+    assert.equal(result.body.fetchedRevealVehicles, 1);
+    assert.equal(result.body.reviewCandidates.length, 1);
+    assert.deepEqual(result.body.summary, {
+      matched: 0,
+      needsReview: 1,
+      newVehicle: 0,
+    });
+    assert.equal(calls.some((call) => call.url.endsWith('/documents:commit')), false);
   });
 
   it('requires an owner admin Firebase user before running the live sync', async () => {

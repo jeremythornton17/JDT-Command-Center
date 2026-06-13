@@ -290,6 +290,54 @@ export function buildRevealEquipmentRecordForVehicle(vehicle, { documentId, nowI
   });
 }
 
+export function buildRevealVehicleMatchCandidates(vehicles = [], equipment = []) {
+  return vehicles.map((vehicle) => {
+    const match = bestRevealVehicleEquipmentMatch(vehicle, equipment);
+    const revealVehicleName = vehicle.name
+      || [vehicle.make, vehicle.model, vehicle.vehicleNumber].filter(Boolean).join(' ')
+      || vehicle.registrationNumber
+      || vehicle.vin
+      || vehicle.providerVehicleId
+      || 'Reveal vehicle';
+    const base = {
+      revealVehicleId: vehicle.providerVehicleId || '',
+      revealVehicleName,
+      revealVehicleNumber: vehicle.vehicleNumber || '',
+      registrationNumber: vehicle.registrationNumber || '',
+      vin: vehicle.vin || '',
+      make: vehicle.make || '',
+      model: vehicle.model || '',
+      jdtEquipmentId: match?.equipment?.id || '',
+      jdtEquipmentName: match?.equipment ? equipmentDisplayName(match.equipment) : '',
+      matchField: match?.field || '',
+      matchValue: match?.value || '',
+    };
+
+    if (!match) {
+      return {
+        ...base,
+        confidence: 'New',
+        status: 'newVehicle',
+        recommendedAction: 'Create or link this Reveal vehicle to a JDT equipment record before relying on live GPS updates.',
+      };
+    }
+
+    const approved = match.field === 'revealVehicleId'
+      || match.field === 'verizonVehicleId'
+      || Boolean(match.equipment.revealVehicleId && vehicle.providerVehicleId && match.equipment.revealVehicleId === vehicle.providerVehicleId)
+      || Boolean(match.equipment.verizonVehicleId && vehicle.providerVehicleId && match.equipment.verizonVehicleId === vehicle.providerVehicleId);
+
+    return {
+      ...base,
+      confidence: approved ? 'Approved' : match.confidence,
+      status: approved ? 'matched' : 'needsReview',
+      recommendedAction: approved
+        ? 'Approved match. Reveal can update this JDT equipment record.'
+        : 'Review and approve this match before allowing Reveal to update this JDT equipment record.',
+    };
+  });
+}
+
 export async function handleRevealVehiclesSyncRequest({
   headers = {},
   env = process.env,
@@ -319,6 +367,51 @@ export async function handleRevealVehiclesSyncRequest({
   return {
     statusCode: 200,
     body: { ok: true, actorEmail: verification.email, ...result },
+  };
+}
+
+export async function handleRevealVehicleMatchPreviewRequest({
+  headers = {},
+  env = process.env,
+  fetchImpl = globalThis.fetch,
+  projectId,
+  databaseId,
+  firebaseApiKey,
+} = {}) {
+  const verification = await verifyRevealSyncAdminRequest({ headers, env, fetchImpl, firebaseApiKey });
+  if (!verification.ok) {
+    return {
+      statusCode: verification.statusCode,
+      body: { ok: false, error: verification.error },
+    };
+  }
+
+  const [vehicles, equipment] = await Promise.all([
+    fetchRevealVehicles({ env, fetchImpl }),
+    fetchFirestoreCollection({
+      collectionId: 'equipment',
+      env,
+      fetchImpl,
+      projectId,
+      databaseId,
+    }),
+  ]);
+  const reviewCandidates = buildRevealVehicleMatchCandidates(vehicles, equipment);
+
+  return {
+    statusCode: 200,
+    body: {
+      ok: true,
+      actorEmail: verification.email,
+      fetchedRevealVehicles: vehicles.length,
+      equipmentRecords: equipment.length,
+      summary: {
+        matched: reviewCandidates.filter((candidate) => candidate.status === 'matched').length,
+        needsReview: reviewCandidates.filter((candidate) => candidate.status === 'needsReview').length,
+        newVehicle: reviewCandidates.filter((candidate) => candidate.status === 'newVehicle').length,
+      },
+      reviewCandidates,
+    },
   };
 }
 
@@ -578,6 +671,65 @@ function revealVehicleEquipmentMatchCandidates(vehicle) {
     seen.add(key);
     return true;
   }).map(([field, value]) => [field, coerceText(value)]);
+}
+
+function bestRevealVehicleEquipmentMatch(vehicle, equipment = []) {
+  const specs = [
+    { field: 'revealVehicleId', confidence: 'Approved', vehicleValue: vehicle.providerVehicleId, equipmentFields: ['revealVehicleId', 'verizonVehicleId'] },
+    { field: 'verizonVehicleId', confidence: 'Approved', vehicleValue: vehicle.providerVehicleId, equipmentFields: ['verizonVehicleId', 'revealVehicleId'] },
+    { field: 'vehicleNumber', confidence: 'High', vehicleValue: vehicle.vehicleNumber, equipmentFields: ['revealVehicleNumber', 'vehicleNumber', 'assetId'] },
+    { field: 'registrationNumber', confidence: 'High', vehicleValue: vehicle.registrationNumber, equipmentFields: ['registrationNumber', 'tag', 'licensePlate'] },
+    { field: 'vin', confidence: 'High', vehicleValue: vehicle.vin, equipmentFields: ['vin'] },
+    { field: 'name', confidence: 'Medium', vehicleValue: vehicle.name, equipmentFields: ['name', 'asset', 'title'] },
+  ];
+
+  for (const spec of specs) {
+    const matchValue = cleanComparable(spec.vehicleValue);
+    if (!matchValue) continue;
+    for (const item of equipment) {
+      const matchedField = spec.equipmentFields.find((field) => cleanComparable(item?.[field]) === matchValue);
+      if (matchedField) {
+        return {
+          equipment: item,
+          field: spec.field,
+          equipmentField: matchedField,
+          value: coerceText(spec.vehicleValue) || '',
+          confidence: spec.confidence,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function equipmentDisplayName(equipment) {
+  return coerceText(equipment?.name)
+    || coerceText(equipment?.title)
+    || coerceText(equipment?.asset)
+    || coerceText(equipment?.vehicleNumber)
+    || coerceText(equipment?.assetId)
+    || coerceText(equipment?.id)
+    || 'JDT equipment';
+}
+
+async function fetchFirestoreCollection({ collectionId, env, fetchImpl, projectId, databaseId }) {
+  const accessToken = await getGoogleAccessToken({ env, fetchImpl });
+  const response = await firestoreRequest({
+    method: 'GET',
+    path: `documents/${encodeURIComponent(collectionId)}?pageSize=300`,
+    accessToken,
+    projectId,
+    databaseId,
+    fetchImpl,
+  });
+
+  return Array.isArray(response?.documents)
+    ? response.documents.map((document) => ({
+      id: firestoreDocumentId(document.name),
+      ...fromFirestoreFields(document.fields || {}),
+    }))
+    : [];
 }
 
 function revealApiStatusItem(definition, env) {
@@ -1016,6 +1168,25 @@ function toFirestoreValue(value) {
   }
 }
 
+function fromFirestoreFields(fields) {
+  return Object.fromEntries(
+    Object.entries(fields || {}).map(([key, value]) => [key, fromFirestoreValue(value)]),
+  );
+}
+
+function fromFirestoreValue(value) {
+  if (!value || typeof value !== 'object') return undefined;
+  if ('stringValue' in value) return value.stringValue;
+  if ('integerValue' in value) return Number(value.integerValue);
+  if ('doubleValue' in value) return Number(value.doubleValue);
+  if ('booleanValue' in value) return Boolean(value.booleanValue);
+  if ('timestampValue' in value) return value.timestampValue;
+  if ('nullValue' in value) return null;
+  if ('arrayValue' in value) return (value.arrayValue.values || []).map(fromFirestoreValue);
+  if ('mapValue' in value) return fromFirestoreFields(value.mapValue.fields || {});
+  return undefined;
+}
+
 function stripTokenEnvelope(value) {
   const text = String(value || '').trim();
   if (!text) return '';
@@ -1077,6 +1248,10 @@ function coerceNumber(value) {
   if (!hasValue(value)) return undefined;
   const numberValue = Number(String(value).replace(/,/g, '').trim());
   return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function cleanComparable(value) {
+  return String(coerceText(value) || '').trim().toLowerCase();
 }
 
 function stripUndefined(record) {

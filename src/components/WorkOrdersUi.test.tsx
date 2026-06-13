@@ -1233,12 +1233,33 @@ describe("work order UI wiring", () => {
         onSyncRevealVehicles={async () => undefined}
         revealRecommendedSyncStatus="Ready to sync Reveal driver, asset, geofence, inspection, GPS history, and segment APIs"
         onSyncRevealRecommendedApis={async () => undefined}
+        revealMatchReviewStatus="2 Reveal vehicles need review before live GPS is trusted"
+        onPreviewRevealMatches={async () => undefined}
+        revealMatchCandidates={[
+          {
+            revealVehicleId: "veh-123",
+            revealVehicleName: "Semi #1",
+            revealVehicleNumber: "S1",
+            jdtEquipmentId: "equipment-semi-1",
+            jdtEquipmentName: "Semi #1",
+            confidence: "High",
+            status: "needsReview",
+            matchField: "vehicleNumber",
+            matchValue: "S1",
+            recommendedAction: "Review and approve this match before allowing Reveal to update this JDT equipment record.",
+          },
+        ]}
       />,
     );
 
     assert.match(allowedHtml, /Reveal Vehicle Sync/);
     assert.match(allowedHtml, /Sync Verizon Vehicles/);
     assert.match(allowedHtml, /Sync Reveal APIs/);
+    assert.match(allowedHtml, /Review Reveal Matches/);
+    assert.match(allowedHtml, /2 Reveal vehicles need review/);
+    assert.match(allowedHtml, /Reveal Match Review/);
+    assert.match(allowedHtml, /Semi #1/);
+    assert.match(allowedHtml, /vehicleNumber/);
     assert.match(allowedHtml, /driver, asset, geofence, inspection, GPS history, and segment APIs/);
     assert.match(allowedHtml, /Ready to sync Verizon Reveal vehicles/);
 
@@ -1252,6 +1273,7 @@ describe("work order UI wiring", () => {
 
     assert.doesNotMatch(blockedHtml, /Sync Verizon Vehicles/);
     assert.doesNotMatch(blockedHtml, /Sync Reveal APIs/);
+    assert.doesNotMatch(blockedHtml, /Review Reveal Matches/);
   });
 
   it("shows Reveal GPS freshness on the equipment page", () => {

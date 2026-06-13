@@ -111,6 +111,25 @@ type EquipmentBoardProps = {
   isSyncingRevealRecommendedApis?: boolean;
   revealRecommendedSyncStatus?: string;
   onSyncRevealRecommendedApis?: () => void | Promise<void>;
+  isPreviewingRevealMatches?: boolean;
+  revealMatchReviewStatus?: string;
+  onPreviewRevealMatches?: () => void | Promise<void>;
+  revealMatchCandidates?: RevealVehicleMatchCandidate[];
+};
+
+type RevealVehicleMatchCandidate = {
+  revealVehicleId?: string;
+  revealVehicleName: string;
+  revealVehicleNumber?: string;
+  registrationNumber?: string;
+  vin?: string;
+  jdtEquipmentId?: string;
+  jdtEquipmentName?: string;
+  confidence: string;
+  status: 'matched' | 'needsReview' | 'newVehicle' | string;
+  matchField?: string;
+  matchValue?: string;
+  recommendedAction: string;
 };
 
 export default function EquipmentBoard({
@@ -125,6 +144,10 @@ export default function EquipmentBoard({
   isSyncingRevealRecommendedApis = false,
   revealRecommendedSyncStatus = '',
   onSyncRevealRecommendedApis,
+  isPreviewingRevealMatches = false,
+  revealMatchReviewStatus = '',
+  onPreviewRevealMatches,
+  revealMatchCandidates = [],
 }: EquipmentBoardProps) {
   const standardCategories = ['Machine', 'Truck', 'Trailer', 'Implement', 'Tool'];
   const discoveredCategories = starterEquipment
@@ -153,6 +176,10 @@ export default function EquipmentBoard({
     equipment: starterEquipment,
     events: fleetTelematicsEvents,
   });
+  const revealMatchSummary = revealMatchCandidates.reduce((acc: Record<string, number>, candidate) => {
+    acc[candidate.status] = (acc[candidate.status] || 0) + 1;
+    return acc;
+  }, {});
 
   return (
     <div className="space-y-8">
@@ -187,6 +214,17 @@ export default function EquipmentBoard({
                {isSyncingRevealRecommendedApis ? 'Syncing Reveal APIs' : 'Sync Reveal APIs'}
              </button>
            )}
+           {canSyncRevealVehicles && onPreviewRevealMatches && (
+             <button
+               type="button"
+               onClick={() => void onPreviewRevealMatches()}
+               disabled={isPreviewingRevealMatches}
+               className="inline-flex items-center gap-2 rounded-lg border border-[#0E7490] bg-[#E0F7FA] px-4 py-2.5 text-xs font-black uppercase text-[#155E75] hover:border-[#155E75] disabled:cursor-not-allowed disabled:opacity-60"
+             >
+               <RefreshCw className={`h-4 w-4 ${isPreviewingRevealMatches ? 'animate-spin' : ''}`} />
+               {isPreviewingRevealMatches ? 'Reviewing Matches' : 'Review Reveal Matches'}
+             </button>
+           )}
            <button onClick={() => openModal('equipment')} className="rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white hover:bg-jdt-dark">
              Add Equipment
            </button>
@@ -202,11 +240,57 @@ export default function EquipmentBoard({
               {onSyncRevealRecommendedApis && (
                 <p className="mt-1 text-xs font-bold text-zinc-500">{revealRecommendedSyncStatus || 'Ready to sync Reveal driver, asset, geofence, inspection, GPS history, and segment APIs'}</p>
               )}
+              {onPreviewRevealMatches && (
+                <p className="mt-1 text-xs font-black text-[#155E75]">{revealMatchReviewStatus || 'Review Reveal vehicle matches before trusting live GPS updates.'}</p>
+              )}
             </div>
             <span className="inline-flex w-fit items-center gap-1.5 rounded-md border border-[#7C3AED] bg-[#F3E8FF] px-2.5 py-1 text-[10px] font-black uppercase text-[#4C1D95]">
               <RefreshCw className="h-3.5 w-3.5" />
               Reveal
             </span>
+          </div>
+        </div>
+      )}
+
+      {canSyncRevealVehicles && revealMatchCandidates.length > 0 && (
+        <div className="rounded-xl border border-[#0E7490] bg-[#ECFEFF] p-4 text-[#155E75]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] opacity-75">Reveal Match Review</p>
+              <p className="mt-1 text-sm font-black">
+                {`${revealMatchCandidates.length} Reveal vehicle${revealMatchCandidates.length === 1 ? '' : 's'} reviewed`}
+              </p>
+              <p className="mt-1 text-xs font-bold opacity-80">Approve high-confidence matches before letting Reveal update JDT equipment records automatically.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-md border border-[#99F6E4] bg-white/80 px-2.5 py-1 text-[10px] font-black uppercase">Matched {revealMatchSummary.matched || 0}</span>
+              <span className="rounded-md border border-[#FDE68A] bg-white/80 px-2.5 py-1 text-[10px] font-black uppercase">Needs Review {revealMatchSummary.needsReview || 0}</span>
+              <span className="rounded-md border border-[#CBD5E1] bg-white/80 px-2.5 py-1 text-[10px] font-black uppercase">New {revealMatchSummary.newVehicle || 0}</span>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            {revealMatchCandidates.map((candidate) => (
+              <article key={`${candidate.revealVehicleId || candidate.revealVehicleName}-${candidate.jdtEquipmentId || 'new'}`} className="rounded-lg border border-[#BAE6FD] bg-white p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-jdt-text">{candidate.revealVehicleName}</p>
+                    <p className="mt-1 text-[10px] font-black uppercase text-zinc-500">
+                      Reveal {candidate.revealVehicleNumber || candidate.revealVehicleId || 'No unit number'}
+                    </p>
+                  </div>
+                  <span className={`rounded border px-2 py-1 text-[9px] font-black uppercase ${candidate.status === 'matched' ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : candidate.status === 'needsReview' ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-slate-300 bg-slate-50 text-slate-700'}`}>
+                    {candidate.confidence}
+                  </span>
+                </div>
+                <div className="mt-3 rounded-md border border-jdt-border bg-jdt-panel px-3 py-2">
+                  <p className="text-[9px] font-black uppercase text-zinc-400">JDT Equipment Match</p>
+                  <p className="text-xs font-black text-jdt-text">{candidate.jdtEquipmentName || 'No JDT equipment match yet'}</p>
+                  {candidate.matchField && <p className="mt-1 text-[10px] font-bold text-zinc-500">{candidate.matchField}: {candidate.matchValue || '-'}</p>}
+                </div>
+                <p className="mt-2 text-xs font-bold leading-snug text-[#155E75]">{candidate.recommendedAction}</p>
+              </article>
+            ))}
           </div>
         </div>
       )}

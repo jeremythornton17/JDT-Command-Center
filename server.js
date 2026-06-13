@@ -11,6 +11,7 @@ import {
 import {
   buildRevealRecommendedApiStatus,
   handleRevealRecommendedApisSyncRequest,
+  handleRevealVehicleMatchPreviewRequest,
   handleRevealVehiclesSyncRequest,
   revealApiCredentialsConfigured,
 } from './server/revealApi.js';
@@ -84,6 +85,34 @@ app.post('/api/integrations/reveal/vehicles/sync', express.json({ limit: '64kb',
       .send({
         ok: false,
         error: error instanceof Error ? error.message : 'Reveal vehicle sync failed.',
+      });
+  }
+});
+
+app.post('/api/integrations/reveal/vehicles/matches/preview', express.json({ limit: '64kb', type: ['application/json', 'application/*+json'] }), async (request, response) => {
+  try {
+    const result = await handleRevealVehicleMatchPreviewRequest({
+      headers: request.headers,
+      env: process.env,
+      projectId: firestoreProjectId,
+      databaseId: firestoreDatabaseId,
+      firebaseApiKey: firebaseConfig.apiKey,
+    });
+
+    response
+      .status(result.statusCode)
+      .type('application/json')
+      .set('Cache-Control', 'no-store')
+      .send(result.body);
+  } catch (error) {
+    console.error('Reveal vehicle match preview failed', error);
+    response
+      .status(500)
+      .type('application/json')
+      .set('Cache-Control', 'no-store')
+      .send({
+        ok: false,
+        error: error instanceof Error ? error.message : 'Reveal vehicle match preview failed.',
       });
   }
 });

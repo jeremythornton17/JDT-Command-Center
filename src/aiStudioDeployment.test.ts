@@ -30,8 +30,10 @@ describe("AI Studio deployment source guard", () => {
   it("exposes the Reveal recommended API sync and alert webhook routes from Cloud Run", () => {
     const serverSource = readProjectFile("server.js");
 
+    assert.match(serverSource, /\/api\/integrations\/reveal\/vehicles\/matches\/preview/);
     assert.match(serverSource, /\/api\/integrations\/reveal\/recommended\/sync/);
     assert.match(serverSource, /\/api\/integrations\/reveal\/alerts/);
+    assert.match(serverSource, /handleRevealVehicleMatchPreviewRequest/);
     assert.match(serverSource, /handleRevealRecommendedApisSyncRequest/);
     assert.match(serverSource, /handleRevealAlertWebhook/);
   });
