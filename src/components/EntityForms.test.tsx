@@ -171,6 +171,38 @@ test('document forms expose proof and compliance metadata fields', () => {
   assert.match(html, /Review Status/);
 });
 
+test('equipment forms expose Reveal-compatible tracking identity fields for future asset trackers', () => {
+  const html = renderToString(
+    <EntityForms
+      type="equipment"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{
+        name: 'Black Lowboy',
+        category: 'Trailer',
+        revealTrackingStatus: 'Requested',
+      }}
+    />,
+  );
+
+  assert.match(html, /Reveal Tracking/);
+  assert.match(html, /Tracking Status/);
+  assert.match(html, /Not Tracked/);
+  assert.match(html, /Requested/);
+  assert.match(html, /Tracker Installed/);
+  assert.match(html, /Synced/);
+  assert.match(html, /Needs Review/);
+  assert.match(html, /Reveal Table/);
+  assert.match(html, /Unit-1.0/);
+  assert.match(html, /NonPoweredAsset-1.0/);
+  assert.match(html, /Reveal Unit ID/);
+  assert.match(html, /Reveal Unit Tag/);
+  assert.match(html, /Reveal Asset ID/);
+  assert.match(html, /Reveal Asset Number/);
+  assert.match(html, /Tracker Install Date/);
+});
+
 test('project forms expose a default root pruning period for relocation timing', () => {
   const html = renderToString(
     <EntityForms

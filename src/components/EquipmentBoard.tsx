@@ -2,7 +2,14 @@ import React, { useState } from 'react';
 import { Wrench, MapPin, UserCheck, AlertTriangle, Clock, Activity, QrCode, ClipboardList, PenTool, RefreshCw, LocateFixed } from 'lucide-react';
 import { complianceBadgeClass, vehicleComplianceSummary, type ComplianceStatus } from '../commandCenter/compliance';
 import type { FleetTelematicsEventRecord } from '../commandCenter/records';
-import { equipmentCategory, equipmentCategoryOptions, equipmentDisplayName } from '../commandCenter/equipmentFreight';
+import {
+  buildRevealSyncPreviewRows,
+  equipmentCategory,
+  equipmentCategoryOptions,
+  equipmentDisplayName,
+  revealTableIdForEquipment,
+  revealTrackingStatusForEquipment,
+} from '../commandCenter/equipmentFreight';
 import { buildRevealIntegrationStatus } from '../commandCenter/telematicsIntelligence';
 import { categoryAccentBorderClass, riskSurfaceClass, statusPillClass } from '../commandCenter/visualLanguage';
 import { CategoryIcon } from './CategoryIcon';
@@ -210,6 +217,11 @@ export default function EquipmentBoard({
     && candidate.status !== 'newVehicle'
     && candidate.confidence !== 'Approved'
   ));
+  const revealSyncPreviewRows = buildRevealSyncPreviewRows(starterEquipment);
+  const revealSyncPreviewSummary = revealSyncPreviewRows.reduce((acc: Record<string, number>, row) => {
+    acc[row.action] = (acc[row.action] || 0) + 1;
+    return acc;
+  }, {});
 
   return (
     <div className="space-y-8">
@@ -302,6 +314,57 @@ export default function EquipmentBoard({
               <RefreshCw className="h-3.5 w-3.5" />
               Reveal
             </span>
+          </div>
+        </div>
+      )}
+
+      {canSyncRevealVehicles && revealSyncPreviewRows.length > 0 && (
+        <div className="rounded-xl border border-[#7C3AED] bg-[#FAF5FF] p-4 text-[#4C1D95]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] opacity-75">Reveal-Compatible Asset Setup</p>
+              <p className="mt-1 text-sm font-black">Preview vehicle, equipment, and trailer tracker readiness before any outbound Reveal changes.</p>
+              <p className="mt-1 text-xs font-bold opacity-80">JDT stays the source record; Reveal IDs attach here once trackers are installed.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {['Matched To Reveal', 'Tracker Requested', 'Ready For Tracker Request', 'Needs JDT Details'].map((action) => (
+                <span key={action} className="rounded-md border border-[#C4B5FD] bg-white/80 px-2.5 py-1 text-[9px] font-black uppercase">
+                  {action} {revealSyncPreviewSummary[action] || 0}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            {revealSyncPreviewRows.map((row) => (
+              <article key={`${row.equipmentId}-${row.revealTableId}`} className="rounded-lg border border-[#DDD6FE] bg-white p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-jdt-text">{row.equipmentName}</p>
+                    <p className="mt-1 text-[10px] font-black uppercase text-zinc-500">{row.category} - {row.revealTableId}</p>
+                  </div>
+                  <span className="rounded border border-[#A78BFA] bg-[#F3E8FF] px-2 py-1 text-[9px] font-black uppercase text-[#4C1D95]">
+                    {row.action}
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <div className="rounded-md border border-jdt-border bg-jdt-panel px-2 py-1.5">
+                    <p className="text-[9px] font-black uppercase text-zinc-400">Tracking Status</p>
+                    <p className="text-xs font-black text-jdt-text">{row.trackingStatus}</p>
+                  </div>
+                  <div className="rounded-md border border-jdt-border bg-jdt-panel px-2 py-1.5">
+                    <p className="text-[9px] font-black uppercase text-zinc-400">Reveal Tag</p>
+                    <p className="text-xs font-black text-jdt-text">{row.proposedRevealTag}</p>
+                  </div>
+                  <div className="rounded-md border border-jdt-border bg-jdt-panel px-2 py-1.5">
+                    <p className="text-[9px] font-black uppercase text-zinc-400">Duplicate Key</p>
+                    <p className="text-xs font-black text-jdt-text">{row.duplicateProtectionKey}</p>
+                  </div>
+                </div>
+                {row.missing.length > 0 && (
+                  <p className="mt-2 text-xs font-bold text-amber-800">Needs: {row.missing.join(', ')}</p>
+                )}
+              </article>
+            ))}
           </div>
         </div>
       )}
@@ -456,6 +519,8 @@ export default function EquipmentBoard({
                      const detailValue = equipmentDetailValue(eq, assetCategory);
                      const showRuntime = showRuntimePanel(eq, assetCategory);
                      const dispatchCompatibility = compatibilityGroups(eq, assetCategory);
+                     const revealTrackingStatus = revealTrackingStatusForEquipment(eq);
+                     const revealTableId = revealTableIdForEquipment(eq);
                      return (
                      <article key={eq.id} className={`rounded-xl border border-jdt-border border-l-4 bg-jdt-panel shadow-sm overflow-hidden flex flex-col pt-1 group hover:border-zinc-400 transition-colors ${categoryAccentBorderClass('equipment')}`}>
                         {(eq.status === 'Down' || eq.status === 'Inspection' || Number(eq.serviceDueHours ?? Number.POSITIVE_INFINITY) < 100) && (
@@ -543,6 +608,18 @@ export default function EquipmentBoard({
                                 </div>
                               </div>
                            )}
+                           <div className="mt-4 rounded-lg border border-[#DDD6FE] bg-[#FAF5FF] p-3 text-[#4C1D95]">
+                             <p className="text-[10px] font-black uppercase opacity-75">Tracking Status</p>
+                             <div className="mt-2 flex flex-wrap gap-1.5">
+                               <span className="rounded border border-[#A78BFA] bg-white px-2 py-1 text-[9px] font-black uppercase">{revealTrackingStatus}</span>
+                               <span className="rounded border border-[#C4B5FD] bg-white px-2 py-1 text-[9px] font-black uppercase">{revealTableId}</span>
+                               {(eq.revealUnitId || eq.revealAssetId || eq.revealVehicleId) && (
+                                 <span className="rounded border border-[#C4B5FD] bg-white px-2 py-1 text-[9px] font-black uppercase">
+                                   ID: {eq.revealUnitId || eq.revealAssetId || eq.revealVehicleId}
+                                 </span>
+                               )}
+                             </div>
+                           </div>
                            {(assetCategory === 'Machine' && eq.attachedImplementNames?.length) && (
                               <div className="mt-4 rounded-lg border border-jdt-border bg-white p-3">
                                 <p className="text-[10px] font-black uppercase text-zinc-500">Attached Implements</p>

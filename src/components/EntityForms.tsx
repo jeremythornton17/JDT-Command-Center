@@ -11,6 +11,7 @@ import {
   implementTypeOptions,
   jdtHomeBase,
   normalizeDelimitedList as normalizeResourceList,
+  revealTrackingStatusOptions,
   supportTypeOptions,
   trailerMaintenanceCategoryOptions,
   trailerTypeOptions,
@@ -91,6 +92,8 @@ const workOrderStatusOptions = ['Draft', 'Ready', 'Scheduled', 'Active', 'Blocke
 const workOrderPriorityOptions = ['Low', 'Normal', 'High', 'Urgent', 'Critical'];
 const crewAssignmentTypeOptions = ['general_task', 'tree_pruning', 'treatment_aftercare', 'move_readiness', 'daily_field_update', 'change_order', 'billing_milestone'];
 const projectTreeFormTypes = new Set(['project_tree_asset', 'project_tree_pruning', 'project_tree_aftercare', 'project_tree_photo']);
+const revealTableOptions = ['Unit-1.0', 'NonPoweredAsset-1.0'];
+const revealAssetTypeOptions = ['Unit', 'NonPoweredAsset'];
 
 function usesRentalEquipment(formData: Record<string, unknown>) {
   const source = String(formData.equipmentSource || '').toLowerCase();
@@ -482,6 +485,14 @@ const fieldSets: Record<string, FieldConfig[]> = {
     { key: 'assetId', label: 'Asset ID' },
     { key: 'category', label: 'Category', type: 'select', options: equipmentCategoryOptions },
     { key: 'status', label: 'Status', type: 'select', options: equipmentStatusOptions },
+    { key: 'revealTrackingStatus', label: 'Tracking Status', type: 'select', options: revealTrackingStatusOptions, defaultValue: 'Not Tracked', section: 'Reveal Tracking' },
+    { key: 'revealTableId', label: 'Reveal Table', type: 'select', options: revealTableOptions },
+    { key: 'revealAssetType', label: 'Reveal Asset Type', type: 'select', options: revealAssetTypeOptions },
+    { key: 'revealUnitId', label: 'Reveal Unit ID' },
+    { key: 'revealUnitTag', label: 'Reveal Unit Tag' },
+    { key: 'revealAssetId', label: 'Reveal Asset ID' },
+    { key: 'revealAssetNumber', label: 'Reveal Asset Number' },
+    { key: 'revealTrackerInstallDate', label: 'Tracker Install Date', type: 'date' },
     { key: 'eqType', label: 'Equipment Type', type: 'select', options: equipmentTypeOptions, section: 'Category Details', showWhen: isMachineProfile },
     { key: 'truckType', label: 'Truck Type', type: 'select', options: truckTypeOptions, section: 'Category Details', showWhen: isTruckProfile },
     { key: 'trailerType', label: 'Trailer Type', type: 'select', options: trailerTypeOptions, section: 'Category Details', showWhen: isTrailerProfile },

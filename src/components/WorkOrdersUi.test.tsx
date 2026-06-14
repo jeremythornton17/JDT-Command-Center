@@ -1295,6 +1295,50 @@ describe("work order UI wiring", () => {
     assert.match(html, /Latest GPS/);
   });
 
+  it("shows Reveal-compatible tracking readiness for vehicles, equipment, and trailers", () => {
+    const html = renderToString(
+      <EquipmentBoard
+        starterEquipment={[
+          {
+            id: "equipment-colorado",
+            name: "Chevy Colorado",
+            category: "Truck",
+            revealVehicleId: "6358051",
+            vehicleNumber: "4",
+          },
+          {
+            id: "equipment-loader",
+            name: "Komatsu 500 - 1",
+            category: "Machine",
+            revealTrackingStatus: "Requested",
+            currentLocationName: "Main Office",
+            currentLocation: "1010 E Sugarland Hwy, Clewiston, FL 33440",
+          },
+          {
+            id: "equipment-lowboy",
+            name: "Black Lowboy",
+            category: "Trailer",
+            currentLocationName: "Main Office",
+            currentLocation: "1010 E Sugarland Hwy, Clewiston, FL 33440",
+          },
+        ]}
+        openDrawer={() => undefined}
+        openModal={() => undefined}
+        canSyncRevealVehicles
+        onSyncRevealVehicles={async () => undefined}
+      />,
+    );
+
+    assert.match(html, /Reveal-Compatible Asset Setup/);
+    assert.match(html, /Matched To Reveal/);
+    assert.match(html, /Tracker Requested/);
+    assert.match(html, /Ready For Tracker Request/);
+    assert.match(html, /Unit-1.0/);
+    assert.match(html, /NonPoweredAsset-1.0/);
+    assert.match(html, /Black Lowboy/);
+    assert.match(html, /Tracking Status/);
+  });
+
   it("groups the equipment page by equipment category instead of status", () => {
     const equipment: EquipmentRecord[] = [
       { id: "equipment-mini-x", name: "Kubota Mini X", category: "Machine", status: "Inspection" },

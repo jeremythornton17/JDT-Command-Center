@@ -305,6 +305,11 @@ export function buildRevealEquipmentRecordForVehicle(vehicle, { documentId, nowI
   return stripUndefined({
     ...(createNew ? baseRecord : { id: documentId || revealEquipmentDocumentId(vehicle) }),
     telematicsProvider: 'Reveal',
+    revealTableId: 'Unit-1.0',
+    revealAssetType: 'Unit',
+    revealUnitId: vehicle.providerVehicleId,
+    revealUnitTag: vehicle.vehicleNumber,
+    revealTrackingStatus: 'Synced',
     revealVehicleId: vehicle.providerVehicleId,
     verizonVehicleId: vehicle.providerVehicleId,
     revealVehicleNumber: vehicle.vehicleNumber,
@@ -352,8 +357,12 @@ export function buildRevealVehicleMatchCandidates(vehicles = [], equipment = [])
 
     const approved = match.field === 'revealVehicleId'
       || match.field === 'verizonVehicleId'
+      || match.field === 'revealUnitId'
+      || match.field === 'revealAssetId'
       || Boolean(match.equipment.revealVehicleId && vehicle.providerVehicleId && match.equipment.revealVehicleId === vehicle.providerVehicleId)
-      || Boolean(match.equipment.verizonVehicleId && vehicle.providerVehicleId && match.equipment.verizonVehicleId === vehicle.providerVehicleId);
+      || Boolean(match.equipment.verizonVehicleId && vehicle.providerVehicleId && match.equipment.verizonVehicleId === vehicle.providerVehicleId)
+      || Boolean(match.equipment.revealUnitId && vehicle.providerVehicleId && match.equipment.revealUnitId === vehicle.providerVehicleId)
+      || Boolean(match.equipment.revealAssetId && vehicle.providerVehicleId && match.equipment.revealAssetId === vehicle.providerVehicleId);
 
     return {
       ...base,
@@ -969,8 +978,12 @@ async function findMatchingEquipmentDocumentForRevealVehicle({ vehicle, accessTo
 
 function revealVehicleEquipmentMatchCandidates(vehicle) {
   const candidates = [
+    ['revealUnitId', vehicle.providerVehicleId],
+    ['revealAssetId', vehicle.providerVehicleId],
     ['revealVehicleId', vehicle.providerVehicleId],
     ['verizonVehicleId', vehicle.providerVehicleId],
+    ['revealUnitTag', vehicle.vehicleNumber],
+    ['revealAssetNumber', vehicle.vehicleNumber],
     ['revealVehicleNumber', vehicle.vehicleNumber],
     ['vehicleNumber', vehicle.vehicleNumber],
     ['registrationNumber', vehicle.registrationNumber],
@@ -991,8 +1004,12 @@ function revealVehicleEquipmentMatchCandidates(vehicle) {
 
 function bestRevealVehicleEquipmentMatch(vehicle, equipment = []) {
   const specs = [
+    { field: 'revealUnitId', confidence: 'Approved', vehicleValue: vehicle.providerVehicleId, equipmentFields: ['revealUnitId'] },
+    { field: 'revealAssetId', confidence: 'Approved', vehicleValue: vehicle.providerVehicleId, equipmentFields: ['revealAssetId'] },
     { field: 'revealVehicleId', confidence: 'Approved', vehicleValue: vehicle.providerVehicleId, equipmentFields: ['revealVehicleId', 'verizonVehicleId'] },
     { field: 'verizonVehicleId', confidence: 'Approved', vehicleValue: vehicle.providerVehicleId, equipmentFields: ['verizonVehicleId', 'revealVehicleId'] },
+    { field: 'revealUnitTag', confidence: 'High', vehicleValue: vehicle.vehicleNumber, equipmentFields: ['revealUnitTag'] },
+    { field: 'revealAssetNumber', confidence: 'High', vehicleValue: vehicle.vehicleNumber, equipmentFields: ['revealAssetNumber'] },
     { field: 'vehicleNumber', confidence: 'High', vehicleValue: vehicle.vehicleNumber, equipmentFields: ['revealVehicleNumber', 'vehicleNumber', 'assetId'] },
     { field: 'registrationNumber', confidence: 'High', vehicleValue: vehicle.registrationNumber, equipmentFields: ['registrationNumber', 'tag', 'licensePlate'] },
     { field: 'vin', confidence: 'High', vehicleValue: vehicle.vin, equipmentFields: ['vin'] },

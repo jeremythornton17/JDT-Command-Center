@@ -176,6 +176,11 @@ describe('Reveal API helpers', () => {
     assert.equal(record.verizonVehicleId, 'veh-123');
     assert.equal(record.revealVehicleNumber, 'S1');
     assert.equal(record.vehicleNumber, 'S1');
+    assert.equal(record.revealTableId, 'Unit-1.0');
+    assert.equal(record.revealAssetType, 'Unit');
+    assert.equal(record.revealUnitId, 'veh-123');
+    assert.equal(record.revealUnitTag, 'S1');
+    assert.equal(record.revealTrackingStatus, 'Synced');
     assert.equal(record.registrationNumber, 'ABC123');
     assert.equal(record.vin, '1HTMMAAL0XH000001');
     assert.equal(record.currentLocationName, 'JD Thornton Nurseries Home Base');
@@ -246,7 +251,12 @@ describe('Reveal API helpers', () => {
     assert.deepEqual(commit.writes[0].updateMask.fieldPaths.sort(), [
       'make',
       'registrationNumber',
+      'revealAssetType',
       'revealSyncedAt',
+      'revealTableId',
+      'revealTrackingStatus',
+      'revealUnitId',
+      'revealUnitTag',
       'revealVehicleId',
       'revealVehicleNumber',
       'telematicsProvider',
@@ -307,6 +317,47 @@ describe('Reveal API helpers', () => {
     assert.match(candidates[1].recommendedAction, /Review and approve/i);
     assert.match(candidates[2].recommendedAction, /Create or link/i);
     assert.doesNotMatch(JSON.stringify(candidates), /top-secret|TOKEN_VALUE|REST_JDT/i);
+  });
+
+  it('matches future Reveal tracker identities to existing JDT assets before creating duplicates', () => {
+    const candidates = buildRevealVehicleMatchCandidates([
+      {
+        providerVehicleId: 'unit-komatsu-500-1',
+        name: 'Komatsu 500 - 1',
+        vehicleNumber: 'K500-1',
+      },
+      {
+        providerVehicleId: 'asset-black-lowboy',
+        name: 'Black Lowboy',
+        vehicleNumber: 'LOWBOY-1',
+      },
+    ], [
+      {
+        id: 'equipment-komatsu-500-1',
+        name: 'Komatsu 500 - 1',
+        category: 'Machine',
+        revealUnitId: 'unit-komatsu-500-1',
+        revealTrackingStatus: 'Tracker Installed',
+      },
+      {
+        id: 'equipment-black-lowboy',
+        name: 'Black Lowboy',
+        category: 'Trailer',
+        revealAssetId: 'asset-black-lowboy',
+        revealTrackingStatus: 'Requested',
+      },
+    ]);
+
+    assert.deepEqual(candidates.map((candidate) => [
+      candidate.revealVehicleName,
+      candidate.jdtEquipmentId,
+      candidate.confidence,
+      candidate.status,
+      candidate.matchField,
+    ]), [
+      ['Komatsu 500 - 1', 'equipment-komatsu-500-1', 'Approved', 'matched', 'revealUnitId'],
+      ['Black Lowboy', 'equipment-black-lowboy', 'Approved', 'matched', 'revealAssetId'],
+    ]);
   });
 
   it('previews Reveal vehicle matches for owner admins without writing Firestore data', async () => {
@@ -391,10 +442,15 @@ describe('Reveal API helpers', () => {
       'make',
       'model',
       'registrationNumber',
+      'revealAssetType',
       'revealMatchApprovedAt',
       'revealMatchApprovedBy',
       'revealMatchStatus',
       'revealSyncedAt',
+      'revealTableId',
+      'revealTrackingStatus',
+      'revealUnitId',
+      'revealUnitTag',
       'revealVehicleId',
       'revealVehicleNumber',
       'telematicsProvider',

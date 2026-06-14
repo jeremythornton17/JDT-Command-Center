@@ -2,10 +2,15 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   defaultJdtFarmLocations,
+  buildRevealSyncPreviewRows,
   equipmentCategory,
   equipmentDisplayName,
   isFreightVehicle,
   jdtHomeBase,
+  revealTrackingStatusOptions,
+  revealTrackingStatusForEquipment,
+  revealTableIdForEquipment,
+  revealTrackerReadiness,
   trailerMaintenanceCategoryOptions,
   truckTypeOptions,
   withHomeBaseEquipmentDefaults,
@@ -109,5 +114,81 @@ describe("equipment and freight helpers", () => {
         "Pintle Hitch Receiver",
       ],
     );
+  });
+
+  it("adds Reveal-compatible tracking identity across vehicles, machines, and trailers", () => {
+    assert.deepEqual(revealTrackingStatusOptions, [
+      "Not Tracked",
+      "Requested",
+      "Tracker Installed",
+      "Synced",
+      "Needs Review",
+    ]);
+
+    assert.equal(revealTableIdForEquipment({ id: "truck-1", name: "Semi #1", category: "Truck" }), "Unit-1.0");
+    assert.equal(revealTableIdForEquipment({ id: "loader-1", name: "Komatsu 500 - 1", category: "Machine" }), "Unit-1.0");
+    assert.equal(revealTableIdForEquipment({ id: "trailer-1", name: "Black Lowboy", category: "Trailer" }), "NonPoweredAsset-1.0");
+
+    assert.equal(revealTrackingStatusForEquipment({ id: "truck-1", revealVehicleId: "6358051" }), "Synced");
+    assert.equal(revealTrackingStatusForEquipment({ id: "loader-1", revealTrackingStatus: "Requested" }), "Requested");
+    assert.equal(revealTrackingStatusForEquipment({ id: "loader-1" }), "Not Tracked");
+  });
+
+  it("identifies assets ready for Verizon tracker requests before trackers are installed", () => {
+    const ready = revealTrackerReadiness({
+      id: "equipment-komatsu-500-1",
+      name: "Komatsu 500 - 1",
+      category: "Machine",
+      currentLocationName: "Main Office",
+      currentLocation: "1010 E Sugarland Hwy, Clewiston, FL 33440",
+    });
+
+    assert.equal(ready.ready, true);
+    assert.equal(ready.action, "Ready For Tracker Request");
+    assert.equal(ready.revealTableId, "Unit-1.0");
+
+    const needsReview = revealTrackerReadiness({
+      id: "equipment-unknown",
+      category: "Machine",
+    });
+
+    assert.equal(needsReview.ready, false);
+    assert.equal(needsReview.action, "Needs JDT Details");
+    assert.deepEqual(needsReview.missing, ["Equipment name", "Current location"]);
+  });
+
+  it("builds a Reveal sync preview without creating duplicate future tracker records", () => {
+    const rows = buildRevealSyncPreviewRows([
+      {
+        id: "equipment-chevy-colorado",
+        name: "Chevy Colorado",
+        category: "Truck",
+        revealVehicleId: "6358051",
+        vehicleNumber: "4",
+      },
+      {
+        id: "equipment-black-lowboy",
+        name: "Black Lowboy",
+        category: "Trailer",
+        currentLocationName: "Main Office",
+        currentLocation: "1010 E Sugarland Hwy, Clewiston, FL 33440",
+      },
+      {
+        id: "equipment-loader",
+        name: "Komatsu 500 - 1",
+        category: "Machine",
+        revealTrackingStatus: "Requested",
+        currentLocationName: "25 Acre",
+        currentLocation: "25 Acre Farm",
+      },
+    ]);
+
+    assert.deepEqual(rows.map((row) => [row.equipmentId, row.revealTableId, row.trackingStatus, row.action]), [
+      ["equipment-chevy-colorado", "Unit-1.0", "Synced", "Matched To Reveal"],
+      ["equipment-black-lowboy", "NonPoweredAsset-1.0", "Not Tracked", "Ready For Tracker Request"],
+      ["equipment-loader", "Unit-1.0", "Requested", "Tracker Requested"],
+    ]);
+    assert.equal(rows[1].proposedRevealTag, "Black Lowboy");
+    assert.equal(rows[2].duplicateProtectionKey, "equipment-loader");
   });
 });

@@ -93,6 +93,7 @@ export const supportTypeOptions = [
 export const equipmentStatusOptions = ['Available', 'Assigned', 'In Use', 'Maintenance', 'Inspection', 'Needs Service', 'Down', 'Retired'];
 export const equipmentLocationTypeOptions = ['Farm', 'Job Site', 'Shop', 'In Transit', 'Unknown'];
 export const freightStatusOptions = ['Scheduled', 'Dispatched', 'At Pickup', 'Loaded', 'In Transit', 'At Delivery', 'Delivered', 'Completed', 'Delayed', 'Cancelled'];
+export const revealTrackingStatusOptions = ['Not Tracked', 'Requested', 'Tracker Installed', 'Synced', 'Needs Review'];
 
 export const jdtHomeBase = {
   name: 'JD Thornton Nurseries Home Base',
@@ -238,6 +239,110 @@ export function equipmentCategory(equipment: EquipmentRecord): string {
 export function isFreightVehicle(equipment: EquipmentRecord): boolean {
   const category = equipmentCategory(equipment);
   return category === 'Truck' || category === 'Trailer';
+}
+
+export function revealTableIdForEquipment(equipment: EquipmentRecord): string {
+  const explicitTable = String(equipment.revealTableId || '').trim();
+  if (explicitTable) return explicitTable;
+
+  const category = equipmentCategory(equipment);
+  if (category === 'Trailer' || category === 'Implement' || category === 'Tool' || category === 'Support') return 'NonPoweredAsset-1.0';
+  return 'Unit-1.0';
+}
+
+export function revealAssetTypeForEquipment(equipment: EquipmentRecord): string {
+  const explicitType = String(equipment.revealAssetType || '').trim();
+  if (explicitType) return explicitType;
+  return revealTableIdForEquipment(equipment) === 'NonPoweredAsset-1.0' ? 'NonPoweredAsset' : 'Unit';
+}
+
+export function revealTrackingStatusForEquipment(equipment: EquipmentRecord): string {
+  const hasRevealIdentity = Boolean(
+    equipment.revealVehicleId
+    || equipment.verizonVehicleId
+    || equipment.revealUnitId
+    || equipment.revealAssetId
+    || equipment.revealSyncedAt
+    || equipment.telematicsProvider === 'Reveal'
+    || equipment.lastTelematicsLatitude
+    || equipment.lastTelematicsLongitude
+  );
+  if (hasRevealIdentity) return 'Synced';
+
+  const explicitStatus = String(equipment.revealTrackingStatus || '').trim();
+  const knownStatus = revealTrackingStatusOptions.find((status) => status.toLowerCase() === explicitStatus.toLowerCase());
+  return knownStatus || explicitStatus || 'Not Tracked';
+}
+
+function revealReadyDisplayName(equipment: EquipmentRecord): string {
+  return equipment.name
+    || equipment.asset
+    || [equipment.make, equipment.model].filter(Boolean).join(' ')
+    || '';
+}
+
+function revealProposedTag(equipment: EquipmentRecord): string {
+  const tag = revealReadyDisplayName(equipment) || equipmentDisplayName(equipment);
+  return String(tag).trim().slice(0, 30) || 'JDT asset';
+}
+
+function revealIdentityValue(equipment: EquipmentRecord): string {
+  return String(
+    equipment.revealUnitId
+    || equipment.revealAssetId
+    || equipment.revealVehicleId
+    || equipment.verizonVehicleId
+    || equipment.revealVehicleNumber
+    || equipment.vehicleNumber
+    || '',
+  ).trim();
+}
+
+export function revealTrackerReadiness(equipment: EquipmentRecord) {
+  const missing: string[] = [];
+  const name = revealReadyDisplayName(equipment);
+  const location = String(equipment.currentLocationName || equipment.currentLocation || equipment.location || '').trim();
+  const trackingStatus = revealTrackingStatusForEquipment(equipment);
+
+  if (!name) missing.push('Equipment name');
+  if (!location) missing.push('Current location');
+
+  let action = 'Ready For Tracker Request';
+  if (trackingStatus === 'Synced') action = 'Matched To Reveal';
+  else if (trackingStatus === 'Tracker Installed') action = 'Tracker Installed';
+  else if (trackingStatus === 'Requested') action = 'Tracker Requested';
+  else if (missing.length > 0 || trackingStatus === 'Needs Review') action = 'Needs JDT Details';
+
+  return {
+    ready: missing.length === 0 && action !== 'Needs JDT Details',
+    action,
+    missing,
+    revealTableId: revealTableIdForEquipment(equipment),
+    revealAssetType: revealAssetTypeForEquipment(equipment),
+    trackingStatus,
+    proposedRevealTag: revealProposedTag(equipment),
+    revealIdentity: revealIdentityValue(equipment),
+  };
+}
+
+export function buildRevealSyncPreviewRows(equipmentList: EquipmentRecord[]) {
+  return equipmentList.map((equipment) => {
+    const readiness = revealTrackerReadiness(equipment);
+    return {
+      equipmentId: equipment.id || equipment.assetId || equipmentDisplayName(equipment),
+      equipmentName: equipmentDisplayName(equipment),
+      category: equipmentCategory(equipment),
+      revealTableId: readiness.revealTableId,
+      revealAssetType: readiness.revealAssetType,
+      trackingStatus: readiness.trackingStatus,
+      action: readiness.action,
+      ready: readiness.ready,
+      missing: readiness.missing,
+      proposedRevealTag: readiness.proposedRevealTag,
+      revealIdentity: readiness.revealIdentity,
+      duplicateProtectionKey: readiness.revealIdentity || equipment.id || equipment.assetId || readiness.proposedRevealTag,
+    };
+  });
 }
 
 export function withHomeBaseEquipmentDefaults<T extends EquipmentRecord>(equipment: T): T & EquipmentRecord {

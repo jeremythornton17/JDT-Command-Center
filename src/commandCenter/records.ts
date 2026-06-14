@@ -344,6 +344,15 @@ export type EquipmentRecord = CommandRecord & {
   insuranceExpirationDate?: string;
   insuranceDocumentUrl?: string;
   telematicsProvider?: 'Reveal' | string;
+  revealTableId?: 'Unit-1.0' | 'NonPoweredAsset-1.0' | string;
+  revealAssetType?: 'Unit' | 'NonPoweredAsset' | string;
+  revealUnitId?: string;
+  revealUnitTag?: string;
+  revealAssetId?: string;
+  revealAssetNumber?: string;
+  revealTrackingStatus?: 'Not Tracked' | 'Requested' | 'Tracker Installed' | 'Synced' | 'Needs Review' | string;
+  revealTrackerInstallDate?: string;
+  revealSyncStatus?: string;
   revealVehicleId?: string;
   verizonVehicleId?: string;
   revealVehicleNumber?: string;
