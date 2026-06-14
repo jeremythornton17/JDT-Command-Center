@@ -2,9 +2,20 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import React from "react";
 import { renderToString } from "react-dom/server";
-import MapsBoard from "./MapsBoard";
+import MapsBoard, { mapBoundsEqual, resolveMapWorkbenchBounds } from "./MapsBoard";
 
 describe("MapsBoard relocation pin editing", () => {
+  it("does not let passive Google Maps bounds updates churn tree markers unless In View is enabled", () => {
+    const firstBounds = { north: 26.9, south: 26.7, east: -80.1, west: -80.3 };
+    const sameBounds = { north: 26.9000004, south: 26.6999998, east: -80.1000003, west: -80.3000001 };
+
+    assert.equal(resolveMapWorkbenchBounds(false, firstBounds), null);
+    assert.equal(resolveMapWorkbenchBounds(false, sameBounds), null);
+    assert.deepEqual(resolveMapWorkbenchBounds(true, firstBounds), firstBounds);
+    assert.equal(mapBoundsEqual(firstBounds, sameBounds), true);
+    assert.equal(mapBoundsEqual(firstBounds, { ...sameBounds, east: -80.2 }), false);
+  });
+
   it("shows the all-locations map without tree-specific side panels by default", () => {
     const html = renderToString(
       <MapsBoard

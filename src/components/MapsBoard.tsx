@@ -94,7 +94,7 @@ const liveGpsStatusOptions = ['Moving', 'Idle', 'Stopped', 'Stale', 'No Signal',
 
 type MapViewMode = 'map' | 'earth';
 type MapWorkspaceMode = 'locations' | 'project' | 'liveGps';
-type MapBounds = { north: number; south: number; east: number; west: number };
+export type MapBounds = { north: number; south: number; east: number; west: number };
 
 const profileSiteLocationFields: Array<{ key: string; accessType: SiteLocationAccessType; label: string }> = [
   { key: 'location', accessType: 'Main Jobsite Address', label: 'Main Jobsite Address' },
@@ -292,14 +292,15 @@ export default function MapsBoard({
     const statuses = filteredTreeRecords.map(tree => getTreeRelocationStatus(tree)).filter(Boolean);
     return Array.from(new Set(['Needs Source Pin', 'Needs Destination Pin', 'Root Pruning', 'Ready to Move', 'Relocated', ...statuses]));
   }, [filteredTreeRecords]);
+  const workbenchBounds = resolveMapWorkbenchBounds(treeInViewOnly, visibleMapBounds);
   const workbenchTreeRecords = useMemo(
     () => filterMapWorkbenchTrees(filteredTreeRecords, {
       search: treeSearch,
       statuses: activeTreeStatuses,
       inViewOnly: treeInViewOnly,
-      bounds: visibleMapBounds,
+      bounds: workbenchBounds,
     }),
-    [filteredTreeRecords, treeSearch, activeTreeStatuses, treeInViewOnly, visibleMapBounds],
+    [filteredTreeRecords, treeSearch, activeTreeStatuses, treeInViewOnly, workbenchBounds],
   );
   const allTreeTasks = workbenchTreeRecords.flatMap(tree => buildTreeRelocationTasks(tree).map(task => ({ ...task, tree })));
   const readyTasks = allTreeTasks.filter(task => task.status === 'Ready').slice(0, 7);
@@ -474,12 +475,13 @@ export default function MapsBoard({
             const northEast = bounds?.getNorthEast?.();
             const southWest = bounds?.getSouthWest?.();
             if (!northEast || !southWest) return;
-            setVisibleMapBounds({
+            const nextBounds = {
               north: Number(northEast.lat()),
               east: Number(northEast.lng()),
               south: Number(southWest.lat()),
               west: Number(southWest.lng()),
-            });
+            };
+            setVisibleMapBounds((current) => (mapBoundsEqual(current, nextBounds) ? current : nextBounds));
           });
         }
 
@@ -496,7 +498,7 @@ export default function MapsBoard({
     return () => {
       cancelled = true;
     };
-  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, workbenchTreeRecords, scopedSavedLocations, liveVehicleMarkers, visibleGpsAssets, selectedTreeId, zoomLevel, mapViewMode, selectedJobId, selectedJobMapTarget, isLiveGpsView, showTreeMapPanels]);
+  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, workbenchTreeRecords, scopedSavedLocations, liveVehicleMarkers, visibleGpsAssets, zoomLevel, mapViewMode, selectedJobId, selectedJobMapTarget, isLiveGpsView, showTreeMapPanels]);
 
   useEffect(() => {
     focusMapOnSelectedJob();
@@ -2177,6 +2179,25 @@ function treePinSummary(tree: any): string {
 function treeMapSubtitle(tree: any): string {
   const parts = [tree.farm, tree.zone, tree.ranchOakType || tree.type || tree.treeType].filter(Boolean);
   return parts.length ? parts.join(' - ') : 'Project tree asset';
+}
+
+export function resolveMapWorkbenchBounds(inViewOnly: boolean, bounds: MapBounds | null): MapBounds | null {
+  return inViewOnly ? bounds : null;
+}
+
+export function mapBoundsEqual(
+  first: MapBounds | null | undefined,
+  second: MapBounds | null | undefined,
+  tolerance = 0.000001,
+): boolean {
+  if (!first && !second) return true;
+  if (!first || !second) return false;
+  return (
+    Math.abs(first.north - second.north) <= tolerance &&
+    Math.abs(first.south - second.south) <= tolerance &&
+    Math.abs(first.east - second.east) <= tolerance &&
+    Math.abs(first.west - second.west) <= tolerance
+  );
 }
 
 function filterMapWorkbenchTrees(
