@@ -1509,6 +1509,7 @@ export default function App() {
             key={`maps-${mapsIntent?.mode || 'default'}-${mapsIntent?.selectedGpsAssetId || 'all'}`}
             jobs={jobs}
             loads={loadsWithTelematics}
+            scheduleTasks={scheduleTasks}
             ranchOaks={nurseryInventory}
             treeRelocationRecords={treeRelocationRecords}
             locationsList={locationsWithDefaults}

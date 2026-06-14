@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  CalendarDays,
+  CheckSquare,
   ClipboardList,
   Compass,
   Crosshair,
@@ -57,7 +59,7 @@ import {
 import { useAuth } from '../AuthProvider';
 import { useFirestoreSyncState } from '../useFirestoreCollection';
 import { defaultJdtFarmLocations, jdtHomeBase, mergeLocationLibrary } from '../commandCenter/equipmentFreight';
-import type { EquipmentRecord, FleetTelematicsEventRecord, LoadRecord } from '../commandCenter/records';
+import type { EquipmentRecord, FleetTelematicsEventRecord, LoadRecord, ScheduleTaskRecord } from '../commandCenter/records';
 import { buildLiveVehicleMapMarkers, type LiveVehicleMapMarker } from '../commandCenter/telematicsIntelligence';
 import {
   buildLiveGpsAssets,
@@ -92,6 +94,7 @@ const liveGpsStatusOptions = ['Moving', 'Idle', 'Stopped', 'Stale', 'No Signal',
 
 type MapViewMode = 'map' | 'earth';
 type MapWorkspaceMode = 'locations' | 'project' | 'liveGps';
+type MapBounds = { north: number; south: number; east: number; west: number };
 
 const profileSiteLocationFields: Array<{ key: string; accessType: SiteLocationAccessType; label: string }> = [
   { key: 'location', accessType: 'Main Jobsite Address', label: 'Main Jobsite Address' },
@@ -171,6 +174,7 @@ type MapsBoardProps = {
   isSyncingRevealLiveLocations?: boolean;
   revealLiveLocationSyncStatus?: string;
   onSyncRevealLiveLocations?: () => void | Promise<void>;
+  scheduleTasks?: ScheduleTaskRecord[];
   ranchOaks?: any[];
   treeRelocationRecords?: any[];
   openDrawer?: (type: string, id: string) => void;
@@ -201,6 +205,7 @@ export default function MapsBoard({
   isSyncingRevealLiveLocations = false,
   revealLiveLocationSyncStatus = '',
   onSyncRevealLiveLocations,
+  scheduleTasks = [],
   onUpdateTreeLocation,
   onImportTreePins,
   openDrawer,
@@ -245,6 +250,12 @@ export default function MapsBoard({
   const [pinMode, setPinMode] = useState<TreeRelocationPointType | null>(null);
   const [selectedPin, setSelectedPin] = useState<SelectedPin | null>(null);
   const [fieldStatus, setFieldStatus] = useState('Select a tree, choose a pin type, then click the map.');
+  const [treeSearch, setTreeSearch] = useState('');
+  const [activeTreeStatuses, setActiveTreeStatuses] = useState<string[]>([]);
+  const [treeInViewOnly, setTreeInViewOnly] = useState(false);
+  const [multiSelectTrees, setMultiSelectTrees] = useState(false);
+  const [selectedMapTreeIds, setSelectedMapTreeIds] = useState<string[]>([]);
+  const [visibleMapBounds, setVisibleMapBounds] = useState<MapBounds | null>(null);
   const [kmlImportOpen, setKmlImportOpen] = useState(Boolean(initialKmlImportOpen));
   const [kmlImportText, setKmlImportText] = useState('');
   const [kmlImportFileName, setKmlImportFileName] = useState('');
@@ -277,14 +288,35 @@ export default function MapsBoard({
   const selectedTree = filteredTreeRecords.find(tree => tree.treeId === selectedTreeId || tree.id === selectedTreeId);
   const selectedJobMapTarget = useMemo(() => mapTargetForRelocationJob(selectedJob), [selectedJob]);
   const selectedTasks = selectedTree ? buildTreeRelocationTasks(selectedTree) : [];
-  const allTreeTasks = filteredTreeRecords.flatMap(tree => buildTreeRelocationTasks(tree).map(task => ({ ...task, tree })));
+  const treeStatusOptions = useMemo(() => {
+    const statuses = filteredTreeRecords.map(tree => getTreeRelocationStatus(tree)).filter(Boolean);
+    return Array.from(new Set(['Needs Source Pin', 'Needs Destination Pin', 'Root Pruning', 'Ready to Move', 'Relocated', ...statuses]));
+  }, [filteredTreeRecords]);
+  const workbenchTreeRecords = useMemo(
+    () => filterMapWorkbenchTrees(filteredTreeRecords, {
+      search: treeSearch,
+      statuses: activeTreeStatuses,
+      inViewOnly: treeInViewOnly,
+      bounds: visibleMapBounds,
+    }),
+    [filteredTreeRecords, treeSearch, activeTreeStatuses, treeInViewOnly, visibleMapBounds],
+  );
+  const allTreeTasks = workbenchTreeRecords.flatMap(tree => buildTreeRelocationTasks(tree).map(task => ({ ...task, tree })));
   const readyTasks = allTreeTasks.filter(task => task.status === 'Ready').slice(0, 7);
+  const selectedMapTrees = useMemo(
+    () => workbenchTreeRecords.filter(tree => selectedMapTreeIds.includes(treeMapId(tree))),
+    [workbenchTreeRecords, selectedMapTreeIds],
+  );
+  const mapScheduleItems = useMemo(
+    () => filterScheduleTasksForMap(scheduleTasks, selectedJob).slice(0, 7),
+    [scheduleTasks, selectedJob],
+  );
   const earthMapPackage = useMemo(() => buildProjectGoogleEarthMapPackage({
     job: selectedJob,
     name: selectedJob ? undefined : 'All Relocation Jobs',
-    trees: filteredTreeRecords,
+    trees: selectedMapTrees.length ? selectedMapTrees : workbenchTreeRecords,
     fallbackCenter: defaultFieldCenter,
-  }), [selectedJob, filteredTreeRecords]);
+  }), [selectedJob, selectedMapTrees, workbenchTreeRecords]);
   const selectedPinPoint = selectedPin
     ? selectedTree?.relocationMap?.[selectedPin.pointType]
     : undefined;
@@ -436,6 +468,19 @@ export default function MapsBoard({
               });
             }
           });
+
+          googleMapInstanceRef.current.addListener('idle', () => {
+            const bounds = googleMapInstanceRef.current?.getBounds?.();
+            const northEast = bounds?.getNorthEast?.();
+            const southWest = bounds?.getSouthWest?.();
+            if (!northEast || !southWest) return;
+            setVisibleMapBounds({
+              north: Number(northEast.lat()),
+              east: Number(northEast.lng()),
+              south: Number(southWest.lat()),
+              west: Number(southWest.lng()),
+            });
+          });
         }
 
         googleMapInstanceRef.current.setZoom(zoomLevel);
@@ -451,7 +496,7 @@ export default function MapsBoard({
     return () => {
       cancelled = true;
     };
-  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, filteredTreeRecords, scopedSavedLocations, liveVehicleMarkers, visibleGpsAssets, selectedTreeId, zoomLevel, mapViewMode, selectedJobId, selectedJobMapTarget, isLiveGpsView, showTreeMapPanels]);
+  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, workbenchTreeRecords, scopedSavedLocations, liveVehicleMarkers, visibleGpsAssets, selectedTreeId, zoomLevel, mapViewMode, selectedJobId, selectedJobMapTarget, isLiveGpsView, showTreeMapPanels]);
 
   useEffect(() => {
     focusMapOnSelectedJob();
@@ -472,7 +517,7 @@ export default function MapsBoard({
     googleMarkerRefs.current = [];
 
     if (showTreeMapPanels) {
-      filteredTreeRecords.forEach(tree => {
+      workbenchTreeRecords.forEach(tree => {
         const status = getTreeRelocationStatus(tree);
         (['source', 'destination'] as TreeRelocationPointType[]).forEach(pointType => {
           const point = tree.relocationMap?.[pointType];
@@ -482,7 +527,7 @@ export default function MapsBoard({
             position: { lat: point.lat, lng: point.lng },
             map,
             title: `${tree.treeId || tree.id} ${pointType}`,
-            label: pointType === 'source' ? 'S' : 'D',
+            label: treeMarkerLabel(tree, pointType),
             draggable: true,
           });
           marker.addListener('click', () => {
@@ -861,6 +906,68 @@ export default function MapsBoard({
     });
   };
 
+  const toggleTreeStatus = (status: string) => {
+    setActiveTreeStatuses((current) => {
+      if (current.includes(status)) return current.filter((item) => item !== status);
+      return [...current, status];
+    });
+  };
+
+  const toggleSelectedMapTree = (tree: any) => {
+    const id = treeMapId(tree);
+    setSelectedMapTreeIds((current) => (
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    ));
+  };
+
+  const handleWorkbenchTreeClick = (tree: any) => {
+    if (multiSelectTrees) {
+      toggleSelectedMapTree(tree);
+      return;
+    }
+    setSelectedTreeId(tree.treeId || tree.id);
+    setSelectedPin(null);
+    setPinMode(null);
+  };
+
+  const handleBulkAction = (action: string) => {
+    if (!selectedMapTreeIds.length) {
+      setFieldStatus(`Select one or more map trees before using ${action}.`);
+      return;
+    }
+    if (action === 'Export Selected') {
+      downloadSelectedTreeCsv();
+      return;
+    }
+    if (action === 'Print Field Map') {
+      setFieldStatus(`Preparing field map print view for ${selectedMapTreeIds.length} selected tree${selectedMapTreeIds.length === 1 ? '' : 's'}.`);
+      window.print?.();
+      return;
+    }
+    if (action === 'Crew Work Order' && selectedJob && openDrawer) {
+      openDrawer('job', selectedJob.id || selectedJob.jobId || selectedJob.projectId);
+    }
+    setFieldStatus(`${action} queued for ${selectedMapTreeIds.length} selected tree${selectedMapTreeIds.length === 1 ? '' : 's'} from this map.`);
+  };
+
+  const downloadSelectedTreeCsv = () => {
+    if (!selectedMapTrees.length) {
+      setFieldStatus('Select tree records before exporting selected map items.');
+      return;
+    }
+    const csv = buildSelectedTreeCsv(selectedMapTrees);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${slugFileName(selectedJob?.projectName || selectedJob?.title || 'jdt-map-items')}-selected-trees.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setFieldStatus(`Exported ${selectedMapTrees.length} selected tree${selectedMapTrees.length === 1 ? '' : 's'} as CSV.`);
+  };
+
   const downloadProjectKml = () => {
     if (!earthMapPackage.pinnedTreeCount) {
       setFieldStatus('Add at least one source or destination pin before exporting this project to Google Earth.');
@@ -941,7 +1048,7 @@ export default function MapsBoard({
   };
 
   const renderFallbackTreePins = () => {
-    return filteredTreeRecords.flatMap(tree => {
+    return workbenchTreeRecords.flatMap(tree => {
       const pins: React.ReactNode[] = [];
       (['source', 'destination'] as TreeRelocationPointType[]).forEach(pointType => {
         const point = tree.relocationMap?.[pointType];
@@ -949,6 +1056,7 @@ export default function MapsBoard({
 
         const percent = latLngToMapPercent(point);
         const isSelected = selectedTreeId === tree.treeId || selectedTreeId === tree.id;
+        const status = getTreeRelocationStatus(tree);
         pins.push(
           <button
             key={`${tree.treeId || tree.id}-${pointType}`}
@@ -957,11 +1065,11 @@ export default function MapsBoard({
               event.stopPropagation();
               selectExistingPin(tree, pointType);
             }}
-            className={`absolute h-8 w-8 rounded-full border-2 border-white shadow-xl flex items-center justify-center ring-4 transition-all hover:scale-110 z-10 ${pointType === 'source' ? 'bg-emerald-700 ring-emerald-200' : 'bg-blue-700 ring-blue-200'} ${isSelected ? 'scale-110 ring-amber-300' : ''}`}
+            className={`absolute h-9 w-9 rounded-full border-2 border-white shadow-xl flex items-center justify-center ring-4 transition-all hover:scale-110 z-10 ${treeMarkerPinClass(status, pointType)} ${isSelected ? 'scale-110 ring-amber-300' : ''}`}
             style={{ left: `${percent.x}%`, top: `${percent.y}%` }}
             title={`${tree.treeId || tree.id} ${pointType}`}
           >
-            {pointType === 'source' ? <TreePine className="h-4 w-4 text-white" /> : <Target className="h-4 w-4 text-white" />}
+            <span className="max-w-[2rem] truncate px-0.5 text-[10px] font-black text-white">{treeMarkerLabel(tree, pointType)}</span>
           </button>
         );
       });
@@ -1085,6 +1193,33 @@ export default function MapsBoard({
       </div>
     </div>
   );
+
+  const mapScheduleStrip = showTreeMapPanels ? (
+    <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase text-zinc-400">Map Schedule</p>
+          <h3 className="text-sm font-black text-jdt-text">{selectedJob ? `${profileJobTitle(selectedJob)} schedule` : 'Project schedule'}</h3>
+        </div>
+        <CalendarDays className="h-5 w-5 text-jdt-primary" />
+      </div>
+      {mapScheduleItems.length ? (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {mapScheduleItems.map((task) => (
+            <div key={task.id || task.title || task.task} className="min-w-[180px] rounded-lg border border-jdt-border bg-white p-3">
+              <p className="text-[10px] font-black uppercase text-zinc-400">{formatScheduleDateRange(task.startDate, task.endDate)}</p>
+              <p className="mt-1 text-xs font-black text-jdt-text">{task.task || task.title || task.activityType || 'Scheduled work'}</p>
+              <p className="mt-1 text-[11px] font-bold text-zinc-500">{task.assignee || task.locationName || task.activityType || 'Unassigned'}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-lg border border-dashed border-jdt-border bg-white px-3 py-2 text-xs font-bold text-zinc-500">
+          No map-linked schedule tasks yet for this selected project or farm view.
+        </p>
+      )}
+    </div>
+  ) : null;
 
   const googleEarthCard = (
     <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
@@ -1377,6 +1512,8 @@ export default function MapsBoard({
             </div>
           </div>
 
+          {mapScheduleStrip}
+
           {showTreeMapPanels && activeTreeCard}
 
           {showTreeMapPanels && googleEarthCard}
@@ -1562,32 +1699,149 @@ export default function MapsBoard({
 
           {showTreeMapPanels && (
             <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
-            <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5 mb-3"><TreePine className="h-4 w-4 text-emerald-700" /> Tree Pin List</h3>
-            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-              {filteredTreeRecords.length > 0 ? filteredTreeRecords.map(tree => {
-                const status = getTreeRelocationStatus(tree);
-                return (
-                  <button
-                    key={tree.id || tree.treeId}
-                    type="button"
-                    onClick={() => setSelectedTreeId(tree.treeId || tree.id)}
-                    className={`w-full text-left rounded-lg border p-3 transition-colors ${selectedTreeId === tree.treeId || selectedTreeId === tree.id ? 'bg-jdt-sand border-jdt-primary' : 'bg-white border-jdt-border hover:bg-jdt-sand/60'}`}
-                  >
-                    <div className="flex justify-between gap-3">
-                      <span className="font-black text-sm text-jdt-text">{tree.treeId}</span>
-                      <span className={`rounded px-2 py-0.5 text-[9px] font-black uppercase ${getRelocationStatusTone(status)}`}>{status}</span>
-                    </div>
-                    <p className="text-[11px] font-bold text-zinc-500 mt-1">{treeMapSubtitle(tree)}</p>
-                  </button>
-                );
-              }) : (
-                <div className="rounded-lg border border-dashed border-jdt-border bg-white p-4 text-center">
-                  <p className="text-xs font-black uppercase text-jdt-text">No tree records yet</p>
-                  <p className="mt-1 text-[11px] font-bold text-zinc-500">Add tree inventory to start placing relocation pins.</p>
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5">
+                    <TreePine className="h-4 w-4 text-emerald-700" /> Map Items Workbench
+                  </h3>
+                  <p className="mt-1 text-[11px] font-bold text-zinc-500">
+                    Trees currently tied to this project map.
+                  </p>
                 </div>
-              )}
+                <span className="rounded bg-white px-2 py-0.5 text-[9px] font-black uppercase text-zinc-500">
+                  {workbenchTreeRecords.length}/{filteredTreeRecords.length}
+                </span>
+              </div>
+
+              <label className="mb-3 block">
+                <span className="mb-1 block text-[10px] font-black uppercase text-zinc-400">Search Map Items</span>
+                <div className="flex items-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2">
+                  <Search className="h-4 w-4 text-zinc-400" />
+                  <input
+                    value={treeSearch}
+                    onChange={(event) => setTreeSearch(event.target.value)}
+                    placeholder="Search by tree type, tag, asset ID, or status"
+                    className="min-w-0 flex-1 bg-transparent text-xs font-bold text-jdt-text outline-none"
+                  />
+                </div>
+              </label>
+
+              <div className="mb-3">
+                <p className="mb-1.5 text-[10px] font-black uppercase text-zinc-400">Status Filters</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {treeStatusOptions.map((status) => {
+                    const active = activeTreeStatuses.includes(status);
+                    return (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => toggleTreeStatus(status)}
+                        className={`rounded-md border px-2 py-1 text-[9px] font-black uppercase ${active ? getRelocationStatusTone(status) : 'border-jdt-border bg-white text-zinc-500'}`}
+                      >
+                        {status}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mb-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTreeInViewOnly((value) => !value)}
+                  className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${treeInViewOnly ? 'border-sky-300 bg-sky-50 text-sky-900' : 'border-jdt-border bg-white text-zinc-600'}`}
+                >
+                  In View
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMultiSelectTrees((value) => !value)}
+                  className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${multiSelectTrees ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-white text-zinc-600'}`}
+                >
+                  Multi-Select
+                </button>
+              </div>
+
+              <div className="mb-3 rounded-lg border border-jdt-border bg-white p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-black uppercase text-zinc-400">Bulk Actions</p>
+                  <span className="text-[10px] font-black uppercase text-zinc-500">{selectedMapTreeIds.length} selected</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {['Assign Work', 'Root Pruning', 'Nutrient Care', 'Crew Work Order', 'Export Selected', 'Print Field Map'].map((action) => (
+                    <button
+                      key={action}
+                      type="button"
+                      onClick={() => handleBulkAction(action)}
+                      disabled={!selectedMapTreeIds.length}
+                      className="rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {action}
+                    </button>
+                  ))}
+                </div>
+                {workbenchTreeRecords.length > 0 && (
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMapTreeIds(workbenchTreeRecords.map(treeMapId))}
+                      className="flex-1 rounded-md border border-jdt-border bg-jdt-sand/40 px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                    >
+                      Select Visible
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMapTreeIds([])}
+                      className="flex-1 rounded-md border border-jdt-border bg-white px-2 py-1.5 text-[9px] font-black uppercase text-zinc-500 hover:border-jdt-olive"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                {workbenchTreeRecords.length > 0 ? workbenchTreeRecords.map(tree => {
+                  const status = getTreeRelocationStatus(tree);
+                  const treeId = treeMapId(tree);
+                  const selected = selectedMapTreeIds.includes(treeId);
+                  const activeTree = selectedTreeId === tree.treeId || selectedTreeId === tree.id;
+                  return (
+                    <button
+                      key={treeId}
+                      type="button"
+                      onClick={() => handleWorkbenchTreeClick(tree)}
+                      className={`w-full text-left rounded-lg border p-3 transition-colors ${activeTree || selected ? 'bg-jdt-sand border-jdt-primary' : 'bg-white border-jdt-border hover:bg-jdt-sand/60'}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-black text-sm text-jdt-text">{treeDisplayName(tree)}</p>
+                          <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{`Asset ${treeId}`}</p>
+                        </div>
+                        <span className={`shrink-0 rounded px-2 py-0.5 text-[9px] font-black uppercase ${getRelocationStatusTone(status)}`}>{status}</span>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-bold text-zinc-500">
+                        <span><strong className="font-black uppercase text-zinc-400">Tree Type</strong><br />{treeTypeLabel(tree)}</span>
+                        <span><strong className="font-black uppercase text-zinc-400">Tag</strong><br />{treeTagLabel(tree)}</span>
+                        <span><strong className="font-black uppercase text-zinc-400">DBH</strong><br />{treeDbhLabel(tree)}</span>
+                        <span><strong className="font-black uppercase text-zinc-400">Map</strong><br />{treePinSummary(tree)}</span>
+                      </div>
+                      {multiSelectTrees && (
+                        <div className="mt-2 flex items-center gap-2 text-[10px] font-black uppercase text-jdt-primary">
+                          <CheckSquare className="h-3.5 w-3.5" />
+                          {selected ? 'Selected for bulk update' : 'Tap to select for bulk update'}
+                        </div>
+                      )}
+                    </button>
+                  );
+                }) : (
+                  <div className="rounded-lg border border-dashed border-jdt-border bg-white p-4 text-center">
+                    <p className="text-xs font-black uppercase text-jdt-text">No map items match</p>
+                    <p className="mt-1 text-[11px] font-bold text-zinc-500">Clear search or filters, or add tree inventory to this project map.</p>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
           )}
 
           {!isLiveGpsView && liveVehicleMarkers.length > 0 && (
@@ -1889,9 +2143,162 @@ function mergeMapTreeRecords(baseTrees: any[] = [], relocationTrees: any[] = [])
   return Array.from(byId.values());
 }
 
+function treeMapId(tree: any): string {
+  return String(tree.treeId || tree.id || tree.tag || tree.title || 'tree').trim();
+}
+
+function treeTypeLabel(tree: any): string {
+  return String(tree.type || tree.treeType || tree.ranchOakType || tree.species || tree.commonName || 'Unknown tree').trim();
+}
+
+function treeTagLabel(tree: any): string {
+  const tag = String(tree.tag || tree.treeTag || tree.fieldTag || tree.treeNumber || '').trim();
+  return tag ? `Tag #${tag.replace(/^#/, '')}` : 'Tag missing';
+}
+
+function treeDbhLabel(tree: any): string {
+  const dbh = tree.dbh ?? tree.dbhIn ?? tree.DBH_IN ?? tree.caliperInches;
+  const text = String(dbh ?? '').trim();
+  return text ? `DBH ${text}` : 'DBH missing';
+}
+
+function treeDisplayName(tree: any): string {
+  const tag = treeTagLabel(tree);
+  const type = treeTypeLabel(tree);
+  return tag === 'Tag missing' ? type : `${type} - ${tag}`;
+}
+
+function treePinSummary(tree: any): string {
+  const source = tree.relocationMap?.source ? 'source' : '';
+  const destination = tree.relocationMap?.destination ? 'destination' : '';
+  return [source, destination].filter(Boolean).join(' + ') || 'not pinned';
+}
+
 function treeMapSubtitle(tree: any): string {
   const parts = [tree.farm, tree.zone, tree.ranchOakType || tree.type || tree.treeType].filter(Boolean);
   return parts.length ? parts.join(' - ') : 'Project tree asset';
+}
+
+function filterMapWorkbenchTrees(
+  trees: any[],
+  options: { search: string; statuses: string[]; inViewOnly: boolean; bounds: MapBounds | null },
+) {
+  const query = options.search.trim().toLowerCase();
+  return trees.filter((tree) => {
+    const status = getTreeRelocationStatus(tree);
+    if (options.statuses.length && !options.statuses.includes(status)) return false;
+    if (query && !treeSearchText(tree, status).includes(query)) return false;
+    if (options.inViewOnly && options.bounds && !treeHasPointInBounds(tree, options.bounds)) return false;
+    return true;
+  });
+}
+
+function treeSearchText(tree: any, status = getTreeRelocationStatus(tree)): string {
+  return [
+    treeMapId(tree),
+    treeTypeLabel(tree),
+    treeTagLabel(tree),
+    treeDbhLabel(tree),
+    status,
+    tree.farm,
+    tree.zone,
+    tree.projectName,
+    tree.jobName,
+    tree.clientName,
+    tree.existingLocationDescription,
+    tree.proposedFinalLocationDescription,
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function treeHasPointInBounds(tree: any, bounds: MapBounds): boolean {
+  return pointInBounds(tree.relocationMap?.source, bounds) || pointInBounds(tree.relocationMap?.destination, bounds);
+}
+
+function pointInBounds(point: TreeRelocationPoint | undefined, bounds: MapBounds): boolean {
+  if (!point) return false;
+  return point.lat <= bounds.north && point.lat >= bounds.south && point.lng <= bounds.east && point.lng >= bounds.west;
+}
+
+function treeMarkerLabel(tree: any, pointType: TreeRelocationPointType): string {
+  const tag = String(tree.tag || tree.treeTag || tree.fieldTag || '').replace(/^#/, '').trim();
+  if (tag) return tag.slice(0, 3);
+  const id = treeMapId(tree);
+  const trailingNumber = id.match(/(\d+)(?!.*\d)/)?.[1];
+  if (trailingNumber) return trailingNumber.slice(-3);
+  return pointType === 'source' ? 'S' : 'D';
+}
+
+function treeMarkerPinClass(status: string, pointType: TreeRelocationPointType): string {
+  if (/relocated|ready/i.test(status)) return 'bg-emerald-700 ring-emerald-200';
+  if (/destination|root pruning/i.test(status)) return pointType === 'source' ? 'bg-sky-700 ring-sky-200' : 'bg-blue-700 ring-blue-200';
+  if (/source|missing|needs/i.test(status)) return 'bg-amber-600 ring-amber-200';
+  return pointType === 'source' ? 'bg-emerald-700 ring-emerald-200' : 'bg-blue-700 ring-blue-200';
+}
+
+function buildSelectedTreeCsv(trees: any[]): string {
+  const headers = ['Tree Asset ID', 'Tree Type', 'Tag', 'DBH', 'Status', 'Project', 'Source Lat', 'Source Lng', 'Destination Lat', 'Destination Lng'];
+  const rows = trees.map((tree) => [
+    treeMapId(tree),
+    treeTypeLabel(tree),
+    treeTagLabel(tree).replace(/^Tag #/, ''),
+    treeDbhLabel(tree).replace(/^DBH /, ''),
+    getTreeRelocationStatus(tree),
+    tree.projectName || tree.jobName || '',
+    tree.relocationMap?.source?.lat ?? '',
+    tree.relocationMap?.source?.lng ?? '',
+    tree.relocationMap?.destination?.lat ?? '',
+    tree.relocationMap?.destination?.lng ?? '',
+  ]);
+  return [headers, ...rows].map((row) => row.map(csvEscape).join(',')).join('\n');
+}
+
+function csvEscape(value: unknown): string {
+  const text = String(value ?? '');
+  if (!/[",\n\r]/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function slugFileName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'jdt-map-items';
+}
+
+function filterScheduleTasksForMap(tasks: ScheduleTaskRecord[], selectedJob: any): ScheduleTaskRecord[] {
+  if (!selectedJob) return [];
+  return tasks.filter((task) => scheduleTaskMatchesSelectedJob(task, selectedJob));
+}
+
+function scheduleTaskMatchesSelectedJob(task: ScheduleTaskRecord, selectedJob: any): boolean {
+  const jobIds = [
+    selectedJob.id,
+    selectedJob.jobId,
+    selectedJob.projectId,
+    selectedJob.projectsId,
+  ].filter(Boolean).map(String);
+  const projectNames = [
+    selectedJob.projectName,
+    selectedJob.title,
+    selectedJob.name,
+    selectedJob.jobName,
+  ].filter(Boolean).map((value) => String(value).toLowerCase());
+  const taskIds = [task.jobId, task.projectId].filter(Boolean).map(String);
+  if (taskIds.some((id) => jobIds.includes(id))) return true;
+  const taskNames = [task.jobName, task.projectName, task.title, task.locationName].filter(Boolean).map((value) => String(value).toLowerCase());
+  return taskNames.some((name) => projectNames.some((projectName) => name.includes(projectName) || projectName.includes(name)));
+}
+
+function formatScheduleDateRange(start?: string, end?: string): string {
+  const startLabel = formatShortDate(start);
+  const endLabel = formatShortDate(end);
+  if (!startLabel && !endLabel) return 'Unscheduled';
+  if (!endLabel || startLabel === endLabel) return startLabel;
+  return `${startLabel} - ${endLabel}`;
+}
+
+function formatShortDate(value?: string): string {
+  if (!value) return '';
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
 function liveGpsMarkerLabel(category: LiveGpsCategory): string {

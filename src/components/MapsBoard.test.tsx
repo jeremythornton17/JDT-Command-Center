@@ -89,7 +89,17 @@ describe("MapsBoard relocation pin editing", () => {
 
     assert.match(html, /Current Map View/);
     assert.match(html, /Boca West Course 1 Renovation/);
-    assert.match(html, /Tree Pin List/);
+    assert.match(html, /Map Items Workbench/);
+    assert.match(html, /Search by tree type, tag, asset ID, or status/);
+    assert.match(html, /In View/);
+    assert.match(html, /Multi-Select/);
+    assert.match(html, /Bulk Actions/);
+    assert.match(html, /Assign Work/);
+    assert.match(html, /Root Pruning/);
+    assert.match(html, /Nutrient Care/);
+    assert.match(html, /Crew Work Order/);
+    assert.match(html, /Export Selected/);
+    assert.match(html, /Print Field Map/);
     assert.match(html, /Active Tree/);
     assert.match(html, /Pin Editor/);
     assert.match(html, /Select a source or destination pin on the map/);
@@ -139,9 +149,68 @@ describe("MapsBoard relocation pin editing", () => {
       />,
     );
 
+    assert.match(html, /Map Items Workbench/);
     assert.match(html, /tree-boca-109/);
     assert.match(html, /Live Oak/);
     assert.match(html, /Needs Destination Pin/);
+  });
+
+  it("shows tree asset row summaries with tag, DBH, status, and schedule context", () => {
+    const html = renderToString(
+      <MapsBoard
+        initialSelectedJobId="job-boca-course-1"
+        jobs={[
+          {
+            id: "job-boca-course-1",
+            title: "Boca West Course 1 Renovation",
+            division: "Relocation & Installation",
+            projectId: "project-boca-west",
+            clientName: "Boca West Country Club",
+          },
+        ]}
+        scheduleTasks={[
+          {
+            id: "schedule-root-prune",
+            title: "Root prune tree group 100",
+            task: "Root prune tree group 100",
+            jobId: "job-boca-course-1",
+            projectId: "project-boca-west",
+            startDate: "2026-06-15",
+            endDate: "2026-06-18",
+            assignee: "Carlos Reyes",
+            activityType: "Root Pruning",
+          },
+        ]}
+        ranchOaks={[]}
+        treeRelocationRecords={[
+          {
+            id: "tree-boca-109",
+            treeId: "tree-boca-109",
+            projectId: "project-boca-west",
+            jobId: "job-boca-course-1",
+            type: "Live Oak",
+            tag: "109",
+            dbh: 33,
+            status: "Root Pruning",
+            relocationMap: {
+              source: { lat: 26.37127, lng: -80.16231, label: "Imported source pin" },
+            },
+          },
+        ]}
+        onUpdateTreeLocation={() => undefined}
+        openDrawer={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Tree Type/);
+    assert.match(html, /Live Oak/);
+    assert.match(html, /Tag #109/);
+    assert.match(html, /DBH 33/);
+    assert.match(html, /Asset tree-boca-109/);
+    assert.match(html, /Map Schedule/);
+    assert.match(html, /Root prune tree group 100/);
+    assert.match(html, /Carlos Reyes/);
+    assert.match(html, /Jun 15 - Jun 18/);
   });
 
   it("opens a visible client KML import panel with preview and save controls", () => {
