@@ -123,6 +123,9 @@ type EquipmentBoardProps = {
   isSyncingRevealRecommendedApis?: boolean;
   revealRecommendedSyncStatus?: string;
   onSyncRevealRecommendedApis?: () => void | Promise<void>;
+  isSyncingRevealLiveLocations?: boolean;
+  revealLiveLocationSyncStatus?: string;
+  onSyncRevealLiveLocations?: () => void | Promise<void>;
   isPreviewingRevealMatches?: boolean;
   revealMatchReviewStatus?: string;
   onPreviewRevealMatches?: () => void | Promise<void>;
@@ -159,6 +162,9 @@ export default function EquipmentBoard({
   isSyncingRevealRecommendedApis = false,
   revealRecommendedSyncStatus = '',
   onSyncRevealRecommendedApis,
+  isSyncingRevealLiveLocations = false,
+  revealLiveLocationSyncStatus = '',
+  onSyncRevealLiveLocations,
   isPreviewingRevealMatches = false,
   revealMatchReviewStatus = '',
   onPreviewRevealMatches,
@@ -248,6 +254,17 @@ export default function EquipmentBoard({
                {isSyncingRevealRecommendedApis ? 'Syncing Reveal APIs' : 'Sync Reveal APIs'}
              </button>
            )}
+           {canSyncRevealVehicles && onSyncRevealLiveLocations && (
+             <button
+               type="button"
+               onClick={() => void onSyncRevealLiveLocations()}
+               disabled={isSyncingRevealLiveLocations}
+               className="inline-flex items-center gap-2 rounded-lg border border-sky-700 bg-sky-50 px-4 py-2.5 text-xs font-black uppercase text-sky-900 hover:border-sky-900 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+             >
+               <LocateFixed className={`h-4 w-4 ${isSyncingRevealLiveLocations ? 'animate-pulse' : ''}`} />
+               {isSyncingRevealLiveLocations ? 'Syncing Live GPS' : 'Sync Live Locations'}
+             </button>
+           )}
            {canSyncRevealVehicles && onPreviewRevealMatches && (
              <button
                type="button"
@@ -273,6 +290,9 @@ export default function EquipmentBoard({
               <p className="mt-1 text-sm font-bold text-jdt-text">{revealVehicleSyncStatus || 'Ready to sync Verizon Reveal vehicles'}</p>
               {onSyncRevealRecommendedApis && (
                 <p className="mt-1 text-xs font-bold text-zinc-500">{revealRecommendedSyncStatus || 'Ready to sync Reveal driver, asset, geofence, inspection, GPS history, and segment APIs'}</p>
+              )}
+              {onSyncRevealLiveLocations && (
+                <p className="mt-1 text-xs font-bold text-sky-800">{revealLiveLocationSyncStatus || 'Ready to sync Reveal live locations'}</p>
               )}
               {onPreviewRevealMatches && (
                 <p className="mt-1 text-xs font-black text-[#155E75]">{revealMatchReviewStatus || 'Review Reveal vehicle matches before trusting live GPS updates.'}</p>

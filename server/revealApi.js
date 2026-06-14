@@ -1,6 +1,7 @@
 const defaultRevealApiBaseUrl = 'https://fim.api.us.fleetmatics.com';
 const defaultTokenPath = '/token';
 const defaultVehiclePath = '/cmd/v1/vehicles';
+const defaultVehicleLiveLocationPathTemplate = '/rad/v1/vehicles/{vehicleNumber}/location';
 const metadataTokenUrl = 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token';
 
 const recommendedRevealApis = [
@@ -204,6 +205,33 @@ export async function fetchRevealConfiguredApiResource(apiId, { env = process.en
   if (!response.ok) {
     const message = await safeResponseText(response);
     throw new Error(`Reveal ${definition.label} request failed (${response.status}): ${message || response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function fetchRevealVehicleLiveLocation(vehicleNumber, { token, env = process.env, fetchImpl = globalThis.fetch } = {}) {
+  if (!revealApiCredentialsConfigured(env)) {
+    throw new Error('Reveal API credentials are not configured.');
+  }
+
+  const cleanVehicleNumber = coerceText(vehicleNumber);
+  if (!cleanVehicleNumber) {
+    throw new Error('Reveal live location requires a Vehicle Number.');
+  }
+
+  const revealToken = token || await fetchRevealApiToken({ env, fetchImpl });
+  const response = await fetchImpl(buildRevealApiUrl(env, buildRevealVehicleLiveLocationPath(cleanVehicleNumber, env)), {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: buildRevealApiAuthorizationHeader(getRevealApiAppId(env), revealToken),
+    },
+  });
+
+  if (!response.ok) {
+    const message = await safeResponseText(response);
+    throw new Error(`Reveal live location request failed for ${cleanVehicleNumber} (${response.status}): ${message || response.statusText}`);
   }
 
   return response.json();
@@ -580,6 +608,38 @@ export async function handleRevealRecommendedApisSyncRequest({
   };
 }
 
+export async function handleRevealLiveLocationsSyncRequest({
+  headers = {},
+  env = process.env,
+  fetchImpl = globalThis.fetch,
+  projectId,
+  databaseId,
+  firebaseApiKey,
+  now = new Date(),
+} = {}) {
+  const verification = await verifyRevealSyncAdminRequest({ headers, env, fetchImpl, firebaseApiKey });
+  if (!verification.ok) {
+    return {
+      statusCode: verification.statusCode,
+      body: { ok: false, error: verification.error },
+    };
+  }
+
+  const result = await syncRevealLiveLocationsToFirestore({
+    env,
+    fetchImpl,
+    projectId,
+    databaseId,
+    now,
+    actorEmail: verification.email,
+  });
+
+  return {
+    statusCode: 200,
+    body: { ok: true, actorEmail: verification.email, ...result },
+  };
+}
+
 export async function syncRevealVehiclesToFirestore({
   env = process.env,
   fetchImpl = globalThis.fetch,
@@ -715,6 +775,131 @@ export async function syncRecommendedRevealApisToFirestore({
     skipped: recommendedRevealApis
       .filter((definition) => !configuredApis.includes(definition) && (!enabledSet || enabledSet.has(definition.id)))
       .map((definition) => ({ id: definition.id, label: definition.label, reason: 'Endpoint path not configured' })),
+  };
+}
+
+export async function syncRevealLiveLocationsToFirestore({
+  env = process.env,
+  fetchImpl = globalThis.fetch,
+  projectId,
+  databaseId,
+  now = new Date(),
+  actorEmail,
+} = {}) {
+  const nowIso = normalizeIso(now);
+  const [vehicles, equipment] = await Promise.all([
+    fetchRevealVehicles({ env, fetchImpl }),
+    fetchFirestoreCollection({
+      collectionId: 'equipment',
+      env,
+      fetchImpl,
+      projectId,
+      databaseId,
+    }),
+  ]);
+  const token = await fetchRevealApiToken({ env, fetchImpl });
+  const revealVehiclesById = new Map(vehicles.map((vehicle) => [coerceText(vehicle.providerVehicleId), vehicle]).filter(([id]) => id));
+  const revealEquipment = equipment.filter(isRevealLinkedEquipment);
+  const accessToken = await getGoogleAccessToken({ env, fetchImpl });
+  const writes = [];
+  const synced = [];
+  const skipped = [];
+
+  for (const item of revealEquipment) {
+    const revealVehicleId = coerceText(item.revealVehicleId || item.verizonVehicleId);
+    const revealVehicle = revealVehiclesById.get(revealVehicleId) || {};
+    const vehicleNumber = coerceText(item.revealVehicleNumber || item.vehicleNumber || revealVehicle.vehicleNumber);
+    const equipmentName = equipmentDisplayName(item);
+
+    if (!vehicleNumber) {
+      skipped.push({
+        equipmentId: item.id,
+        name: equipmentName,
+        revealVehicleId,
+        reason: 'Missing Reveal Vehicle Number. Set a Vehicle Number in Verizon Reveal for live map polling.',
+      });
+      continue;
+    }
+
+    try {
+      const payload = await fetchRevealVehicleLiveLocation(vehicleNumber, { token, env, fetchImpl });
+      const locationItems = getApiItems(payload, ['VehicleLocation', 'vehicleLocation', 'VehicleLocations', 'vehicleLocations', 'Locations', 'locations', 'Items', 'items', 'Data', 'data']);
+      const locationItem = locationItems[0] || payload;
+      const eventRecord = buildRevealLiveLocationEventRecord({
+        item: locationItem,
+        equipment: item,
+        vehicle: revealVehicle,
+        vehicleNumber,
+        nowIso,
+        actorEmail,
+      });
+
+      if (typeof eventRecord?.data?.latitude !== 'number' || typeof eventRecord?.data?.longitude !== 'number') {
+        skipped.push({
+          equipmentId: item.id,
+          name: equipmentName,
+          revealVehicleId,
+          vehicleNumber,
+          reason: 'Reveal returned no latitude/longitude for this vehicle.',
+        });
+        continue;
+      }
+
+      writes.push({
+        update: {
+          name: firestoreDocumentName(projectId, databaseId, eventRecord.collection, eventRecord.id),
+          fields: toFirestoreFields(eventRecord.data),
+        },
+      });
+
+      const equipmentPatch = revealEquipmentPatchFromFleetEvent(eventRecord.data, nowIso);
+      writes.push({
+        update: {
+          name: firestoreDocumentName(projectId, databaseId, 'equipment', item.id),
+          fields: toFirestoreFields(equipmentPatch),
+        },
+        updateMask: {
+          fieldPaths: Object.keys(equipmentPatch),
+        },
+      });
+
+      synced.push({
+        equipmentId: item.id,
+        name: equipmentName,
+        revealVehicleId,
+        vehicleNumber,
+        eventId: eventRecord.id,
+        eventAt: eventRecord.data.eventAt,
+      });
+    } catch (error) {
+      skipped.push({
+        equipmentId: item.id,
+        name: equipmentName,
+        revealVehicleId,
+        vehicleNumber,
+        reason: error instanceof Error ? error.message : 'Reveal live location sync failed.',
+      });
+    }
+  }
+
+  if (writes.length > 0) {
+    await firestoreRequest({
+      method: 'POST',
+      path: 'documents:commit',
+      body: { writes },
+      accessToken,
+      projectId,
+      databaseId,
+      fetchImpl,
+    });
+  }
+
+  return {
+    checked: revealEquipment.length,
+    synced: synced.length,
+    skipped,
+    vehicles: synced,
+    written: writes.length,
   };
 }
 
@@ -1089,6 +1274,27 @@ function buildVehicleGpsHistoryEventRecord(item, nowIso, actorEmail) {
   });
 }
 
+function buildRevealLiveLocationEventRecord({ item, equipment, vehicle, vehicleNumber, nowIso, actorEmail }) {
+  return buildFleetEventRecord({
+    idPrefix: 'reveal-live-location',
+    providerVehicleId: coerceText(equipment.revealVehicleId || equipment.verizonVehicleId || vehicle.providerVehicleId || firstValue(item, ['VehicleId', 'vehicleId', 'VehicleID', 'vehicleID'])),
+    vehicleName: coerceText(equipment.name || vehicle.name || firstValue(item, ['VehicleName', 'vehicleName', 'Name', 'name'])),
+    vehicleNumber: coerceText(vehicleNumber || equipment.vehicleNumber || equipment.revealVehicleNumber || vehicle.vehicleNumber || firstValue(item, ['VehicleNumber', 'vehicleNumber', 'UnitNumber', 'unitNumber'])),
+    registrationNumber: coerceText(equipment.registrationNumber || vehicle.registrationNumber || firstValue(item, ['RegistrationNumber', 'registrationNumber', 'LicensePlate', 'licensePlate'])),
+    vin: coerceText(equipment.vin || vehicle.vin || firstValue(item, ['VIN', 'Vin', 'vin'])),
+    latitude: coerceNumber(firstValue(item, ['Latitude', 'latitude', 'Lat', 'lat'])),
+    longitude: coerceNumber(firstValue(item, ['Longitude', 'longitude', 'Lng', 'lng', 'Lon', 'lon'])),
+    address: coerceText(firstValue(item, ['Address', 'address', 'Location', 'location', 'FormattedAddress', 'formattedAddress'])),
+    eventAt: normalizeOptionalIso(firstValue(item, ['EventDateTime', 'eventDateTime', 'GPSDateTime', 'gpsDateTime', 'DateTime', 'dateTime', 'Timestamp', 'timestamp'])) || nowIso,
+    receivedAt: nowIso,
+    speedMph: coerceNumber(firstValue(item, ['Speed', 'speed', 'SpeedMph', 'speedMph', 'MilesPerHour', 'mph'])),
+    heading: coerceNumber(firstValue(item, ['Heading', 'heading', 'Direction', 'direction', 'Bearing', 'bearing'])),
+    status: coerceText(firstValue(item, ['Status', 'status', 'IgnitionStatus', 'ignitionStatus', 'VehicleStatus', 'vehicleStatus'])) || 'Live location',
+    driverName: coerceText(firstValue(item, ['DriverName', 'driverName', 'Driver', 'driver'])),
+    actorEmail,
+  });
+}
+
 function buildVehicleSegmentEventRecord(item, nowIso, actorEmail) {
   const segmentId = coerceText(firstValue(item, ['SegmentId', 'segmentId', 'Id', 'id']));
   const startAt = normalizeOptionalIso(firstValue(item, ['StartDateTime', 'startDateTime', 'StartTime', 'startTime'])) || nowIso;
@@ -1147,6 +1353,32 @@ function buildFleetEventRecord(event) {
   }));
 }
 
+function revealEquipmentPatchFromFleetEvent(event, nowIso) {
+  const locationText = event.address || event.coordinateText;
+  const moving = typeof event.speedMph === 'number' && event.speedMph > 2;
+
+  return stripUndefined({
+    telematicsProvider: 'Reveal',
+    revealVehicleId: event.providerVehicleId,
+    verizonVehicleId: event.providerVehicleId,
+    revealVehicleNumber: event.vehicleNumber,
+    vehicleNumber: event.vehicleNumber,
+    currentLocationType: locationText ? (moving ? 'In Transit' : 'GPS') : undefined,
+    currentLocationName: locationText,
+    currentLocation: locationText,
+    lastTelematicsAt: event.eventAt || event.receivedAt || nowIso,
+    revealLastReceivedAt: event.receivedAt || nowIso,
+    lastTelematicsLatitude: event.latitude,
+    lastTelematicsLongitude: event.longitude,
+    lastTelematicsAddress: event.address,
+    lastTelematicsSpeedMph: event.speedMph,
+    lastTelematicsHeading: event.heading,
+    lastTelematicsStatus: event.status,
+    lastTelematicsDriverName: event.driverName,
+    updatedBy: event.updatedBy || event.createdBy,
+  });
+}
+
 function wrapFirestoreRecord(collection, id, data) {
   return { collection, id, data };
 }
@@ -1171,6 +1403,18 @@ function categoryForRevealAsset(value) {
   if (/implement|attachment|bucket|fork|grapple|blade/.test(text)) return 'Implement';
   if (/tool|saw|pump|generator/.test(text)) return 'Tool';
   return 'Support';
+}
+
+function isRevealLinkedEquipment(item) {
+  const provider = String(coerceText(item?.telematicsProvider) || '').toLowerCase();
+  return Boolean(
+    item
+    && (provider === 'reveal'
+      || coerceText(item.revealVehicleId)
+      || coerceText(item.verizonVehicleId)
+      || coerceText(item.revealVehicleNumber)
+      || coerceText(item.vehicleNumber))
+  );
 }
 
 function normalizeOptionalIso(value) {
@@ -1253,6 +1497,17 @@ function getRevealApiTokenPath(env) {
 
 function getRevealVehiclesPath(env) {
   return firstEnv(env, ['REVEAL_VEHICLES_PATH', 'VERIZON_REVEAL_VEHICLES_PATH']) || defaultVehiclePath;
+}
+
+function getRevealVehicleLiveLocationPathTemplate(env) {
+  return firstEnv(env, ['REVEAL_VEHICLE_LIVE_LOCATION_PATH_TEMPLATE', 'VERIZON_REVEAL_VEHICLE_LIVE_LOCATION_PATH_TEMPLATE']) || defaultVehicleLiveLocationPathTemplate;
+}
+
+function buildRevealVehicleLiveLocationPath(vehicleNumber, env) {
+  const encodedVehicleNumber = encodeURIComponent(String(vehicleNumber || '').trim());
+  return getRevealVehicleLiveLocationPathTemplate(env)
+    .replace(/\{vehicleNumber\}/g, encodedVehicleNumber)
+    .replace(/\{vehicleNo\}/g, encodedVehicleNumber);
 }
 
 function buildRevealApiUrl(env, path) {

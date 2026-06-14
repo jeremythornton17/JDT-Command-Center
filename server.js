@@ -10,6 +10,7 @@ import {
 } from './server/revealTelematics.js';
 import {
   buildRevealRecommendedApiStatus,
+  handleRevealLiveLocationsSyncRequest,
   handleRevealRecommendedApisSyncRequest,
   handleRevealVehicleMatchApprovalRequest,
   handleRevealVehicleMatchPreviewRequest,
@@ -174,6 +175,35 @@ app.post('/api/integrations/reveal/recommended/sync', express.json({ limit: '64k
       .send({
         ok: false,
         error: error instanceof Error ? error.message : 'Reveal recommended API sync failed.',
+      });
+  }
+});
+
+app.post('/api/integrations/reveal/live-locations/sync', express.json({ limit: '64kb', type: ['application/json', 'application/*+json'] }), async (request, response) => {
+  try {
+    const result = await handleRevealLiveLocationsSyncRequest({
+      headers: request.headers,
+      env: process.env,
+      projectId: firestoreProjectId,
+      databaseId: firestoreDatabaseId,
+      firebaseApiKey: firebaseConfig.apiKey,
+      now: new Date(),
+    });
+
+    response
+      .status(result.statusCode)
+      .type('application/json')
+      .set('Cache-Control', 'no-store')
+      .send(result.body);
+  } catch (error) {
+    console.error('Reveal live location sync failed', error);
+    response
+      .status(500)
+      .type('application/json')
+      .set('Cache-Control', 'no-store')
+      .send({
+        ok: false,
+        error: error instanceof Error ? error.message : 'Reveal live location sync failed.',
       });
   }
 });

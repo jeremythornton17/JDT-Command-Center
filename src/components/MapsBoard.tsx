@@ -15,6 +15,7 @@ import {
   Route,
   Save,
   Search,
+  RefreshCw,
   Target,
   Truck,
   TreePine,
@@ -166,6 +167,10 @@ type MapsBoardProps = {
   loads?: LoadRecord[];
   equipment?: EquipmentRecord[];
   fleetTelematicsEvents?: FleetTelematicsEventRecord[];
+  canSyncRevealLiveLocations?: boolean;
+  isSyncingRevealLiveLocations?: boolean;
+  revealLiveLocationSyncStatus?: string;
+  onSyncRevealLiveLocations?: () => void | Promise<void>;
   ranchOaks?: any[];
   treeRelocationRecords?: any[];
   openDrawer?: (type: string, id: string) => void;
@@ -192,6 +197,10 @@ export default function MapsBoard({
   treeRelocationRecords = [],
   equipment = [],
   fleetTelematicsEvents = [],
+  canSyncRevealLiveLocations = false,
+  isSyncingRevealLiveLocations = false,
+  revealLiveLocationSyncStatus = '',
+  onSyncRevealLiveLocations,
   onUpdateTreeLocation,
   onImportTreePins,
   openDrawer,
@@ -1412,6 +1421,33 @@ export default function MapsBoard({
                   >
                     Show All GPS Assets
                   </button>
+                </div>
+              )}
+
+              {(canSyncRevealLiveLocations && onSyncRevealLiveLocations) && (
+                <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[10px] font-black uppercase text-sky-900">Reveal Live Location Sync</p>
+                      <p className="mt-1 text-[11px] font-bold leading-snug text-sky-800">
+                        {revealLiveLocationSyncStatus || 'Sync live vehicle coordinates from the tracking provider.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void onSyncRevealLiveLocations()}
+                      disabled={isSyncingRevealLiveLocations}
+                      className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-sky-700 bg-white px-3 py-2 text-[9px] font-black uppercase text-sky-900 hover:border-sky-900 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${isSyncingRevealLiveLocations ? 'animate-spin' : ''}`} />
+                      {isSyncingRevealLiveLocations ? 'Syncing' : 'Sync GPS'}
+                    </button>
+                  </div>
+                  {liveGpsAssets.length > 0 && !liveGpsAssets.some((asset) => asset.lat !== undefined && asset.lng !== undefined) && (
+                    <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] font-bold leading-snug text-amber-900">
+                      Vehicle records are linked to tracking IDs, but no coordinates have reached JDT yet. Sync GPS after Vehicle Numbers are set, or configure the GPS webhook.
+                    </p>
+                  )}
                 </div>
               )}
 

@@ -539,6 +539,8 @@ export default function App() {
   const [revealVehicleSyncStatus, setRevealVehicleSyncStatus] = useState('Ready to sync Verizon Reveal vehicles');
   const [isSyncingRevealRecommendedApis, setIsSyncingRevealRecommendedApis] = useState(false);
   const [revealRecommendedSyncStatus, setRevealRecommendedSyncStatus] = useState('Ready to sync Reveal driver, asset, geofence, inspection, GPS history, and segment APIs');
+  const [isSyncingRevealLiveLocations, setIsSyncingRevealLiveLocations] = useState(false);
+  const [revealLiveLocationSyncStatus, setRevealLiveLocationSyncStatus] = useState('Ready to sync Reveal live locations');
   const [isPreviewingRevealMatches, setIsPreviewingRevealMatches] = useState(false);
   const [isApprovingRevealMatches, setIsApprovingRevealMatches] = useState(false);
   const [revealMatchReviewStatus, setRevealMatchReviewStatus] = useState('Review Reveal vehicle matches before trusting live GPS updates.');
@@ -1280,6 +1282,54 @@ export default function App() {
     }
   };
 
+  const handleSyncRevealLiveLocations = async () => {
+    if (user === null) {
+      addToast('Sign in before syncing Reveal live locations', 'error');
+      return;
+    }
+
+    setIsSyncingRevealLiveLocations(true);
+    setRevealLiveLocationSyncStatus('Syncing Reveal live GPS locations...');
+
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/integrations/reveal/live-locations/sync', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ source: 'live-gps-map' }),
+      });
+      const result = await response.json() as {
+        ok?: boolean;
+        checked?: number;
+        synced?: number;
+        written?: number;
+        skipped?: Array<{ name?: string; reason?: string }>;
+        error?: string;
+      };
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || 'Reveal live location sync failed.');
+      }
+
+      const skippedCount = result.skipped?.length || 0;
+      const firstReason = result.skipped?.[0]?.reason;
+      const summary = result.synced
+        ? `${result.synced} Reveal live location${result.synced === 1 ? '' : 's'} synced.${skippedCount ? ` ${skippedCount} skipped.` : ''}`
+        : `${result.checked || 0} Reveal vehicle${result.checked === 1 ? '' : 's'} checked, no live GPS synced.${firstReason ? ` ${firstReason}` : ''}`;
+      setRevealLiveLocationSyncStatus(summary);
+      addToast(summary, result.synced ? 'success' : 'info');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Reveal live location sync failed.';
+      setRevealLiveLocationSyncStatus(message);
+      addToast(message, 'error');
+    } finally {
+      setIsSyncingRevealLiveLocations(false);
+    }
+  };
+
   const handlePreviewRevealMatches = async () => {
     if (user === null) {
       addToast('Sign in before reviewing Reveal matches', 'error');
@@ -1418,6 +1468,9 @@ export default function App() {
             isSyncingRevealRecommendedApis={isSyncingRevealRecommendedApis}
             revealRecommendedSyncStatus={revealRecommendedSyncStatus}
             onSyncRevealRecommendedApis={handleSyncRevealRecommendedApis}
+            isSyncingRevealLiveLocations={isSyncingRevealLiveLocations}
+            revealLiveLocationSyncStatus={revealLiveLocationSyncStatus}
+            onSyncRevealLiveLocations={handleSyncRevealLiveLocations}
             isPreviewingRevealMatches={isPreviewingRevealMatches}
             revealMatchReviewStatus={revealMatchReviewStatus}
             onPreviewRevealMatches={handlePreviewRevealMatches}
@@ -1461,6 +1514,10 @@ export default function App() {
             locationsList={locationsWithDefaults}
             equipment={equipmentWithDefaults}
             fleetTelematicsEvents={fleetTelematicsEvents}
+            canSyncRevealLiveLocations={permissions.canManageSources}
+            isSyncingRevealLiveLocations={isSyncingRevealLiveLocations}
+            revealLiveLocationSyncStatus={revealLiveLocationSyncStatus}
+            onSyncRevealLiveLocations={handleSyncRevealLiveLocations}
             initialMapMode={mapsIntent?.mode}
             initialSelectedGpsAssetId={mapsIntent?.selectedGpsAssetId}
             onUpdateTreeLocation={handleUpdateTreeLocation}

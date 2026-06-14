@@ -10,7 +10,9 @@ import {
   buildRevealVehicleMatchCandidates,
   fetchRevealApiToken,
   fetchRevealConfiguredApiResource,
+  fetchRevealVehicleLiveLocation,
   fetchRevealVehicles,
+  handleRevealLiveLocationsSyncRequest,
   handleRevealVehicleMatchApprovalRequest,
   handleRevealVehicleMatchPreviewRequest,
   handleRevealRecommendedApisSyncRequest,
@@ -18,6 +20,7 @@ import {
   normalizeRevealVehicleRecords,
   revealApiCredentialsConfigured,
   syncRecommendedRevealApisToFirestore,
+  syncRevealLiveLocationsToFirestore,
   syncRevealVehiclesToFirestore,
 } from './revealApi.js';
 
@@ -523,6 +526,139 @@ describe('Reveal API helpers', () => {
     assert.equal(calls[1].url, 'https://fim.api.us.fleetmatics.com/custom/driver-assignments');
     assert.equal(calls[1].options.headers.Authorization, 'Atmosphere atmosphere_app_id=fleetmatics-p-us-app, Bearer TOKEN_VALUE');
     assert.deepEqual(payload, { DriverAssignments: [{ DriverName: 'Christian Crespo', VehicleName: 'Semi #1' }] });
+  });
+
+  it('fetches Reveal live vehicle location by Vehicle Number', async () => {
+    const calls = [];
+    const payload = await fetchRevealVehicleLiveLocation('S1', {
+      env: {
+        REVEAL_API_USERNAME: 'REST_JDT@example.com',
+        REVEAL_API_PASSWORD: 'top-secret',
+        REVEAL_API_APP_ID: 'fleetmatics-p-us-app',
+      },
+      fetchImpl: async (url, options = {}) => {
+        calls.push({ url: String(url), options });
+        if (String(url).endsWith('/token')) return responseText('TOKEN_VALUE');
+        if (String(url).endsWith('/rad/v1/vehicles/S1/location')) {
+          return responseJson({ Latitude: 26.755, Longitude: -80.918, EventDateTime: '2026-06-13T20:00:00Z' });
+        }
+        throw new Error(`Unexpected URL ${url}`);
+      },
+    });
+
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].url, 'https://fim.api.us.fleetmatics.com/rad/v1/vehicles/S1/location');
+    assert.equal(calls[1].options.headers.Authorization, 'Atmosphere atmosphere_app_id=fleetmatics-p-us-app, Bearer TOKEN_VALUE');
+    assert.deepEqual(payload, { Latitude: 26.755, Longitude: -80.918, EventDateTime: '2026-06-13T20:00:00Z' });
+  });
+
+  it('syncs Reveal live locations into GPS events and patches matching equipment', async () => {
+    const calls = [];
+    const result = await syncRevealLiveLocationsToFirestore({
+      projectId: 'jdt-command-board',
+      databaseId: 'database-1',
+      now: new Date('2026-06-13T20:05:00Z'),
+      actorEmail: 'jeremy@jdtnurseries.com',
+      env: {
+        REVEAL_API_USERNAME: 'REST_JDT@example.com',
+        REVEAL_API_PASSWORD: 'top-secret',
+        REVEAL_API_APP_ID: 'fleetmatics-p-us-app',
+        GOOGLE_OAUTH_ACCESS_TOKEN: 'GOOGLE_TOKEN',
+      },
+      fetchImpl: async (url, options = {}) => {
+        calls.push({ url: String(url), options });
+        if (String(url).endsWith('/token')) return responseText('TOKEN_VALUE');
+        if (String(url).endsWith('/cmd/v1/vehicles')) return responseJson([{ VehicleId: 6358051, Name: 'Colorado', VehicleNumber: 'S1' }]);
+        if (String(url).includes('/documents/equipment?pageSize=300')) {
+          return responseJson({
+            documents: [{
+              name: 'projects/jdt-command-board/databases/database-1/documents/equipment/equipment-colorado',
+              fields: {
+                id: { stringValue: 'equipment-colorado' },
+                name: { stringValue: 'Colorado' },
+                category: { stringValue: 'Truck' },
+                telematicsProvider: { stringValue: 'Reveal' },
+                revealVehicleId: { stringValue: '6358051' },
+                vehicleNumber: { stringValue: 'S1' },
+              },
+            }],
+          });
+        }
+        if (String(url).endsWith('/rad/v1/vehicles/S1/location')) {
+          return responseJson({ Latitude: 26.755, Longitude: -80.918, Speed: 0, EventDateTime: '2026-06-13T20:00:00Z', Address: '1010 E Sugarland Hwy' });
+        }
+        if (String(url).endsWith('/documents:commit')) return responseJson({ commitTime: '2026-06-13T20:05:01Z' });
+        throw new Error(`Unexpected URL ${url}`);
+      },
+    });
+
+    assert.equal(result.checked, 1);
+    assert.equal(result.synced, 1);
+    assert.equal(result.skipped.length, 0);
+
+    const commitCall = calls.find((call) => call.url.endsWith('/documents:commit'));
+    assert.ok(commitCall);
+    const commit = JSON.parse(commitCall.options.body);
+    assert.equal(commit.writes.length, 2);
+    assert.match(commit.writes[0].update.name, /\/documents\/fleetTelematicsEvents\/reveal-live-location-6358051-2026-06-13t20-00-00-000z/);
+    assert.equal(commit.writes[1].update.name.endsWith('/documents/equipment/equipment-colorado'), true);
+    assert.deepEqual(commit.writes[1].updateMask.fieldPaths.includes('lastTelematicsLatitude'), true);
+  });
+
+  it('reports missing Reveal Vehicle Numbers instead of silently leaving live map empty', async () => {
+    const calls = [];
+    const result = await syncRevealLiveLocationsToFirestore({
+      projectId: 'jdt-command-board',
+      databaseId: 'database-1',
+      now: new Date('2026-06-13T20:05:00Z'),
+      actorEmail: 'jeremy@jdtnurseries.com',
+      env: {
+        REVEAL_API_USERNAME: 'REST_JDT@example.com',
+        REVEAL_API_PASSWORD: 'top-secret',
+        REVEAL_API_APP_ID: 'fleetmatics-p-us-app',
+        GOOGLE_OAUTH_ACCESS_TOKEN: 'GOOGLE_TOKEN',
+      },
+      fetchImpl: async (url, options = {}) => {
+        calls.push({ url: String(url), options });
+        if (String(url).endsWith('/token')) return responseText('TOKEN_VALUE');
+        if (String(url).endsWith('/cmd/v1/vehicles')) return responseJson([{ VehicleId: 6358051, Name: 'Colorado', VehicleNumber: null }]);
+        if (String(url).includes('/documents/equipment?pageSize=300')) {
+          return responseJson({
+            documents: [{
+              name: 'projects/jdt-command-board/databases/database-1/documents/equipment/equipment-colorado',
+              fields: {
+                id: { stringValue: 'equipment-colorado' },
+                name: { stringValue: 'Colorado' },
+                telematicsProvider: { stringValue: 'Reveal' },
+                revealVehicleId: { stringValue: '6358051' },
+              },
+            }],
+          });
+        }
+        throw new Error(`Unexpected URL ${url}`);
+      },
+    });
+
+    assert.equal(result.checked, 1);
+    assert.equal(result.synced, 0);
+    assert.equal(result.skipped[0].reason.includes('Missing Reveal Vehicle Number'), true);
+    assert.equal(calls.some((call) => call.url.includes('/rad/v1/vehicles/')), false);
+  });
+
+  it('requires owner admin auth before syncing Reveal live locations', async () => {
+    const result = await handleRevealLiveLocationsSyncRequest({
+      headers: {},
+      firebaseApiKey: 'firebase-api-key',
+      projectId: 'jdt-command-board',
+      databaseId: 'database-1',
+      env: {},
+      fetchImpl: async () => {
+        throw new Error('should not call external services without a token');
+      },
+    });
+
+    assert.equal(result.statusCode, 401);
+    assert.equal(result.body.ok, false);
   });
 
   it('maps recommended Reveal API payloads into existing app collections', () => {
