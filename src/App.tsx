@@ -16,7 +16,9 @@ import {
   Menu,
   Plus,
   Settings,
+  Scissors,
   Tractor,
+  TreePine,
   Truck,
   User,
   X,
@@ -34,6 +36,7 @@ import ClientsBoard from './components/ClientsBoard';
 import AlertsBoard from './components/AlertsBoard';
 import CalendarBoard from './components/CalendarBoard';
 import MapsBoard from './components/MapsBoard';
+import ArcGisMapBoard from './components/ArcGisMapBoard';
 import ReportsBoard from './components/ReportsBoard';
 import DocumentsBoard from './components/DocumentsBoard';
 import SettingsBoard from './components/SettingsBoard';
@@ -135,6 +138,7 @@ const secondaryNav = [
   { id: 'alerts', label: 'Alerts', icon: AlertTriangle },
   { id: 'calendar', label: 'Calendar', icon: Calendar },
   { id: 'maps', label: 'Maps', icon: MapPin },
+  { id: 'arcgisMap', label: 'GIS Map', icon: MapPin },
   { id: 'reports', label: 'Reports', icon: BarChart2 },
   { id: 'documents', label: 'Documents', icon: Folder },
   { id: 'sheets', label: 'Import / Backup', icon: Database },
@@ -179,6 +183,22 @@ type MapsIntent = {
   mode: 'locations' | 'project' | 'liveGps';
   selectedGpsAssetId?: string;
 };
+
+type AppRouteIntent = {
+  activeTab: string;
+  projectId?: string;
+};
+
+function appRouteFromPathname(pathname = typeof window !== 'undefined' ? window.location.pathname : ''): AppRouteIntent | null {
+  const projectMapMatch = pathname.match(/^\/projects\/([^/]+)\/map\/?$/);
+  if (projectMapMatch?.[1]) {
+    return { activeTab: 'arcgisMap', projectId: decodeURIComponent(projectMapMatch[1]) };
+  }
+  if (/^\/map\/?$/.test(pathname)) {
+    return { activeTab: 'arcgisMap' };
+  }
+  return null;
+}
 
 function upsertRecord<T extends CommandRecord>(items: T[], record: Partial<T>, fallbackPrefix: string, matcher?: (item: T) => boolean) {
   const id = record.id || makeId(fallbackPrefix);
@@ -529,7 +549,9 @@ function upsertClientSiteContact(
 
 export default function App() {
   const { user, logOut, permissions, authorizeGoogleSheetsAccess } = useAuth();
-  const [activeTab, setActiveTab] = useState('board');
+  const initialRouteIntent = appRouteFromPathname();
+  const [activeTab, setActiveTab] = useState(initialRouteIntent?.activeTab || 'board');
+  const [arcGisInitialProjectId] = useState(initialRouteIntent?.projectId || '');
   const [drawerConfig, setDrawerConfig] = useState<DrawerConfig>({ isOpen: false, type: '', itemId: null, defaultTab: 'overview' });
   const [modalConfig, setModalConfig] = useState<ModalConfig>({ isOpen: false, type: '' });
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -1147,13 +1169,14 @@ export default function App() {
   };
 
   const handleUpdateTreeLocation = (treeId: string, relocationMap: unknown, relocationContext: Partial<RanchOakRecord> = {}) => {
+    const typedRelocationMap = relocationMap as TreeRelocationRecord['relocationMap'];
     const updateRecord = (item: RanchOakRecord) => (
       item.id === treeId || item.treeId === treeId ? { ...item, ...relocationContext, relocationMap } : item
     );
     setRanchOaks((prev) => prev.map(updateRecord));
     setInventoryItems((prev) => prev.map(updateRecord));
     setTreeRelocationRecords((prev) => prev.map((item) => (
-      item.id === treeId || item.treeId === treeId ? { ...item, ...relocationContext, relocationMap } : item
+      item.id === treeId || item.treeId === treeId ? { ...item, ...relocationContext, relocationMap: typedRelocationMap } : item
     )));
   };
 
@@ -1173,6 +1196,24 @@ export default function App() {
       addToast(`${records.length} tree pin${records.length === 1 ? '' : 's'} imported`, 'success');
     }
     return saved;
+  };
+
+  const handleSaveArcGisTreePoint = async (record: TreeRelocationRecord) => {
+    const enrichedRecord = enrichProjectTreeAssetRecord(record);
+    const saved = await setTreeRelocationRecords((prev) => upsertRecordWithAudit(
+      prev,
+      enrichedRecord,
+      'tree',
+      user?.email,
+      'arcgis tree point',
+      (item) => sameProjectTreeAsset(item, enrichedRecord),
+    ));
+    addToast(saved ? `ArcGIS tree point saved: ${record.treeId || record.id}` : 'ArcGIS tree point could not be saved', saved ? 'success' : 'error');
+  };
+
+  const getArcGisAuthToken = async () => {
+    if (user === null) throw new Error('Sign in before syncing ArcGIS hosted layers.');
+    return user.getIdToken();
   };
 
   const handleSaveFieldUpdate = async (update: Partial<FieldUpdateRecord>) => {
@@ -1526,6 +1567,21 @@ export default function App() {
             openDrawer={openDrawer}
           />
         );
+      case 'arcgisMap':
+        return (
+          <ArcGisMapBoard
+            initialProjectId={arcGisInitialProjectId}
+            projects={projects}
+            jobs={jobs}
+            treeRelocationRecords={treeRelocationRecords}
+            ranchOaks={nurseryInventory}
+            equipment={equipmentWithDefaults}
+            locations={locationsWithDefaults}
+            workOrders={workOrders}
+            onSaveTreePoint={handleSaveArcGisTreePoint}
+            getAuthToken={getArcGisAuthToken}
+          />
+        );
       case 'reports':
         return <ReportsBoard jobs={jobs} projects={projects} workOrders={workOrders} loads={loadsWithTelematics} ranchOaks={nurseryInventory} equipment={equipmentWithDefaults} alerts={alertsWithTelematics} clients={clients} fieldUpdates={fieldUpdates} scheduleTasks={scheduleTasks} treeRelocationRecords={treeRelocationRecords} documents={documents} fleetTelematicsEvents={fleetTelematicsEvents} importBatches={importBatches} />;
       case 'documents':
@@ -1691,13 +1747,12 @@ function riskLevelClass(level: string) {
 }
 
 const commandAlertIconMap: Record<DashboardCommandAlert['id'], typeof MapPin> = {
-  today: Calendar,
-  blocked: AlertTriangle,
-  approved: DollarSign,
-  trees: Leaf,
-  crew: HardHat,
-  freight: Truck,
-  equipment: Tractor,
+  todayWork: Calendar,
+  blockedDecision: AlertTriangle,
+  treesReady: TreePine,
+  rootPruneDue: Scissors,
+  careFollowUps: Leaf,
+  equipmentConflicts: Tractor,
 };
 
 const commandAlertToneMap: Record<DashboardCommandAlert['tone'], string> = {
@@ -1717,13 +1772,10 @@ function dataQualitySeverityClass(severity: string) {
 }
 
 export function Dashboard({ recentRecords, dashboardSummary, openModal, openDrawer, setActiveTab }: any) {
-  const openOperation = (operation: FeaturedOperation) => {
-    if (operation.recordId) {
-      openDrawer(operation.drawerType, operation.recordId);
-      return;
-    }
-    setActiveTab(operation.targetTab);
-  };
+  const dailyBrief = dashboardSummary.dailyBrief;
+  const topRisks = (dashboardSummary.projectRisks || []).slice(0, 4);
+  const ownerGroups = (dashboardSummary.ownerReviewGroups || []).filter((group: any) => group.items?.length > 0);
+  const blockingDataGroups = (dashboardSummary.dataQualityGroups || []).filter((group: any) => group.items?.length > 0);
 
   const openWorkItem = (item: DashboardWorkItem) => {
     if (item.recordId && drawerBackedTypes.has(item.drawerType)) {
@@ -1733,15 +1785,6 @@ export function Dashboard({ recentRecords, dashboardSummary, openModal, openDraw
     setActiveTab(item.targetTab);
   };
 
-  const dailyBrief = dashboardSummary.dailyBrief;
-  const topRisks = dashboardSummary.projectRisks.slice(0, 3);
-  const openBriefItem = (item: any) => {
-    if (item.recordId && drawerBackedTypes.has(item.drawerType)) {
-      openDrawer(item.drawerType, item.recordId);
-      return;
-    }
-    setActiveTab(item.targetTab);
-  };
   const openDataQualityItem = (item: any) => {
     if (item.recordId && drawerBackedTypes.has(item.drawerType)) {
       openDrawer(item.drawerType, item.recordId);
@@ -1749,26 +1792,21 @@ export function Dashboard({ recentRecords, dashboardSummary, openModal, openDraw
     }
     setActiveTab(item.targetTab || 'reports');
   };
-  const openWorkflowReadinessItem = (item: any) => {
-    if (item.recordId && drawerBackedTypes.has(item.drawerType)) {
-      openDrawer(item.drawerType, item.recordId);
+
+  const openRisk = (risk: any) => {
+    if (risk.recordId && drawerBackedTypes.has(risk.drawerType)) {
+      openDrawer(risk.drawerType, risk.recordId);
       return;
     }
-    setActiveTab(item.targetTab || 'reports');
+    setActiveTab(risk.targetTab || 'tracker');
   };
-  const openCloseoutReviewItem = (item: any) => {
+
+  const openQueueItem = (item: any, fallbackTab: string) => {
     if (item.recordId && drawerBackedTypes.has(item.drawerType)) {
       openDrawer(item.drawerType, item.recordId);
       return;
     }
-    setActiveTab(item.targetTab || 'crewView');
-  };
-  const openComplianceReviewItem = (item: any) => {
-    if (item.recordId && drawerBackedTypes.has(item.drawerType)) {
-      openDrawer(item.drawerType, item.recordId);
-      return;
-    }
-    setActiveTab(item.targetTab || 'documents');
+    setActiveTab(item.targetTab || fallbackTab);
   };
 
   return (
@@ -1777,11 +1815,16 @@ export function Dashboard({ recentRecords, dashboardSummary, openModal, openDraw
         <div>
           <p className="text-xs font-black uppercase text-jdt-olive">Live Operations</p>
           <h2 className="mt-1 text-2xl font-black text-jdt-primary sm:text-3xl">Today's Command Board</h2>
-          <p className="mt-1 text-sm font-bold text-zinc-500">Daily dispatch, tomorrow planning, owner decisions, and operating focus in one working view.</p>
+          <p className="mt-1 text-sm font-bold text-zinc-500">
+            {dailyBrief?.todayIso ? `${dailyBrief.todayIso} - ` : ''}Today's work, crew assignments, tree status, equipment readiness, and blockers.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => openModal('job')} className="inline-flex items-center justify-center gap-2 rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white shadow-sm hover:bg-jdt-dark">
-            <Plus className="h-4 w-4" /> Create Project
+          <button onClick={() => openModal('assign_work')} className="inline-flex items-center justify-center gap-2 rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white shadow-sm hover:bg-jdt-dark">
+            <HardHat className="h-4 w-4" /> Assign Work
+          </button>
+          <button onClick={() => openModal('load')} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-jdt-panel px-4 py-2.5 text-xs font-black uppercase text-jdt-text shadow-sm hover:bg-jdt-sand">
+            <Truck className="h-4 w-4" /> Dispatch Freight Move
           </button>
           <button onClick={() => setActiveTab('calendar')} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-jdt-panel px-4 py-2.5 text-xs font-black uppercase text-jdt-text shadow-sm hover:bg-jdt-sand">
             <Calendar className="h-4 w-4" /> Calendar
@@ -1789,497 +1832,467 @@ export function Dashboard({ recentRecords, dashboardSummary, openModal, openDraw
         </div>
       </div>
 
-      <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[1.35fr_repeat(6,minmax(0,1fr))]">
+      <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
         {dashboardSummary.commandAlerts.map((alert: DashboardCommandAlert) => {
           const Icon = commandAlertIconMap[alert.id];
           return (
-            <button key={alert.id} type="button" onClick={() => setActiveTab(alert.targetTab)} className={`min-h-[78px] rounded-lg border p-3 text-left shadow-sm transition-colors hover:border-jdt-olive ${commandAlertToneMap[alert.tone]}`}>
+            <button key={alert.id} type="button" onClick={() => setActiveTab(alert.targetTab)} className={`min-h-[92px] rounded-lg border p-3 text-left shadow-sm transition-colors hover:border-jdt-olive ${commandAlertToneMap[alert.tone]}`}>
               <div className="flex items-start justify-between gap-2">
                 <p className={`text-[10px] font-black uppercase ${alert.tone === 'context' ? 'text-white/70' : 'text-zinc-500'}`}>{alert.label}</p>
                 <Icon className={`h-4 w-4 ${alert.tone === 'context' ? 'text-jdt-sand' : 'text-jdt-olive'}`} />
               </div>
-              <p className="mt-2 text-2xl font-black leading-none">{alert.value}</p>
+              <p className="mt-2 text-3xl font-black leading-none">{alert.value}</p>
               <p className={`mt-1 text-[10px] font-bold ${alert.tone === 'context' ? 'text-white/70' : 'text-zinc-500'}`}>{alert.detail}</p>
             </button>
           );
         })}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className="text-sm font-black uppercase text-jdt-text">Daily Command Brief</h3>
-              <p className="mt-1 text-xs font-bold text-zinc-500">{dailyBrief.summary}</p>
-            </div>
-            <button onClick={() => setActiveTab('reports')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
-              Open Reports
-            </button>
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            {[
-              { title: 'Today', date: dailyBrief.todayIso, items: dailyBrief.today, empty: 'No work dated today' },
-              { title: 'Tomorrow', date: dailyBrief.tomorrowIso, items: dailyBrief.tomorrow, empty: 'No tomorrow prep staged' },
-              { title: 'Owner Decisions', date: 'Review', items: dailyBrief.decisions, empty: 'No owner decisions flagged' },
-            ].map((section) => (
-              <div key={section.title} className="rounded-lg border border-jdt-border bg-white p-4">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-black uppercase text-zinc-500">{section.title}</p>
-                  <span className="rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{section.date}</span>
-                </div>
-                {section.items.length > 0 ? (
-                  <div className="space-y-2">
-                    {section.items.slice(0, 3).map((item: any) => (
-                      <button key={`${section.title}-${item.id}`} type="button" onClick={() => openBriefItem(item)} className="w-full rounded border border-jdt-border bg-jdt-panel px-3 py-2 text-left hover:border-jdt-olive">
-                        <p className="truncate text-xs font-black text-jdt-text">{item.title}</p>
-                        <p className="mt-1 line-clamp-2 text-[10px] font-bold text-zinc-500">{item.detail}</p>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="rounded border border-dashed border-jdt-border bg-jdt-panel px-3 py-6 text-center text-xs font-bold text-zinc-500">{section.empty}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-black uppercase text-jdt-text">At Risk Projects</h3>
-              <p className="mt-1 text-xs font-bold text-zinc-500">Client, project, job, and assignment issues</p>
-            </div>
-            <AlertTriangle className="h-5 w-5 text-jdt-olive" />
-          </div>
-          {topRisks.length > 0 ? (
-            <div className="space-y-3">
-              {topRisks.map((risk: any) => (
-                <button key={risk.id} type="button" onClick={() => openDrawer(risk.drawerType, risk.recordId)} className="w-full rounded-lg border border-jdt-border bg-white p-4 text-left transition-colors hover:border-jdt-olive">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-black uppercase text-jdt-text">{risk.title}</p>
-                      <p className="mt-1 text-[10px] font-black uppercase text-zinc-500">{risk.clientName || 'No client linked'}</p>
-                    </div>
-                    <span className={`shrink-0 rounded px-2 py-1 text-[9px] font-black uppercase ${riskLevelClass(risk.level)}`}>{risk.level} {risk.score}</span>
-                  </div>
-                  <ul className="mt-3 space-y-1">
-                    {risk.reasons.slice(0, 3).map((reason: string) => (
-                      <li key={reason} className="text-[11px] font-bold text-zinc-600">- {reason}</li>
-                    ))}
-                  </ul>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed border-jdt-border bg-white p-6 text-center">
-              <p className="text-sm font-black text-jdt-text">No project risk detected</p>
-              <p className="mx-auto mt-1 max-w-sm text-xs font-bold text-zinc-500">Missing crew, freight gaps, equipment holds, field issues, and proof gaps will show here.</p>
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
         <div className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
           <div className="flex items-center justify-between gap-3 border-b border-jdt-border px-5 py-4">
             <div>
-              <h3 className="text-sm font-black uppercase text-jdt-text">Today Schedule</h3>
-              <p className="mt-1 text-xs font-bold text-zinc-500">Jobs, freight, and scheduled tasks that need field attention</p>
+              <h3 className="text-sm font-black uppercase text-jdt-text">Today's Field Schedule</h3>
+              <p className="mt-1 text-xs font-bold text-zinc-500">Grouped by crew, work order, equipment, and field action.</p>
             </div>
-            <button onClick={() => setActiveTab('calendar')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
-              Open Calendar
-            </button>
+            <button onClick={() => setActiveTab('calendar')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">Open Planner</button>
           </div>
           {dashboardSummary.todaySchedule.length > 0 ? (
-            <div className="grid gap-3 p-4 md:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid gap-3 p-4 lg:grid-cols-2">
               {dashboardSummary.todaySchedule.map((item: DashboardWorkItem) => {
                 const category = categoryForWorkItemTone(item.tone);
+                const tags = item.treeTags || [];
+                const equipment = item.equipmentAssigned || [];
                 return (
-                  <button key={`${item.drawerType}-${item.id}`} type="button" onClick={() => openWorkItem(item)} className={`min-h-[130px] rounded-lg border border-jdt-border border-l-4 p-4 text-left shadow-sm transition-colors hover:border-jdt-olive ${categorySurfaceClass(category)} ${categoryAccentBorderClass(category)}`}>
+                  <article key={`${item.drawerType}-${item.id}`} className={`rounded-lg border border-jdt-border border-l-4 p-4 shadow-sm ${categorySurfaceClass(category)} ${categoryAccentBorderClass(category)}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-2">
                         <CategoryIcon category={category} size="xs" />
-                        <p className="truncate text-[10px] font-black uppercase text-zinc-500">{item.assignee}</p>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-jdt-text">{item.crewLeader || item.assignee}</p>
+                          <p className="truncate text-[10px] font-black uppercase text-zinc-500">{item.workType || 'Field Work'}</p>
+                        </div>
                       </div>
-                      <span className={`shrink-0 rounded border px-2 py-1 text-[9px] font-black uppercase shadow-sm ${statusPillClass(item.status)}`}>{item.status}</span>
+                      <span className={`shrink-0 rounded border px-2 py-1 text-[9px] font-black uppercase shadow-sm ${item.blockerFlag ? riskPillClass('critical') : statusPillClass(item.status)}`}>{item.blockerFlag ? 'Blocked' : item.status}</span>
                     </div>
-                    <p className="mt-3 line-clamp-2 text-sm font-black uppercase text-jdt-text">{item.title}</p>
-                    <p className="mt-2 line-clamp-2 text-[11px] font-bold text-zinc-500">{item.detail}</p>
-                  </button>
+                    <button type="button" onClick={() => openWorkItem(item)} className="mt-3 block w-full text-left">
+                      <p className="line-clamp-2 text-base font-black uppercase text-jdt-text hover:underline">{item.title}</p>
+                      <p className="mt-1 truncate text-xs font-bold text-zinc-500">{item.projectName || item.detail}</p>
+                    </button>
+                    <div className="mt-3 grid gap-2 text-[10px] font-black uppercase text-zinc-500 sm:grid-cols-2">
+                      <span className="rounded border border-jdt-border bg-white/80 px-2 py-1">Date: {item.scheduledDate || 'Today'}</span>
+                      <span className="rounded border border-jdt-border bg-white/80 px-2 py-1">Trees: {item.treeCount || tags.length || '-'}</span>
+                      <span className="rounded border border-jdt-border bg-white/80 px-2 py-1">Tags: {tags.slice(0, 3).join(', ') || '-'}</span>
+                      <span className="rounded border border-jdt-border bg-white/80 px-2 py-1">Equip: {equipment.slice(0, 2).join(', ') || '-'}</span>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      <DashboardActionButton label="Start" onClick={() => openWorkItem(item)} />
+                      <DashboardActionButton label="Complete" onClick={() => openModal('closeout', { relatedRecordId: item.recordId, relatedTitle: item.title })} />
+                      <DashboardActionButton label="Add Note" onClick={() => openModal('task', { relatedRecordId: item.recordId, relatedTitle: item.title, projectName: item.projectName })} />
+                      <DashboardActionButton label="Add Photo" onClick={() => openModal('document', { relatedRecordId: item.recordId, relatedTitle: item.title, projectName: item.projectName })} />
+                      <DashboardActionButton label="Blocker" onClick={() => openModal('delay', { relatedRecordId: item.recordId, relatedTitle: item.title, projectName: item.projectName })} />
+                      <DashboardActionButton label="View Map" onClick={() => setActiveTab('maps')} />
+                    </div>
+                  </article>
                 );
               })}
             </div>
           ) : (
-            <div className="p-6">
-              <div className="rounded-xl border border-dashed border-jdt-border bg-white p-8 text-center">
-                <Calendar className="mx-auto mb-3 h-9 w-9 text-zinc-300" />
-                <p className="text-sm font-black text-jdt-text">No scheduled field work on the board yet</p>
-                <p className="mx-auto mt-1 max-w-md text-xs font-bold text-zinc-500">Approved jobs, scheduled tasks, and active freight loads will appear here once they are entered.</p>
-              </div>
-            </div>
+            <DashboardEmpty icon={Calendar} title="No scheduled field work on the board yet" detail="Crew work orders, scheduled project work, freight moves, and calendar tasks will collect here." />
           )}
         </div>
 
-        <div className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-jdt-border px-5 py-4">
-            <div>
-              <h3 className="text-sm font-black uppercase text-jdt-text">Tomorrow Builder</h3>
-              <p className="mt-1 text-xs font-bold text-zinc-500">Approved work that is ready to schedule</p>
+        <div className="space-y-4">
+          <section className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-jdt-border px-5 py-4">
+              <div>
+                <h3 className="text-sm font-black uppercase text-jdt-text">Owner Review Queue</h3>
+                <p className="mt-1 text-xs font-bold text-zinc-500">Decision, schedule, billing, confirmation, and high-risk tree items.</p>
+              </div>
+              <AlertTriangle className="h-5 w-5 text-jdt-olive" />
             </div>
-            <button onClick={() => setActiveTab('tracker')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
-              View Jobs
-            </button>
-          </div>
-          <WorkItemStack items={dashboardSummary.tomorrowQueue} emptyTitle="Nothing ready for tomorrow yet" emptyDetail="Approved unscheduled work will show here for office planning." onOpen={openWorkItem} />
+            {ownerGroups.length > 0 ? (
+              <div className="space-y-3 p-4">
+                {ownerGroups.map((group: any) => (
+                  <div key={group.id} className="rounded-lg border border-jdt-border bg-white p-3">
+                    <p className="text-[10px] font-black uppercase text-jdt-olive">{group.label}</p>
+                    <div className="mt-2 space-y-2">
+                      {group.items.slice(0, 2).map((item: DashboardWorkItem) => (
+                        <article key={`${group.id}-${item.id}`} className="rounded border border-jdt-border bg-jdt-panel p-3">
+                          <p className="line-clamp-1 text-xs font-black uppercase text-jdt-text">{item.decisionNeeded || item.title}</p>
+                          <p className="mt-1 line-clamp-2 text-[10px] font-bold text-zinc-500">{item.projectName || item.detail}</p>
+                          <p className="mt-2 text-[10px] font-black uppercase text-jdt-olive">{item.suggestedNextAction}</p>
+                          <div className="mt-3 grid grid-cols-2 gap-1">
+                            <DashboardActionButton label="Approve" onClick={() => openWorkItem(item)} />
+                            <DashboardActionButton label="Assign" onClick={() => openModal('assign_work', { relatedRecordId: item.recordId, projectName: item.projectName })} />
+                            <DashboardActionButton label="Dismiss" onClick={() => setActiveTab('alerts')} />
+                            <DashboardActionButton label="Open" onClick={() => openWorkItem(item)} />
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <DashboardEmpty icon={AlertTriangle} title="No owner review items" detail="Blocked jobs, freight issues, billing cues, and high-risk trees will collect here." />
+            )}
+          </section>
+
+          <section className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
+            <div className="border-b border-jdt-border px-5 py-4">
+              <h3 className="text-sm font-black uppercase text-jdt-text">At Risk Projects</h3>
+              <p className="mt-1 text-xs font-bold text-zinc-500">Fix assignment, open project, or run readiness review.</p>
+            </div>
+            {topRisks.length > 0 ? (
+              <div className="space-y-3 p-4">
+                {topRisks.map((risk: any) => (
+                  <article key={risk.id} className="rounded-lg border border-jdt-border bg-white p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black uppercase text-jdt-text">{risk.title}</p>
+                        <p className="mt-1 text-[10px] font-black uppercase text-zinc-500">{risk.clientName || 'No client linked'}</p>
+                      </div>
+                      <span className={`shrink-0 rounded px-2 py-1 text-[9px] font-black uppercase ${riskLevelClass(risk.level)}`}>{risk.level} {risk.score}</span>
+                    </div>
+                    <ul className="mt-3 space-y-1">
+                      {risk.reasons.slice(0, 2).map((reason: string) => (
+                        <li key={reason} className="text-[11px] font-bold text-zinc-600">- {reason}</li>
+                      ))}
+                    </ul>
+                    <div className="mt-3 grid grid-cols-1 gap-2">
+                      <DashboardActionButton label="Fix Assignment" onClick={() => openModal('assign_work', { projectName: risk.title })} />
+                      <DashboardActionButton label="Open Project" onClick={() => openRisk(risk)} />
+                      <DashboardActionButton label="Open Readiness Checklist" onClick={() => setActiveTab('reports')} />
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <DashboardEmpty icon={AlertTriangle} title="No project risk detected" detail="Missing crew, freight gaps, equipment holds, field issues, and proof gaps will show here." />
+            )}
+          </section>
         </div>
       </section>
 
-      <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 className="text-sm font-black uppercase text-jdt-text">Compact Command Board</h3>
-            <p className="mt-1 text-xs font-bold text-zinc-500">Pipeline and operating focus stays visible without stealing the top of the page</p>
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+        <div className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-black uppercase text-jdt-text">Tree Relocation Pipeline</h3>
+              <p className="mt-1 text-xs font-bold text-zinc-500">Relocation status from not started through relocated.</p>
+            </div>
+            <button onClick={() => setActiveTab('tracker')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">Open Trees</button>
           </div>
-          <button onClick={() => setActiveTab('tracker')} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
-            <LayoutGrid className="h-4 w-4" /> All Jobs
-          </button>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {(dashboardSummary.treePipeline || []).map((bucket: any) => (
+              <button key={bucket.status} type="button" onClick={() => setActiveTab(bucket.targetTab)} className={`rounded-lg border px-3 py-3 text-left transition-colors hover:border-jdt-olive ${statusPillClass(bucket.status)}`}>
+                <p className="text-[10px] font-black uppercase">{bucket.status}</p>
+                <p className="mt-2 text-2xl font-black">{bucket.count}</p>
+                <p className="mt-1 text-[10px] font-bold opacity-80">{bucket.detail}</p>
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="rounded-xl border border-jdt-border bg-white p-4">
+        <div className="space-y-4">
+          <DashboardQueueCard title="Root Prune Events Due" subtitle="Schedule or confirm root pruning work" items={dashboardSummary.rootPruneDueQueue || []} empty="No root prune events due" onOpen={openWorkItem} actionLabel="Open" />
+          <DashboardQueueCard title="Nutrient Care Due" subtitle="Treatment and care follow-ups" items={dashboardSummary.nutrientCareDueQueue || []} empty="No nutrient care due" onOpen={openWorkItem} actionLabel="Open" />
+          <DashboardQueueCard title="Move / Relocation Work Due" subtitle="Ready trees, holding moves, and relocation work" items={dashboardSummary.relocationWorkDueQueue || []} empty="No move work due" onOpen={openWorkItem} actionLabel="Open" />
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+        <DashboardQueueCard title="Equipment Board" subtitle="Current equipment, location, assignment, and dispatch blockers" items={dashboardSummary.equipmentBoard || []} empty="No equipment records ready" onOpen={openWorkItem} actionLabel="Open Equipment" />
+        <div className="space-y-4">
+          <DashboardSimpleList title="Resource Conflicts" subtitle="Double-booked crew, drivers, trucks, trailers, or equipment" items={dashboardSummary.resourceConflictQueue || []} empty="No resource conflicts detected" onOpen={() => setActiveTab('calendar')} />
+          <DashboardSimpleList title="Compliance Blocking Dispatch" subtitle="Driver and vehicle documents that can block today" items={dashboardSummary.dispatchBlockingComplianceQueue || []} empty="No dispatch-blocking compliance items" onOpen={(item: any) => openQueueItem(item, 'documents')} />
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+        <div className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-black uppercase text-jdt-text">Map Snapshot</h3>
+              <p className="mt-1 text-xs font-bold text-zinc-500">Open live GPS, project maps, tree pins, and saved project access points.</p>
+            </div>
+            <MapPin className="h-5 w-5 text-jdt-olive" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <button onClick={() => setActiveTab('maps')} className="rounded-lg border border-jdt-border bg-white p-4 text-left hover:border-jdt-olive">
+              <p className="text-xs font-black uppercase text-jdt-text">Project Maps</p>
+              <p className="mt-1 text-[10px] font-bold text-zinc-500">Tree pins, access points, farm views</p>
+            </button>
+            <button onClick={() => setActiveTab('maps')} className="rounded-lg border border-jdt-border bg-white p-4 text-left hover:border-jdt-olive">
+              <p className="text-xs font-black uppercase text-jdt-text">Live GPS</p>
+              <p className="mt-1 text-[10px] font-bold text-zinc-500">Vehicles, equipment, freight</p>
+            </button>
+            <button onClick={() => setActiveTab('arcgisMap')} className="rounded-lg border border-jdt-border bg-white p-4 text-left hover:border-jdt-olive">
+              <p className="text-xs font-black uppercase text-jdt-text">ArcGIS</p>
+              <p className="mt-1 text-[10px] font-bold text-zinc-500">Hosted layers and geometry sync</p>
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <section className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
+            <div className="border-b border-jdt-border px-5 py-4">
+              <h3 className="text-sm font-black uppercase text-jdt-text">Data Quality Queue</h3>
+              <p className="mt-1 text-xs font-bold text-zinc-500">Grouped by what the missing data blocks.</p>
+            </div>
+            {blockingDataGroups.length > 0 ? (
+              <div className="space-y-3 p-4">
+                {blockingDataGroups.map((group: any) => (
+                  <div key={group.id} className="rounded-lg border border-jdt-border bg-white p-3">
+                    <p className="text-[10px] font-black uppercase text-jdt-olive">{group.label}</p>
+                    {group.items.slice(0, 2).map((item: any) => (
+                      <button key={item.id} type="button" onClick={() => openDataQualityItem(item)} className="mt-2 w-full rounded border border-jdt-border bg-jdt-panel p-3 text-left hover:border-jdt-olive">
+                        <p className="truncate text-xs font-black text-jdt-text">{item.title}</p>
+                        <p className="mt-1 line-clamp-2 text-[10px] font-bold text-zinc-500">{item.detail}</p>
+                        {item.recommendedAction && (
+                          <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] font-black uppercase text-amber-900">
+                            {item.recommendedAction}
+                          </p>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <DashboardEmpty icon={Database} title="No data quality issues detected" detail="Schedule, billing, report, and cleanup issues will collect here." />
+            )}
+          </section>
+          <DashboardSimpleList title="Workflow Readiness" subtitle="Required details missing before dispatch or closeout" items={dashboardSummary.workflowReadinessQueue || []} empty="No workflow readiness issues" onOpen={(item: any) => openQueueItem(item, 'reports')} />
+          <DashboardCloseoutReviewList items={dashboardSummary.fieldCloseoutReviewQueue || []} onOpen={(item: any) => openQueueItem(item, 'crewView')} />
+          <DashboardSimpleList title="Compliance Review" subtitle="Driver, CDL, vehicle, registration, and insurance documents needing attention" items={dashboardSummary.complianceReviewQueue || []} empty="No compliance review items" onOpen={(item: any) => openQueueItem(item, 'documents')} />
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+        <div className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-black uppercase text-jdt-text">Daily Command Brief</h3>
+              <p className="mt-1 text-xs font-bold text-zinc-500">{dailyBrief?.summary || 'Today, tomorrow, and owner decisions in one summary.'}</p>
+            </div>
+            <button onClick={() => setActiveTab('reports')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">Reports</button>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            {[
+              { title: 'Today', date: dailyBrief?.todayIso, items: dailyBrief?.today || [], empty: 'No work dated today' },
+              { title: 'Tomorrow', date: dailyBrief?.tomorrowIso, items: dailyBrief?.tomorrow || [], empty: 'No tomorrow prep staged' },
+              { title: 'Decisions', date: 'Review', items: dailyBrief?.decisions || [], empty: 'No owner decisions flagged' },
+            ].map((section) => (
+              <DashboardBriefColumn key={section.title} section={section} onOpen={(item: any) => openQueueItem(item, item.targetTab || 'reports')} />
+            ))}
+          </div>
+        </div>
+
+        <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
+          <h3 className="text-sm font-black uppercase text-jdt-text">Quick Actions</h3>
+          <div className="mt-4 grid gap-2">
+            <button onClick={() => openModal('job')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Create Project</button>
+            <button onClick={() => openModal('project_tree_asset')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Add Project Tree</button>
+            <button onClick={() => openModal('equipment')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Add Equipment</button>
+            <button onClick={() => setActiveTab('sheets')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Import / Backup</button>
+          </div>
+        </section>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+        <div className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-black uppercase text-jdt-text">Recent Records</h3>
+              <p className="mt-1 text-xs font-bold text-zinc-500">Lower-priority activity feed.</p>
+            </div>
+          </div>
+          {recentRecords.length > 0 ? (
+            <div className="grid gap-2 md:grid-cols-2">
+              {recentRecords.map((record: any) => (
+                <button key={`${record.type}-${record.id}-${record.label}`} type="button" onClick={() => setActiveTab(record.type === 'job' ? 'tracker' : record.type === 'tree' ? 'inventory' : record.type === 'fieldUpdate' ? 'crewView' : record.type)} className="rounded-lg border border-jdt-border bg-white p-3 text-left hover:border-jdt-olive">
+                  <p className="truncate text-xs font-black uppercase text-jdt-text">{record.label}</p>
+                  <p className="mt-1 truncate text-[10px] font-bold text-zinc-500">{record.meta}</p>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <DashboardEmpty icon={Database} title="No recent records yet" detail="Projects, trees, freight, equipment, field updates, and documents will appear here after entry." compact />
+          )}
+        </div>
+
+        <div className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
           <div className="mb-4 flex items-center gap-2">
             <DollarSign className="h-4 w-4 text-jdt-primary" />
-            <h4 className="text-xs font-black uppercase text-jdt-text">Quote-to-Job Sales Pipeline</h4>
+            <h3 className="text-sm font-black uppercase text-jdt-text">Sales Pipeline</h3>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
+          <div className="grid gap-2 sm:grid-cols-2">
             {dashboardSummary.pipeline.map((stage: any) => (
-              <div key={stage.id} className="rounded-lg border border-jdt-border bg-jdt-sand/30 p-3 text-center">
+              <div key={stage.id} className="rounded-lg border border-jdt-border bg-white p-3 text-center">
                 <p className="text-[10px] font-black uppercase text-zinc-500">{stage.label}</p>
-                <p className="mt-2 text-3xl font-black text-jdt-text">{stage.value}</p>
+                <p className="mt-2 text-2xl font-black text-jdt-text">{stage.value}</p>
                 <p className="mt-1 text-[10px] font-bold text-jdt-olive">{stage.detail}</p>
               </div>
             ))}
           </div>
         </div>
+      </section>
+    </div>
+  );
+}
 
-        <div className="mt-4 grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
-          {dashboardSummary.operationList.map((operation: FeaturedOperation) => {
-            const Icon = operationIconMap[operation.id];
+function DashboardActionButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-md border border-jdt-border bg-white px-2 py-2 text-[9px] font-black uppercase text-jdt-text shadow-sm hover:border-jdt-olive hover:bg-jdt-sand"
+    >
+      {label}
+    </button>
+  );
+}
+
+function DashboardEmpty({ icon: Icon, title, detail, compact = false }: { icon: any; title: string; detail: string; compact?: boolean }) {
+  return (
+    <div className={compact ? "p-0" : "p-5"}>
+      <div className={`rounded-xl border border-dashed border-jdt-border bg-white text-center ${compact ? "p-5" : "p-8"}`}>
+        <Icon className="mx-auto mb-3 h-8 w-8 text-zinc-300" />
+        <p className="text-sm font-black text-jdt-text">{title}</p>
+        <p className="mx-auto mt-1 max-w-md text-xs font-bold text-zinc-500">{detail}</p>
+      </div>
+    </div>
+  );
+}
+
+function DashboardQueueCard({ title, subtitle, items, empty, onOpen, actionLabel }: { title: string; subtitle: string; items: DashboardWorkItem[]; empty: string; onOpen: (item: DashboardWorkItem) => void; actionLabel: string }) {
+  return (
+    <section className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b border-jdt-border px-5 py-4">
+        <div>
+          <h3 className="text-sm font-black uppercase text-jdt-text">{title}</h3>
+          <p className="mt-1 text-xs font-bold text-zinc-500">{subtitle}</p>
+        </div>
+      </div>
+      {items.length > 0 ? (
+        <div className="divide-y divide-jdt-border">
+          {items.slice(0, 6).map((item) => {
+            const category = categoryForWorkItemTone(item.tone);
             return (
-              <article key={operation.id} className="flex min-h-[240px] flex-col overflow-hidden rounded-xl border border-jdt-border bg-white shadow-sm">
-                <button type="button" onClick={() => setActiveTab(operation.targetTab)} className={`flex items-center justify-between gap-3 px-4 py-3 text-left text-white transition-colors ${operationToneMap[operation.id]}`}>
-                  <span className="inline-flex items-center gap-2 text-sm font-black uppercase">
-                    <Icon className="h-4 w-4 text-jdt-sand" />
-                    {operation.label}
-                  </span>
-                  <ChevronRight className="h-4 w-4 opacity-75" />
-                </button>
-
-                <div className="flex flex-1 flex-col p-4">
-                  <div className="flex gap-4">
-                    <div className="flex h-16 w-20 shrink-0 items-center justify-center rounded-lg border border-jdt-border bg-jdt-sand">
-                      <Icon className="h-7 w-7 text-jdt-olive" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <button type="button" onClick={() => openOperation(operation)} className="block w-full truncate text-left text-base font-black uppercase text-jdt-text hover:underline">
-                        {operation.title}
-                      </button>
-                      <p className="mt-1 line-clamp-2 text-xs font-bold text-zinc-500">{operation.subtitle}</p>
-                    </div>
+              <article key={`${title}-${item.id}`} className={`border-l-4 px-4 py-3 ${categoryAccentBorderClass(category)}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-jdt-text">{item.title}</p>
+                    <p className="mt-1 line-clamp-2 text-xs font-bold text-zinc-500">{item.detail}</p>
+                    <p className="mt-2 text-[10px] font-black uppercase text-jdt-olive">{item.assignee}</p>
                   </div>
-
-                  <div className="mt-4 grid grid-cols-3 gap-2 border-y border-jdt-border py-3">
-                    {operation.stats.map((stat) => (
-                      <div key={stat.label} className="min-w-0">
-                        <p className="text-[9px] font-black uppercase text-zinc-400">{stat.label}</p>
-                        <p className="mt-0.5 truncate text-xs font-black text-jdt-text">{stat.value}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-4 flex-1">
-                    <p className="text-[10px] font-black uppercase text-zinc-400">Operating Count</p>
-                    <div className="mt-2 flex items-end gap-2">
-                      <p className="text-3xl font-black text-jdt-text">{operation.value}</p>
-                      <p className="pb-1 text-[10px] font-bold uppercase text-zinc-500">{operation.valueLabel}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 flex items-center justify-between gap-3 border-t border-jdt-border pt-3">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusDotClass(operation.status)}`} />
-                      <p className="truncate text-[10px] font-black uppercase text-zinc-600">{operation.status}</p>
-                    </div>
-                    <button onClick={() => openOperation(operation)} className="rounded border border-jdt-border bg-jdt-sand px-3 py-1.5 text-[10px] font-black uppercase text-jdt-text transition-colors hover:bg-white">
-                      {operation.actionLabel}
-                    </button>
-                  </div>
+                  <span className={`shrink-0 rounded border px-2 py-1 text-[9px] font-black uppercase ${statusPillClass(item.status)}`}>{item.status}</span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <DashboardActionButton label={actionLabel} onClick={() => onOpen(item)} />
+                  <DashboardActionButton label="Create Task" onClick={() => onOpen(item)} />
                 </div>
               </article>
             );
           })}
         </div>
-      </section>
+      ) : (
+        <DashboardEmpty icon={Calendar} title={empty} detail="When this queue has live work, it will show the next action here." />
+      )}
+    </section>
+  );
+}
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
-        <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
-            <div>
-              <h3 className="text-sm font-black uppercase text-jdt-text">Recent Records</h3>
-              <p className="text-xs font-bold text-zinc-500 mt-1">Your latest projects, loads, trees, and equipment</p>
-            </div>
-            <button onClick={() => openModal('job')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
-              Create Project
-            </button>
-          </div>
-
-          {recentRecords.length > 0 ? (
-            <div className="divide-y divide-jdt-border">
-              {recentRecords.map((record: any, index: number) => {
-                const category = operatingCategoryForRecordType(record.type);
-                return (
-                  <button key={`${record.type}-${record.id}-${index}`} onClick={() => openDrawer(record.type, record.id)} className="flex w-full items-center justify-between gap-4 py-4 text-left hover:bg-jdt-sand/40">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <CategoryIcon category={category} size="sm" />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-black text-jdt-text">{record.label}</p>
-                        <p className="mt-1 text-xs font-bold text-zinc-500">{record.meta}</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="h-4 w-4 text-zinc-400" />
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed border-jdt-border p-10 text-center">
-              <Database className="mx-auto mb-3 h-10 w-10 text-zinc-300" />
-              <p className="text-sm font-black text-jdt-text">No operational records yet</p>
-              <p className="mx-auto mt-1 max-w-md text-xs font-bold text-zinc-500">This workspace is clean. Add your current projects, tree inventory, freight loads, crews, clients, and equipment to build the live command center.</p>
-            </div>
-          )}
-        </section>
-
-        <div className="space-y-4">
-          <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
-              <div>
-                <h3 className="text-sm font-black uppercase text-jdt-text">Owner Review Queue</h3>
-                <p className="mt-1 text-xs font-bold text-zinc-500">Blocked, urgent, or decision-ready items</p>
-              </div>
-            </div>
-            <WorkItemStack items={dashboardSummary.ownerReviewQueue} emptyTitle="No owner review items" emptyDetail="Blocked jobs, freight issues, service holds, and active alerts will collect here." onOpen={openWorkItem} />
-          </section>
-
-          <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
-              <div>
-                <h3 className="text-sm font-black uppercase text-jdt-text">Field Closeout Review</h3>
-                <p className="mt-1 text-xs font-bold text-zinc-500">Crew and driver closeouts waiting on proof, filing, or follow-up</p>
-              </div>
-              <button onClick={() => setActiveTab('crewView')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
-                Crew View
-              </button>
-            </div>
-            {dashboardSummary.fieldCloseoutReviewQueue?.length > 0 ? (
-              <div className="divide-y divide-jdt-border">
-                {dashboardSummary.fieldCloseoutReviewQueue.slice(0, 5).map((item: any) => {
-                  const proofLabel = `${item.proofCount} proof${item.proofCount === 1 ? '' : 's'}`;
-                  return (
-                    <button key={item.id} type="button" onClick={() => openCloseoutReviewItem(item)} className="block w-full px-1 py-3 text-left hover:bg-jdt-sand/40">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-black text-jdt-text">{item.title}</p>
-                          <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{item.crewName} / {item.projectName}</p>
-                        </div>
-                        <span className={`shrink-0 rounded border px-2 py-1 text-[9px] font-black uppercase ${dataQualitySeverityClass(item.severity)}`}>{item.reviewStatus}</span>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        <span className="rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{proofLabel}</span>
-                        <span className="rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{item.drawerType}</span>
-                      </div>
-                      <p className="mt-2 line-clamp-2 text-[10px] font-black uppercase text-jdt-olive">{item.recommendedAction}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="p-4">
-                <div className="rounded-xl border border-dashed border-jdt-border bg-white p-6 text-center">
-                  <p className="text-sm font-black text-jdt-text">No closeouts waiting for review</p>
-                  <p className="mx-auto mt-1 max-w-sm text-xs font-bold text-zinc-500">Submitted crew and driver closeouts will collect here for office filing and follow-up.</p>
-                </div>
-              </div>
-            )}
-          </section>
-
-          <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
-              <div>
-                <h3 className="text-sm font-black uppercase text-jdt-text">Compliance Review</h3>
-                <p className="mt-1 text-xs font-bold text-zinc-500">Driver licenses, CDL medical cards, registrations, and insurance needing office action</p>
-              </div>
-              <button onClick={() => setActiveTab('documents')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
-                Documents
-              </button>
-            </div>
-            {dashboardSummary.complianceReviewQueue?.length > 0 ? (
-              <div className="divide-y divide-jdt-border">
-                {dashboardSummary.complianceReviewQueue.slice(0, 5).map((item: any) => {
-                  const expirationLabel = item.expirationDate ? `Expires ${item.expirationDate}` : 'No expiration on file';
-                  return (
-                    <button key={item.id} type="button" onClick={() => openComplianceReviewItem(item)} className="block w-full px-1 py-3 text-left hover:bg-jdt-sand/40">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-black text-jdt-text">{item.entityName}</p>
-                          <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{item.documentType} / {item.entityType}</p>
-                        </div>
-                        <span className={`shrink-0 rounded border px-2 py-1 text-[9px] font-black uppercase ${dataQualitySeverityClass(item.severity)}`}>{item.status}</span>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        <span className="rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{expirationLabel}</span>
-                        <span className="rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{item.targetTab}</span>
-                      </div>
-                      <p className="mt-2 line-clamp-2 text-[10px] font-black uppercase text-jdt-olive">{item.recommendedAction}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="p-4">
-                <div className="rounded-xl border border-dashed border-jdt-border bg-white p-6 text-center">
-                  <p className="text-sm font-black text-jdt-text">No compliance documents need review</p>
-                  <p className="mx-auto mt-1 max-w-sm text-xs font-bold text-zinc-500">Missing, expired, and expiring driver or vehicle documents will collect here.</p>
-                </div>
-              </div>
-            )}
-          </section>
-
-          <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
-              <div>
-                <h3 className="text-sm font-black uppercase text-jdt-text">Resource Conflicts</h3>
-                <p className="mt-1 text-xs font-bold text-zinc-500">Double-booked crew, drivers, trucks, trailers, or equipment from the operating calendar</p>
-              </div>
-              <button onClick={() => setActiveTab('calendar')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
-                Calendar
-              </button>
-            </div>
-            {dashboardSummary.resourceConflictQueue?.length > 0 ? (
-              <div className="divide-y divide-jdt-border">
-                {dashboardSummary.resourceConflictQueue.slice(0, 5).map((conflict: any) => {
-                  const assignmentLabel = conflict.eventTitles.join(' / ');
-                  const resourceMeta = `${conflict.dateIso} / ${conflict.resourceKind}`;
-                  return (
-                    <button key={conflict.id} type="button" onClick={() => setActiveTab('calendar')} className="block w-full px-1 py-3 text-left hover:bg-jdt-sand/40">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-black text-jdt-text">{conflict.resourceLabel}</p>
-                          <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{resourceMeta}</p>
-                        </div>
-                        <span className={`shrink-0 rounded border px-2 py-1 text-[9px] font-black uppercase ${riskPillClass('critical')}`}>Double Booked</span>
-                      </div>
-                      <p className="mt-2 line-clamp-2 text-[10px] font-black uppercase text-jdt-olive">{assignmentLabel}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="p-4">
-                <div className="rounded-xl border border-dashed border-jdt-border bg-white p-6 text-center">
-                  <p className="text-sm font-black text-jdt-text">No resource conflicts detected</p>
-                  <p className="mx-auto mt-1 max-w-sm text-xs font-bold text-zinc-500">Calendar double-bookings will collect here before the schedule goes out.</p>
-                </div>
-              </div>
-            )}
-          </section>
-
-          <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
-              <div>
-                <h3 className="text-sm font-black uppercase text-jdt-text">Workflow Readiness</h3>
-                <p className="mt-1 text-xs font-bold text-zinc-500">Required details missing before dispatch, closeout, or review</p>
-              </div>
-              <button onClick={() => setActiveTab('reports')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
-                Reports
-              </button>
-            </div>
-            {dashboardSummary.workflowReadinessQueue?.length > 0 ? (
-              <div className="divide-y divide-jdt-border">
-                {dashboardSummary.workflowReadinessQueue.slice(0, 5).map((item: any) => (
-                  <button key={item.id} type="button" onClick={() => openWorkflowReadinessItem(item)} className="block w-full px-1 py-3 text-left hover:bg-jdt-sand/40">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-black text-jdt-text">{item.title}</p>
-                        <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{item.workflow} / {item.stage}</p>
-                      </div>
-                      <span className={`shrink-0 rounded border px-2 py-1 text-[9px] font-black uppercase ${dataQualitySeverityClass(item.severity)}`}>{item.severity}</span>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {(item.missingFields || []).slice(0, 4).map((field: string) => (
-                        <span key={`${item.id}-${field}`} className="rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{field}</span>
-                      ))}
-                    </div>
-                    <p className="mt-2 line-clamp-2 text-[10px] font-black uppercase text-jdt-olive">{item.recommendedAction}</p>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="p-4">
-                <div className="rounded-xl border border-dashed border-jdt-border bg-white p-6 text-center">
-                  <p className="text-sm font-black text-jdt-text">No workflow readiness issues detected</p>
-                  <p className="mx-auto mt-1 max-w-sm text-xs font-bold text-zinc-500">Missing dispatch, closeout, maintenance, tree, and inventory details will collect here.</p>
-                </div>
-              </div>
-            )}
-          </section>
-
-          <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3 border-b border-jdt-border pb-4">
-              <div>
-                <h3 className="text-sm font-black uppercase text-jdt-text">Data Quality Queue</h3>
-                <p className="mt-1 text-xs font-bold text-zinc-500">Client, project, work order, tree, freight, and import cleanup</p>
-              </div>
-              <button onClick={() => setActiveTab('reports')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">
-                Reports
-              </button>
-            </div>
-            {dashboardSummary.dataQualityQueue?.length > 0 ? (
-              <div className="divide-y divide-jdt-border">
-                {dashboardSummary.dataQualityQueue.slice(0, 5).map((item: any) => (
-                  <button key={item.id} type="button" onClick={() => openDataQualityItem(item)} className="block w-full px-1 py-3 text-left hover:bg-jdt-sand/40">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-black text-jdt-text">{item.title}</p>
-                        <p className="mt-1 line-clamp-2 text-[11px] font-bold text-zinc-500">{item.detail}</p>
-                      </div>
-                      <span className={`shrink-0 rounded border px-2 py-1 text-[9px] font-black uppercase ${dataQualitySeverityClass(item.severity)}`}>{item.severity}</span>
-                    </div>
-                    <p className="mt-2 line-clamp-2 text-[10px] font-black uppercase text-jdt-olive">{item.recommendedAction}</p>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="p-4">
-                <div className="rounded-xl border border-dashed border-jdt-border bg-white p-6 text-center">
-                  <p className="text-sm font-black text-jdt-text">No data quality issues detected</p>
-                  <p className="mx-auto mt-1 max-w-sm text-xs font-bold text-zinc-500">Client, project, work order, tree, freight, document, and import problems will collect here.</p>
-                </div>
-              </div>
-            )}
-          </section>
-        </div>
+function DashboardCloseoutReviewList({ items, onOpen }: { items: any[]; onOpen: (item: any) => void }) {
+  return (
+    <section className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
+      <div className="border-b border-jdt-border px-5 py-4">
+        <h3 className="text-sm font-black uppercase text-jdt-text">Field Closeout Review</h3>
+        <p className="mt-1 text-xs font-bold text-zinc-500">Daily closeouts that need proof, issue review, or office filing.</p>
       </div>
-
-      <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-        <h3 className="text-sm font-black uppercase text-jdt-text">Quick Actions</h3>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          <button onClick={() => openModal('job')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Create Project</button>
-          <button onClick={() => openModal('tree')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Add tree</button>
-          <button onClick={() => openModal('load')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Dispatch Freight Move</button>
-          <button onClick={() => setActiveTab('maps')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Open tree map</button>
+      {items.length > 0 ? (
+        <div className="divide-y divide-jdt-border">
+          {items.slice(0, 5).map((item) => {
+            const proofCount = Number(item.proofCount || 0);
+            const proofLabel = `${proofCount} proof${proofCount === 1 ? "" : "s"}`;
+            return (
+              <button key={item.id || item.recordId || item.title} type="button" onClick={() => onOpen(item)} className="block w-full px-4 py-3 text-left hover:bg-jdt-sand/40">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-jdt-text">{item.title || "Daily closeout"}</p>
+                    <p className="mt-1 text-[10px] font-black uppercase text-zinc-500">{item.projectName || "Unlinked project"} - {item.crewName || "Crew user"}</p>
+                    <p className="mt-2 line-clamp-2 text-xs font-bold text-zinc-600">{item.recommendedAction || item.detail || "Review this closeout before filing."}</p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{item.reviewStatus || "Review"}</span>
+                    <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-900">{proofLabel}</span>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
-      </section>
+      ) : (
+        <DashboardEmpty icon={AlertTriangle} title="No field closeouts waiting" detail="Submitted daily closeouts will appear here when they need proof or office review." />
+      )}
+    </section>
+  );
+}
+
+function DashboardSimpleList({ title, subtitle, items, empty, onOpen }: { title: string; subtitle: string; items: any[]; empty: string; onOpen: (item: any) => void }) {
+  return (
+    <section className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
+      <div className="border-b border-jdt-border px-5 py-4">
+        <h3 className="text-sm font-black uppercase text-jdt-text">{title}</h3>
+        <p className="mt-1 text-xs font-bold text-zinc-500">{subtitle}</p>
+      </div>
+      {items.length > 0 ? (
+        <div className="divide-y divide-jdt-border">
+          {items.slice(0, 5).map((item) => {
+            const itemTitle = item.resourceLabel || item.entityName || item.title || item.name || item.workflow || "Review Item";
+            const detail = item.eventTitles?.join(" / ") || item.recommendedAction || item.detail || item.documentType || item.stage || "Open for details";
+            const meta = item.dateIso || item.status || item.severity || item.resourceKind || item.targetTab || "";
+            return (
+              <button key={item.id || `${title}-${itemTitle}-${detail}`} type="button" onClick={() => onOpen(item)} className="block w-full px-4 py-3 text-left hover:bg-jdt-sand/40">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-jdt-text">{itemTitle}</p>
+                    <p className="mt-1 line-clamp-2 text-xs font-bold text-zinc-500">{detail}</p>
+                  </div>
+                  {meta && <span className="shrink-0 rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{meta}</span>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <DashboardEmpty icon={AlertTriangle} title={empty} detail="This will stay quiet unless something blocks dispatch or review." />
+      )}
+    </section>
+  );
+}
+
+function DashboardBriefColumn({ section, onOpen }: { section: { title: string; date?: string; items: any[]; empty: string }; onOpen: (item: any) => void }) {
+  return (
+    <div className="rounded-lg border border-jdt-border bg-white p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-[10px] font-black uppercase text-zinc-500">{section.title}</p>
+        <span className="rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{section.date || 'Review'}</span>
+      </div>
+      {section.items.length > 0 ? (
+        <div className="space-y-2">
+          {section.items.slice(0, 3).map((item: any) => (
+            <button key={`${section.title}-${item.id}`} type="button" onClick={() => onOpen(item)} className="w-full rounded border border-jdt-border bg-jdt-panel px-3 py-2 text-left hover:border-jdt-olive">
+              <p className="truncate text-xs font-black text-jdt-text">{item.title}</p>
+              <p className="mt-1 line-clamp-2 text-[10px] font-bold text-zinc-500">{item.detail}</p>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded border border-dashed border-jdt-border bg-jdt-panel px-3 py-6 text-center text-xs font-bold text-zinc-500">{section.empty}</p>
+      )}
     </div>
   );
 }

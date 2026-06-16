@@ -1,0 +1,27 @@
+{
+  "type": "FeatureCollection",
+  "name": "JDT_Final_Tree_Locations",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "Final_Location_ID": "JDT_Final_Tree_Locations-SEED",
+        "Tree_Asset_ID": "SCHEMA-SEED-TREE",
+        "Project_ID": "SCHEMA-SEED",
+        "Tree_Tag": "SEED",
+        "Tree_Type": "Live Oak",
+        "Destination_Status": "Schema Seed",
+        "Approved_By": "Schema Seed - Replace",
+        "Approval_Date": "2026-06-15T00:00:00.000Z",
+        "Install_Notes": "Schema Seed - Replace"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.91809,
+          26.75505
+        ]
+      }
+    }
+  ]
+}

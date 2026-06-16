@@ -1,0 +1,35 @@
+{
+  "type": "FeatureCollection",
+  "name": "JDT_Relocation_Work",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "Relocation_Work_ID": "JDT_Relocation_Work-SEED",
+        "Tree_Asset_ID": "SCHEMA-SEED-TREE",
+        "Project_ID": "SCHEMA-SEED",
+        "Tree_Tag": "SEED",
+        "Scheduled_Move_Date": "2026-06-15T00:00:00.000Z",
+        "Actual_Move_Date": "2026-06-15T00:00:00.000Z",
+        "Move_Task_Status": "Schema Seed",
+        "Move_Type": "Schema Seed - Replace",
+        "Origin_Location": "Schema Seed - Replace",
+        "Destination_Location": "Schema Seed - Replace",
+        "Holding_Area_Name": "Schema Seed - Replace",
+        "Assigned_Crew": "Schema Seed - Replace",
+        "Equipment_Used": "Schema Seed - Replace",
+        "Truck_Used": "Schema Seed - Replace",
+        "Trailer_Used": "Schema Seed - Replace",
+        "Operator": "Schema Seed - Replace",
+        "Notes": "Schema Seed - Replace"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.91809,
+          26.75505
+        ]
+      }
+    }
+  ]
+}

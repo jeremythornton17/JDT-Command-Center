@@ -91,9 +91,32 @@ const liveGpsCategoryOptions: Array<{ id: LiveGpsCategory; label: string }> = [
   { id: 'unmatched', label: 'Unmatched GPS' },
 ];
 const liveGpsStatusOptions = ['Moving', 'Idle', 'Stopped', 'Stale', 'No Signal', 'Needs Match', 'In Transit'];
+const treeRelocationPipelineStatuses = [
+  'Not Started',
+  '25% Cut',
+  '50% Cut',
+  '75% Cut',
+  '100% Cut',
+  'Ready for Relocation',
+  'Moved to Holding',
+  'Relocated',
+];
+const mapDataCleanupStatuses = ['Needs Source Pin', 'Needs Destination Pin', 'High Risk', 'Blocked', 'Care Follow-Up Due', 'Ready to Move'];
+const arcGisLayerOptions = [
+  'JDT_Project_Boundaries',
+  'JDT_Tree_Assets',
+  'JDT_Final_Tree_Locations',
+  'JDT_Holding_Areas',
+  'JDT_Work_Zones',
+  'JDT_Root_Prune_Events',
+  'JDT_Relocation_Work',
+  'JDT_Nutrient_Care_Tasks',
+  'JDT_Equipment_Locations',
+];
+const arcGisReferenceFields = ['ArcGIS_Feature_ID', 'ArcGIS_Layer_URL', 'Map_Geometry_Status', 'Last_Map_Sync_At'];
 
 type MapViewMode = 'map' | 'earth';
-type MapWorkspaceMode = 'locations' | 'project' | 'liveGps';
+type MapWorkspaceMode = 'locations' | 'project' | 'liveGps' | 'arcgis';
 export type MapBounds = { north: number; south: number; east: number; west: number };
 
 const profileSiteLocationFields: Array<{ key: string; accessType: SiteLocationAccessType; label: string }> = [
@@ -237,8 +260,9 @@ export default function MapsBoard({
   );
   const selectedJob = jobs.find(job => String(job.id || job.jobId || job.projectId) === selectedJobId);
   const isLiveGpsView = mapMode === 'liveGps';
-  const isAllLocationsView = mapMode === 'locations' || (selectedJobId === 'all' && mapMode !== 'liveGps');
-  const isRelocationJobView = mapMode === 'project' && Boolean(selectedJob);
+  const isArcGisView = mapMode === 'arcgis';
+  const isAllLocationsView = mapMode === 'locations' || (selectedJobId === 'all' && mapMode !== 'liveGps' && mapMode !== 'arcgis');
+  const isRelocationJobView = (mapMode === 'project' || mapMode === 'arcgis') && Boolean(selectedJob);
   const showTreeMapPanels = isRelocationJobView;
   const showSavedLocationsPanel = !isLiveGpsView && (isAllLocationsView || isRelocationJobView);
   const savedLocationsTitle = isAllLocationsView ? 'All Saved Locations' : 'Saved Site Locations';
@@ -252,6 +276,7 @@ export default function MapsBoard({
   const [fieldStatus, setFieldStatus] = useState('Select a tree, choose a pin type, then click the map.');
   const [treeSearch, setTreeSearch] = useState('');
   const [activeTreeStatuses, setActiveTreeStatuses] = useState<string[]>([]);
+  const [activeArcGisLayers, setActiveArcGisLayers] = useState<string[]>(arcGisLayerOptions);
   const [treeInViewOnly, setTreeInViewOnly] = useState(false);
   const [multiSelectTrees, setMultiSelectTrees] = useState(false);
   const [selectedMapTreeIds, setSelectedMapTreeIds] = useState<string[]>([]);
@@ -288,9 +313,14 @@ export default function MapsBoard({
   const selectedTree = filteredTreeRecords.find(tree => tree.treeId === selectedTreeId || tree.id === selectedTreeId);
   const selectedJobMapTarget = useMemo(() => mapTargetForRelocationJob(selectedJob), [selectedJob]);
   const selectedTasks = selectedTree ? buildTreeRelocationTasks(selectedTree) : [];
+  const projectRelocationPipeline = useMemo(
+    () => buildProjectRelocationPipeline(filteredTreeRecords),
+    [filteredTreeRecords],
+  );
+  const selectedTaskGroups = useMemo(() => groupSelectedTreeTasks(selectedTasks), [selectedTasks]);
   const treeStatusOptions = useMemo(() => {
     const statuses = filteredTreeRecords.map(tree => getTreeRelocationStatus(tree)).filter(Boolean);
-    return Array.from(new Set(['Needs Source Pin', 'Needs Destination Pin', 'Root Pruning', 'Ready to Move', 'Relocated', ...statuses]));
+    return Array.from(new Set([...treeRelocationPipelineStatuses, ...mapDataCleanupStatuses, 'Root Pruning', ...statuses]));
   }, [filteredTreeRecords]);
   const workbenchBounds = resolveMapWorkbenchBounds(treeInViewOnly, visibleMapBounds);
   const workbenchTreeRecords = useMemo(
@@ -332,6 +362,7 @@ export default function MapsBoard({
     ]),
     [profileSiteLocations, savedLocations, selectedJob],
   );
+  const groupedSavedLocations = useMemo(() => groupSavedSiteLocations(scopedSavedLocations), [scopedSavedLocations]);
   const liveVehicleMarkers = useMemo(
     () => buildLiveVehicleMapMarkers(equipment, fleetTelematicsEvents),
     [equipment, fleetTelematicsEvents],
@@ -841,6 +872,21 @@ export default function MapsBoard({
     setFieldStatus(`Opened ${label} in a Google Maps tab because the in-app map is not available.`);
   };
 
+  const copySavedLocationGps = async (location: any) => {
+    const point = pointFromSavedSiteLocation(location);
+    const value = point ? `${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}` : searchTextForSavedSiteLocation(location);
+    if (!value) {
+      setFieldStatus(`${location.name || location.title || 'Saved location'} does not have coordinates or an address to copy yet.`);
+      return;
+    }
+    try {
+      await navigator.clipboard?.writeText(value);
+      setFieldStatus(`Copied ${location.name || location.title || 'saved location'}: ${value}.`);
+    } catch {
+      setFieldStatus(`${location.name || location.title || 'Saved location'}: ${value}.`);
+    }
+  };
+
   const focusVehicleMarker = (vehicle: LiveVehicleMapMarker) => {
     const map = googleMapInstanceRef.current;
     setMapViewMode('earth');
@@ -915,6 +961,12 @@ export default function MapsBoard({
     });
   };
 
+  const toggleArcGisLayer = (layer: string) => {
+    setActiveArcGisLayers((current) => (
+      current.includes(layer) ? current.filter((item) => item !== layer) : [...current, layer]
+    ));
+  };
+
   const toggleSelectedMapTree = (tree: any) => {
     const id = treeMapId(tree);
     setSelectedMapTreeIds((current) => (
@@ -933,6 +985,11 @@ export default function MapsBoard({
   };
 
   const handleBulkAction = (action: string) => {
+    if (action === 'Clear Selection') {
+      setSelectedMapTreeIds([]);
+      setFieldStatus('Cleared selected map trees.');
+      return;
+    }
     if (!selectedMapTreeIds.length) {
       setFieldStatus(`Select one or more map trees before using ${action}.`);
       return;
@@ -946,10 +1003,21 @@ export default function MapsBoard({
       window.print?.();
       return;
     }
-    if (action === 'Crew Work Order' && selectedJob && openDrawer) {
+    if (action === 'Create Crew Work Order' && selectedJob && openDrawer) {
       openDrawer('job', selectedJob.id || selectedJob.jobId || selectedJob.projectId);
     }
     setFieldStatus(`${action} queued for ${selectedMapTreeIds.length} selected tree${selectedMapTreeIds.length === 1 ? '' : 's'} from this map.`);
+  };
+
+  const handleArcGisSync = (scope = 'project') => {
+    const subject = scope === 'selected' ? `${selectedMapTreeIds.length} selected tree${selectedMapTreeIds.length === 1 ? '' : 's'}` : selectedJob ? profileJobTitle(selectedJob) : 'current map view';
+    setMapMode('arcgis');
+    setFieldStatus(`ArcGIS sync queued for ${subject}. JDT remains the operations record; ArcGIS stores geometry and map layers.`);
+  };
+
+  const printFieldMap = () => {
+    setFieldStatus(`Preparing printable field map for ${selectedJob ? profileJobTitle(selectedJob) : 'the current map view'}.`);
+    window.print?.();
   };
 
   const downloadSelectedTreeCsv = () => {
@@ -1169,24 +1237,59 @@ export default function MapsBoard({
     );
   };
 
-  const activeTreeCard = (
+  const selectedTreeCard = (
     <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <p className="text-[10px] font-black uppercase text-zinc-400">Active Tree</p>
-          <h3 className="text-xl font-black text-jdt-text">{selectedTree?.treeId || 'Select a tree'}</h3>
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase text-zinc-400">Selected Tree Command</p>
+          <h3 className="mt-1 text-xl font-black text-jdt-text">{selectedTree ? treeDisplayName(selectedTree) : 'Select a tree'}</h3>
           <p className="text-xs font-bold text-zinc-500 mt-1">{mapInstruction}</p>
+          {selectedTree && (
+            <div className="mt-4 grid gap-2 text-[11px] font-bold text-zinc-600 sm:grid-cols-2 xl:grid-cols-3">
+              <TreeDetailPill label="Tree_Tag" value={treeTagLabel(selectedTree)} />
+              <TreeDetailPill label="Tree_Type" value={treeTypeLabel(selectedTree)} />
+              <TreeDetailPill label="DBH_IN" value={treeDbhLabel(selectedTree).replace(/^DBH /, '')} />
+              <TreeDetailPill label="Project" value={selectedJob ? profileJobTitle(selectedJob) : selectedTree.projectName || selectedTree.jobName || '-'} />
+              <TreeDetailPill label="Asset_Category" value={treeAssetCategoryLabel(selectedTree)} />
+              <TreeDetailPill label="Tree_Relocation_Status" value={getTreeRelocationStatus(selectedTree)} />
+              <TreeDetailPill label="Current_Field_Location" value={treeFieldLocationLabel(selectedTree)} />
+              <TreeDetailPill label="Current field position" value={formatTreeCoordinate(selectedTree.relocationMap?.source)} />
+              <TreeDetailPill label="Relocation destination" value={formatTreeCoordinate(selectedTree.relocationMap?.destination)} />
+              <TreeDetailPill label="Holding_Area_Name" value={treeHoldingAreaLabel(selectedTree)} />
+              <TreeDetailPill label="Tree_Final_Outcome" value={treeFinalOutcomeLabel(selectedTree)} />
+              <TreeDetailPill label="Source / Destination" value={`${treeSourcePinStatus(selectedTree)} / ${treeDestinationPinStatus(selectedTree)}`} />
+            </div>
+          )}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => beginPinEdit('source')} className={`px-3 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 ${pinMode === 'source' ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'}`}>
-            <TreePine className="h-4 w-4" /> Source Pin
+        <div className="flex shrink-0 flex-wrap gap-2 xl:max-w-[420px] xl:justify-end">
+          <button onClick={() => beginPinEdit('source')} className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase flex items-center gap-2 ${pinMode === 'source' ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'}`}>
+            <TreePine className="h-4 w-4" /> Set Source Pin
           </button>
-          <button onClick={() => beginPinEdit('destination')} className={`px-3 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 ${pinMode === 'destination' ? 'bg-blue-700 text-white' : 'bg-blue-50 text-blue-800 border border-blue-200'}`}>
-            <Target className="h-4 w-4" /> Destination Pin
+          <button onClick={() => beginPinEdit('destination')} className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase flex items-center gap-2 ${pinMode === 'destination' ? 'bg-blue-700 text-white' : 'bg-blue-50 text-blue-800 border border-blue-200'}`}>
+            <Target className="h-4 w-4" /> Set Destination Pin
           </button>
-          <button onClick={useDeviceLocation} className="px-3 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 bg-jdt-primary text-white">
+          <button onClick={useDeviceLocation} className="px-3 py-2 rounded-lg text-[10px] font-black uppercase flex items-center gap-2 bg-jdt-primary text-white">
             <LocateFixed className="h-4 w-4" /> Use Phone GPS
           </button>
+          {['Create Root Prune Event', 'Create Nutrient Care Task', 'Create Move Task', 'Mark Ready for Relocation', 'Mark Moved to Holding', 'Mark Relocated', 'Add Photo', 'Add Note'].map((action) => (
+            <button
+              key={action}
+              type="button"
+              onClick={() => setFieldStatus(selectedTree ? `${action} queued for ${treeDisplayName(selectedTree)}.` : `Select a tree before using ${action}.`)}
+              className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+            >
+              {action}
+            </button>
+          ))}
+          {selectedTree && openDrawer && (
+            <button
+              type="button"
+              onClick={() => openDrawer('tree', selectedTree.treeId || selectedTree.id)}
+              className="rounded-lg border border-jdt-primary bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+            >
+              Open Full Tree Record
+            </button>
+          )}
         </div>
       </div>
       <div className="mt-3 rounded-lg border border-jdt-border bg-jdt-sand/40 px-3 py-2 text-xs font-bold text-zinc-600 flex items-center gap-2">
@@ -1372,11 +1475,13 @@ export default function MapsBoard({
     <div className="space-y-6">
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-jdt-border pb-5">
         <div>
-          <h2 className="text-2xl font-black text-jdt-primary">{isLiveGpsView ? 'Live GPS Map' : 'Field Maps & Tree Relocation'}</h2>
+          <h2 className="text-2xl font-black text-jdt-primary">{isLiveGpsView ? 'Live GPS Map' : isArcGisView ? 'ArcGIS Tree Relocation Layers' : 'Field Maps & Tree Relocation'}</h2>
           <p className="text-sm font-bold text-zinc-500 mt-1">
             {isLiveGpsView
               ? 'Track live GPS vehicles, equipment, freight moves, and unmatched GPS assets'
-              : 'Pin source trees, destination locations, GPS field marks, and relocation tasks'}
+              : isArcGisView
+                ? 'Review ArcGIS hosted layers while JDT keeps project workflow and tree operations as the source of truth'
+                : 'Pin source trees, destination locations, GPS field marks, and relocation tasks'}
           </p>
         </div>
         <div className="flex items-center gap-2 bg-jdt-panel border border-jdt-border rounded-lg p-1 shadow-sm">
@@ -1386,87 +1491,107 @@ export default function MapsBoard({
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_440px]">
         <div className="space-y-4">
           <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <div className="flex-1 space-y-3">
+            <div className="grid gap-3 xl:grid-cols-[1fr_auto]">
+              <div className="space-y-3">
                 <div>
                   <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5">Map Mode</span>
                   <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMapMode('locations');
-                        setSelectedJobId('all');
-                        setFieldStatus('Showing all saved JDT map locations.');
-                      }}
-                      className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${mapMode === 'locations' ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-white text-zinc-600 hover:border-jdt-olive'}`}
-                    >
-                      Locations
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMapMode('project');
-                        setFieldStatus(selectedJob ? 'Map focused to the selected relocation job.' : 'Select a relocation job to see project tree and site pins.');
-                      }}
-                      className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${mapMode === 'project' ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-white text-zinc-600 hover:border-jdt-olive'}`}
-                    >
-                      Project / Trees
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMapMode('liveGps');
-                        setFieldStatus('Showing live GPS assets from GPS tracking and JDT dispatch records.');
-                      }}
-                      className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${mapMode === 'liveGps' ? 'border-sky-700 bg-sky-700 text-white' : 'border-jdt-border bg-white text-zinc-600 hover:border-sky-500'}`}
-                    >
-                      Live GPS
-                    </button>
+                    {[
+                      { id: 'locations' as MapWorkspaceMode, label: 'Locations', tone: 'jdt' },
+                      { id: 'project' as MapWorkspaceMode, label: 'Project Trees', tone: 'jdt' },
+                      { id: 'liveGps' as MapWorkspaceMode, label: 'Live GPS', tone: 'sky' },
+                      { id: 'arcgis' as MapWorkspaceMode, label: 'ArcGIS Layers', tone: 'violet' },
+                    ].map((mode) => (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        onClick={() => {
+                          setMapMode(mode.id);
+                          if (mode.id === 'locations') setSelectedJobId('all');
+                          if (mode.id === 'locations') setFieldStatus('Showing all saved JDT map locations.');
+                          if (mode.id === 'project') setFieldStatus(selectedJob ? 'Map focused to the selected relocation job.' : 'Select a relocation job to see project tree and site pins.');
+                          if (mode.id === 'liveGps') setFieldStatus('Showing live GPS assets from GPS tracking and JDT dispatch records.');
+                          if (mode.id === 'arcgis') setFieldStatus('Showing ArcGIS layer controls for JDT tree relocation geometry.');
+                        }}
+                        className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${mapMode === mode.id
+                          ? mode.tone === 'sky'
+                            ? 'border-sky-700 bg-sky-700 text-white'
+                            : mode.tone === 'violet'
+                              ? 'border-violet-700 bg-violet-700 text-white'
+                              : 'border-jdt-primary bg-jdt-primary text-white'
+                          : 'border-jdt-border bg-white text-zinc-600 hover:border-jdt-olive'}`}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <label className="block">
-                  <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5">Current Map View</span>
-                  <select
-                    value={selectedJobId}
-                    onChange={(event) => {
-                      setSelectedJobId(event.target.value);
-                      setMapMode(event.target.value === 'all' ? 'locations' : 'project');
-                      setSelectedPin(null);
-                      setPinMode(null);
-                      setFieldStatus(event.target.value === 'all' ? 'Showing all saved JDT map locations.' : 'Map focused to the selected relocation job.');
-                    }}
-                    className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-black text-jdt-text outline-none focus:border-jdt-olive"
-                  >
-                    <option value="all">All JD Thornton Locations</option>
-                    {relocationJobOptions.map((job) => (
-                      <option key={job.id} value={job.id}>{job.label}</option>
-                    ))}
-                  </select>
-                </label>
+                <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,0.8fr)]">
+                  <label className="block">
+                    <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5">Current Map View</span>
+                    <select
+                      value={selectedJobId}
+                      onChange={(event) => {
+                        setSelectedJobId(event.target.value);
+                        setMapMode(event.target.value === 'all' ? 'locations' : mapMode === 'arcgis' ? 'arcgis' : 'project');
+                        setSelectedPin(null);
+                        setPinMode(null);
+                        setFieldStatus(event.target.value === 'all' ? 'Showing all saved JDT map locations.' : 'Map focused to the selected relocation job.');
+                      }}
+                      className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-black text-jdt-text outline-none focus:border-jdt-olive"
+                    >
+                      <option value="all">All JD Thornton Locations</option>
+                      {relocationJobOptions.map((job) => (
+                        <option key={job.id} value={job.id}>{job.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5">Search</span>
+                    <div className="flex items-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2">
+                      <Search className="h-4 w-4 text-zinc-400" />
+                      <input
+                        value={isLiveGpsView ? gpsSearch : treeSearch}
+                        onChange={(event) => isLiveGpsView ? setGpsSearch(event.target.value) : setTreeSearch(event.target.value)}
+                        placeholder={isLiveGpsView ? 'Vehicle, equipment, driver...' : 'Tree type, tag, status, crew...'}
+                        className="min-w-0 flex-1 bg-transparent text-sm font-bold text-jdt-text outline-none"
+                      />
+                    </div>
+                  </label>
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={openAddPinForm}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-jdt-primary px-4 py-2 text-xs font-black uppercase text-white hover:bg-jdt-dark"
-                >
+              <div className="flex flex-wrap items-end gap-2 xl:max-w-[360px] xl:justify-end">
+                <button type="button" onClick={openAddPinForm} className="inline-flex items-center justify-center gap-2 rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark">
                   <Plus className="h-4 w-4" /> Add Pin
                 </button>
+                <button type="button" onClick={() => handleArcGisSync()} className="inline-flex items-center justify-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[10px] font-black uppercase text-violet-900 hover:border-violet-500">
+                  <RefreshCw className="h-4 w-4" /> Sync ArcGIS
+                </button>
+                <button type="button" onClick={downloadProjectKml} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
+                  <Download className="h-4 w-4" /> Export KML
+                </button>
+                <button type="button" onClick={showClientKmlImportPath} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
+                  <Upload className="h-4 w-4" /> Import KML/KMZ
+                </button>
+                <button type="button" onClick={printFieldMap} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
+                  <ClipboardList className="h-4 w-4" /> Print Field Map
+                </button>
+                <button type="button" onClick={() => setFieldStatus('Fullscreen map mode requested. Use the browser fullscreen control while the dedicated map shell is finalized.')} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
+                  <Eye className="h-4 w-4" /> Fullscreen Map
+                </button>
                 {selectedJob && openDrawer && (
-                  <button
-                    type="button"
-                    onClick={() => openDrawer('job', selectedJob.id || selectedJob.jobId || selectedJob.projectId)}
-                    className="rounded-lg border border-jdt-border bg-white px-4 py-2 text-xs font-black uppercase text-jdt-primary hover:border-jdt-olive"
-                  >
+                  <button type="button" onClick={() => openDrawer('job', selectedJob.id || selectedJob.jobId || selectedJob.projectId)} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
                     Open Job
                   </button>
                 )}
               </div>
             </div>
           </div>
+
+          {showTreeMapPanels && <RelocationPipelineSummary pipeline={projectRelocationPipeline} />}
 
           <div className="relative min-h-[560px] bg-zinc-950 rounded-2xl border border-jdt-border shadow-sm overflow-hidden isolate">
             {mapsConfig.isReady ? (
@@ -1516,7 +1641,7 @@ export default function MapsBoard({
 
           {mapScheduleStrip}
 
-          {showTreeMapPanels && activeTreeCard}
+          {showTreeMapPanels && selectedTreeCard}
 
           {showTreeMapPanels && googleEarthCard}
 
@@ -1672,6 +1797,17 @@ export default function MapsBoard({
                       </div>
                       <p className="mt-2 text-[11px] font-bold leading-snug text-zinc-500">{asset.address || asset.currentAddress || (asset.lat !== undefined && asset.lng !== undefined ? formatTreeCoordinate({ lat: asset.lat, lng: asset.lng }) : 'No GPS coordinate')}</p>
                       {asset.lastUpdatedAt && <p className="mt-1 text-[10px] font-bold text-zinc-400">Latest GPS {asset.lastUpdatedAt}</p>}
+                      <div className="mt-2 grid gap-1 text-[10px] font-bold text-zinc-500">
+                        <span><strong className="font-black uppercase text-zinc-400">Equipment/vehicle name:</strong> {asset.name}</span>
+                        <span><strong className="font-black uppercase text-zinc-400">Equipment type:</strong> {liveGpsAssetSubtitle(asset) || asset.category}</span>
+                        <span><strong className="font-black uppercase text-zinc-400">Driver/operator:</strong> {asset.assignedDriver || 'Unassigned'}</span>
+                        <span><strong className="font-black uppercase text-zinc-400">Assigned project:</strong> {asset.assignedProjectName || 'Unassigned'}</span>
+                        <span><strong className="font-black uppercase text-zinc-400">Assigned crew:</strong> {asset.assignedDriver || 'Unassigned'}</span>
+                        <span><strong className="font-black uppercase text-zinc-400">GPS status:</strong> {asset.status}</span>
+                        <span><strong className="font-black uppercase text-zinc-400">Last seen:</strong> {asset.lastUpdatedAt || 'No timestamp'}</span>
+                        <span><strong className="font-black uppercase text-zinc-400">Current coordinates:</strong> {asset.lat !== undefined && asset.lng !== undefined ? formatTreeCoordinate({ lat: asset.lat, lng: asset.lng }) : 'No GPS coordinate'}</span>
+                        <span className={liveGpsConflictLabel(asset).tone}><strong className="font-black uppercase">Conflict warning:</strong> {liveGpsConflictLabel(asset).label}</span>
+                      </div>
                     </button>
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       <button type="button" onClick={() => focusLiveGpsAsset(asset)} className="rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Zoom To</button>
@@ -1687,6 +1823,7 @@ export default function MapsBoard({
                       {asset.category === 'unmatched' && (
                         <button type="button" onClick={() => setFieldStatus(`${asset.name} needs to be matched to a JDT equipment record from the Equipment page.`)} className="col-span-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[9px] font-black uppercase text-amber-900 hover:border-amber-400">Match GPS</button>
                       )}
+                      <button type="button" onClick={() => setFieldStatus(`Assign Driver opened for ${asset.name}. Use the Equipment/Freight record to save the driver assignment.`)} className="col-span-2 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Assign Driver</button>
                     </div>
                   </div>
                 )) : (
@@ -1704,10 +1841,10 @@ export default function MapsBoard({
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5">
-                    <TreePine className="h-4 w-4 text-emerald-700" /> Map Items Workbench
+                    <TreePine className="h-4 w-4 text-emerald-700" /> Tree Map Workbench
                   </h3>
                   <p className="mt-1 text-[11px] font-bold text-zinc-500">
-                    Trees currently tied to this project map.
+                    Trees, pins, task readiness, and cleanup needs tied to this project map.
                   </p>
                 </div>
                 <span className="rounded bg-white px-2 py-0.5 text-[9px] font-black uppercase text-zinc-500">
@@ -1716,7 +1853,7 @@ export default function MapsBoard({
               </div>
 
               <label className="mb-3 block">
-                <span className="mb-1 block text-[10px] font-black uppercase text-zinc-400">Search Map Items</span>
+                <span className="mb-1 block text-[10px] font-black uppercase text-zinc-400">Search Tree Map</span>
                 <div className="flex items-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2">
                   <Search className="h-4 w-4 text-zinc-400" />
                   <input
@@ -1770,12 +1907,25 @@ export default function MapsBoard({
                   <span className="text-[10px] font-black uppercase text-zinc-500">{selectedMapTreeIds.length} selected</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  {['Assign Work', 'Root Pruning', 'Nutrient Care', 'Crew Work Order', 'Export Selected', 'Print Field Map'].map((action) => (
+                  {[
+                    'Assign Work',
+                    'Create Root Prune Events',
+                    'Create Nutrient Care Tasks',
+                    'Create Relocation Move Tasks',
+                    'Assign Crew',
+                    'Assign Equipment',
+                    'Set Holding Area',
+                    'Set Tree_Relocation_Status',
+                    'Export Selected',
+                    'Print Field Map',
+                    'Sync Selected to ArcGIS',
+                    'Clear Selection',
+                  ].map((action) => (
                     <button
                       key={action}
                       type="button"
-                      onClick={() => handleBulkAction(action)}
-                      disabled={!selectedMapTreeIds.length}
+                      onClick={() => action === 'Sync Selected to ArcGIS' ? handleArcGisSync('selected') : handleBulkAction(action)}
+                      disabled={!selectedMapTreeIds.length && action !== 'Clear Selection'}
                       className="rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {action}
@@ -1806,6 +1956,7 @@ export default function MapsBoard({
                 {workbenchTreeRecords.length > 0 ? workbenchTreeRecords.map(tree => {
                   const status = getTreeRelocationStatus(tree);
                   const treeId = treeMapId(tree);
+                  const taskReadiness = treeTaskReadiness(tree);
                   const selected = selectedMapTreeIds.includes(treeId);
                   const activeTree = selectedTreeId === tree.treeId || selectedTreeId === tree.id;
                   return (
@@ -1826,7 +1977,16 @@ export default function MapsBoard({
                         <span><strong className="font-black uppercase text-zinc-400">Tree Type</strong><br />{treeTypeLabel(tree)}</span>
                         <span><strong className="font-black uppercase text-zinc-400">Tag</strong><br />{treeTagLabel(tree)}</span>
                         <span><strong className="font-black uppercase text-zinc-400">DBH</strong><br />{treeDbhLabel(tree)}</span>
-                        <span><strong className="font-black uppercase text-zinc-400">Map</strong><br />{treePinSummary(tree)}</span>
+                        <span><strong className="font-black uppercase text-zinc-400">Relocation Status</strong><br />{status}</span>
+                        <span><strong className="font-black uppercase text-zinc-400">Current Field Location</strong><br />{treeFieldLocationLabel(tree)}</span>
+                        <span><strong className="font-black uppercase text-zinc-400">Source</strong><br />{treeSourcePinStatus(tree)}</span>
+                        <span><strong className="font-black uppercase text-zinc-400">Destination</strong><br />{treeDestinationPinStatus(tree)}</span>
+                        <span><strong className="font-black uppercase text-zinc-400">Tasks</strong><br />{taskReadiness.ready} ready / {taskReadiness.waiting} waiting</span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {treeMapBadges(tree).map((badge) => (
+                          <span key={badge} className="rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase text-amber-900">{badge}</span>
+                        ))}
                       </div>
                       {multiSelectTrees && (
                         <div className="mt-2 flex items-center gap-2 text-[10px] font-black uppercase text-jdt-primary">
@@ -1842,6 +2002,48 @@ export default function MapsBoard({
                     <p className="mt-1 text-[11px] font-bold text-zinc-500">Clear search or filters, or add tree inventory to this project map.</p>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {(showTreeMapPanels || isArcGisView) && (
+            <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5">
+                    <Layers className="h-4 w-4 text-violet-700" /> ArcGIS Layers
+                  </h3>
+                  <p className="mt-1 text-[11px] font-bold text-zinc-500">
+                    Geometry layers for project boundaries, trees, holding areas, work zones, task overlays, and equipment locations.
+                  </p>
+                </div>
+                <span className="rounded bg-white px-2 py-0.5 text-[9px] font-black uppercase text-zinc-500">{activeArcGisLayers.length}/{arcGisLayerOptions.length}</span>
+              </div>
+              <div className="grid grid-cols-1 gap-1.5">
+                {arcGisLayerOptions.map((layer) => {
+                  const active = activeArcGisLayers.includes(layer);
+                  return (
+                    <button
+                      key={layer}
+                      type="button"
+                      onClick={() => toggleArcGisLayer(layer)}
+                      className={`rounded-lg border px-3 py-2 text-left text-[10px] font-black uppercase ${active ? 'border-violet-300 bg-violet-50 text-violet-900' : 'border-jdt-border bg-white text-zinc-500'}`}
+                    >
+                      {layer}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-3 rounded-lg border border-jdt-border bg-white p-3">
+                <p className="text-[10px] font-black uppercase text-zinc-400">JDT to ArcGIS reference fields</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {arcGisReferenceFields.map((field) => (
+                    <span key={field} className="rounded border border-violet-200 bg-violet-50 px-2 py-1 text-[9px] font-black uppercase text-violet-900">{field}</span>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] font-bold text-zinc-500">
+                  JDT Command Center stays the operational record. ArcGIS stores geometry, hosted layer URLs, feature IDs, and last map sync state.
+                </p>
               </div>
             </div>
           )}
@@ -1978,67 +2180,97 @@ export default function MapsBoard({
                 <p className="text-[10px] font-black uppercase text-zinc-400">{savedLocationsListLabel}</p>
                 <span className="rounded bg-white px-2 py-0.5 text-[9px] font-black uppercase text-zinc-500">{scopedSavedLocations.length}</span>
               </div>
-              <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
-                {scopedSavedLocations.length > 0 ? scopedSavedLocations.map((location) => {
-                  const point = pointFromSavedSiteLocation(location);
-                  return (
-                    <div key={location.id} className="rounded-lg border border-jdt-border bg-white p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-black text-jdt-text">{location.name || location.title}</p>
-                          <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{location.locationType || 'Site Location'}</p>
-                        </div>
-                        <span className="shrink-0 rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase text-amber-800">{point ? 'Pinned' : 'Address'}</span>
-                      </div>
-                      <p className="mt-2 text-[11px] font-bold text-zinc-500">{location.coordinateText || (point ? formatTreeCoordinate(point) : '') || location.mainAddress || location.sourceText || '-'}</p>
-                      {Array.isArray(location.divisionUse) && location.divisionUse.length > 0 && (
-                        <p className="mt-1 text-[10px] font-bold text-zinc-400">{location.divisionUse.join(' / ')}</p>
-                      )}
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            focusSavedLocation(location);
-                          }}
-                          className="flex-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
-                        >
-                          Focus
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openSavedLocationInGoogleMaps(location);
-                          }}
-                          className="flex-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
-                        >
-                          Open Maps
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            editSavedLocation(location);
-                          }}
-                          className="flex items-center justify-center gap-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
-                        >
-                          <Pencil className="h-3.5 w-3.5" /> Edit Pin
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            editSavedLocation(location, true);
-                          }}
-                          className="flex items-center justify-center gap-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
-                        >
-                          <Crosshair className="h-3.5 w-3.5" /> Adjust Pin
-                        </button>
-                      </div>
+              <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1">
+                {scopedSavedLocations.length > 0 ? groupedSavedLocations.map((group) => (
+                  <div key={group.label} className="rounded-lg border border-jdt-border bg-white/60 p-2">
+                    <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                      <p className="text-[10px] font-black uppercase text-jdt-primary">{group.label}</p>
+                      <span className="rounded bg-white px-2 py-0.5 text-[9px] font-black uppercase text-zinc-500">{group.locations.length}</span>
                     </div>
-                  );
-                }) : (
+                    <div className="space-y-2">
+                      {group.locations.map((location) => {
+                        const point = pointFromSavedSiteLocation(location);
+                        return (
+                          <div key={location.id} className="rounded-lg border border-jdt-border bg-white p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-black text-jdt-text">{location.name || location.title}</p>
+                                <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{location.locationType || location.accessType || 'Site Location'}</p>
+                              </div>
+                              <span className="shrink-0 rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase text-amber-800">{point ? 'Pinned' : 'Address'}</span>
+                            </div>
+                            <p className="mt-2 text-[11px] font-bold text-zinc-500">{location.coordinateText || (point ? formatTreeCoordinate(point) : '') || location.mainAddress || location.sourceText || '-'}</p>
+                            {Array.isArray(location.divisionUse) && location.divisionUse.length > 0 && (
+                              <p className="mt-1 text-[10px] font-bold text-zinc-400">{location.divisionUse.join(' / ')}</p>
+                            )}
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  focusSavedLocation(location);
+                                }}
+                                className="flex-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                              >
+                                Focus
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openSavedLocationInGoogleMaps(location);
+                                }}
+                                className="flex-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                              >
+                                Open Maps
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  editSavedLocation(location);
+                                }}
+                                className="flex items-center justify-center gap-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                              >
+                                <Pencil className="h-3.5 w-3.5" /> Edit Pin
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  editSavedLocation(location, true);
+                                }}
+                                className="flex items-center justify-center gap-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                              >
+                                <Crosshair className="h-3.5 w-3.5" /> Adjust Pin
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void copySavedLocationGps(location);
+                                }}
+                                className="flex-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                              >
+                                Copy GPS
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setFieldStatus(selectedJob ? `${location.name || location.title || 'Saved pin'} assigned to ${profileJobTitle(selectedJob)}.` : 'Select a project before assigning this saved location.');
+                                }}
+                                className="flex-1 rounded-md border border-jdt-border px-2 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                              >
+                                Assign to Project
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )) : (
                   <div className="rounded-lg border border-dashed border-jdt-border bg-white p-4 text-center">
                     <p className="text-xs font-black uppercase text-jdt-text">No saved locations</p>
                     <p className="mt-1 text-[11px] font-bold text-zinc-500">{isAllLocationsView ? 'Save company, farm, client, or project locations to start building the JDT map library.' : 'Save access pins for the selected project or job.'}</p>
@@ -2081,15 +2313,26 @@ export default function MapsBoard({
           {showTreeMapPanels && (
             <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
             <h3 className="text-xs font-black text-jdt-text uppercase flex items-center gap-1.5 mb-3"><ClipboardList className="h-4 w-4 text-jdt-primary" /> Selected Tree Tasks</h3>
-            <div className="space-y-2">
-              {selectedTasks.length > 0 ? selectedTasks.map(task => (
-                <div key={task.id} className="rounded-lg border border-jdt-border bg-white p-3">
-                  <div className="flex justify-between gap-2">
-                    <span className="text-xs font-black text-jdt-text">{task.label}</span>
-                    <span className={`rounded px-2 py-0.5 text-[9px] font-black uppercase ${getTaskStatusTone(task.status)}`}>{task.status}</span>
+            <div className="space-y-3">
+              {selectedTasks.length > 0 ? selectedTaskGroups.map((group) => (
+                <div key={group.label} className="rounded-lg border border-jdt-border bg-white p-3">
+                  <p className="mb-2 text-[10px] font-black uppercase text-jdt-primary">{group.label}</p>
+                  <div className="space-y-2">
+                    {group.tasks.map(task => (
+                      <div key={task.id} className="rounded-lg border border-jdt-border bg-jdt-sand/20 p-3">
+                        <div className="flex justify-between gap-2">
+                          <span className="text-xs font-black text-jdt-text">{task.label}</span>
+                          <span className={`rounded px-2 py-0.5 text-[9px] font-black uppercase ${getTaskStatusTone(task.status)}`}>{task.status}</span>
+                        </div>
+                        <div className="mt-2 grid gap-1 text-[10px] font-bold text-zinc-500">
+                          <span><strong className="font-black uppercase text-zinc-400">Task type:</strong> {group.label}</span>
+                          <span><strong className="font-black uppercase text-zinc-400">Assigned crew/vendor:</strong> {task.assignedRole || 'Unassigned'}</span>
+                          <span><strong className="font-black uppercase text-zinc-400">Scheduled date:</strong> {(task as any).scheduledDate || (task as any).dueDate || 'Unscheduled'}</span>
+                          <span><strong className="font-black uppercase text-zinc-400">Required next action:</strong> {task.detail}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <p className="text-[10px] font-black uppercase text-zinc-400 mt-1">Assign: {task.assignedRole}</p>
-                  <p className="text-[11px] font-bold text-zinc-500 mt-1">{task.detail}</p>
                 </div>
               )) : (
                 <div className="rounded-lg border border-dashed border-jdt-border bg-white p-4 text-center">
@@ -2133,6 +2376,108 @@ function SummaryTile({ label, value, icon: Icon }: { label: string; value: strin
       </div>
     </div>
   );
+}
+
+function TreeDetailPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-jdt-border bg-white px-3 py-2">
+      <p className="text-[9px] font-black uppercase text-zinc-400">{label}</p>
+      <p className="mt-1 truncate text-xs font-black text-jdt-text">{value || '-'}</p>
+    </div>
+  );
+}
+
+function RelocationPipelineSummary({ pipeline }: { pipeline: ReturnType<typeof buildProjectRelocationPipeline> }) {
+  return (
+    <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase text-zinc-400">Project Relocation Pipeline</p>
+          <h3 className="text-sm font-black text-jdt-text">Tree status, pin readiness, and cleanup at a glance</h3>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary">Total Trees {pipeline.total}</span>
+          <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10px] font-black uppercase text-emerald-900">Source Pinned {pipeline.sourcePinned}</span>
+          <span className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[10px] font-black uppercase text-blue-900">Destination Pinned {pipeline.destinationPinned}</span>
+        </div>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+        {treeRelocationPipelineStatuses.map((status) => (
+          <div key={status} className={`rounded-lg border px-3 py-2 ${getRelocationStatusTone(status)}`}>
+            <p className="text-[9px] font-black uppercase opacity-80">{status}</p>
+            <p className="mt-1 text-lg font-black">{pipeline.statusCounts[status] || 0}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function buildProjectRelocationPipeline(trees: any[]) {
+  const statusCounts = treeRelocationPipelineStatuses.reduce<Record<string, number>>((counts, status) => {
+    counts[status] = 0;
+    return counts;
+  }, {});
+  trees.forEach((tree) => {
+    const status = normalizeTreeRelocationStatus(getTreeRelocationStatus(tree));
+    statusCounts[status] = (statusCounts[status] || 0) + 1;
+  });
+  return {
+    total: trees.length,
+    sourcePinned: trees.filter((tree) => Boolean(tree.relocationMap?.source)).length,
+    destinationPinned: trees.filter((tree) => Boolean(tree.relocationMap?.destination)).length,
+    statusCounts,
+  };
+}
+
+function normalizeTreeRelocationStatus(status: string): string {
+  const text = String(status || '').trim();
+  if (treeRelocationPipelineStatuses.includes(text)) return text;
+  if (/25/.test(text)) return '25% Cut';
+  if (/50/.test(text)) return '50% Cut';
+  if (/75/.test(text)) return '75% Cut';
+  if (/100/.test(text)) return '100% Cut';
+  if (/ready/i.test(text)) return 'Ready for Relocation';
+  if (/holding/i.test(text)) return 'Moved to Holding';
+  if (/relocated/i.test(text)) return 'Relocated';
+  return 'Not Started';
+}
+
+function treeTaskReadiness(tree: any) {
+  const tasks = buildTreeRelocationTasks(tree);
+  return {
+    ready: tasks.filter((task) => task.status === 'Ready').length,
+    waiting: tasks.filter((task) => task.status === 'Waiting').length,
+  };
+}
+
+function treeMapBadges(tree: any): string[] {
+  const badges: string[] = [];
+  const status = getTreeRelocationStatus(tree);
+  if (!tree.relocationMap?.source) badges.push('Needs Source Pin');
+  if (!tree.relocationMap?.destination) badges.push('Needs Destination Pin');
+  if (/high risk/i.test(String(tree.priority || tree.risk || tree.notes || ''))) badges.push('High Risk');
+  if (/blocked|hold/i.test(status) || /blocked|hold/i.test(String(tree.currentStatus || ''))) badges.push('Blocked');
+  if (/care|treatment|follow/i.test(String(tree.nextFollowUpDate || tree.followUpNeeded || tree.status || ''))) badges.push('Care Follow-Up Due');
+  if (/ready/i.test(status)) badges.push('Ready to Move');
+  return badges;
+}
+
+function groupSelectedTreeTasks(tasks: ReturnType<typeof buildTreeRelocationTasks>) {
+  const groups = [
+    { label: 'Root Pruning', tasks: [] as typeof tasks },
+    { label: 'Nutrient Care', tasks: [] as typeof tasks },
+    { label: 'Relocation Work', tasks: [] as typeof tasks },
+    { label: 'Photos / Documentation', tasks: [] as typeof tasks },
+  ];
+  tasks.forEach((task) => {
+    const text = `${task.label} ${task.detail}`.toLowerCase();
+    if (/root|prune|cut/.test(text)) groups[0].tasks.push(task);
+    else if (/treatment|water|spray|fertilizer|care|nutrient/.test(text)) groups[1].tasks.push(task);
+    else if (/photo|document|confirm/.test(text)) groups[3].tasks.push(task);
+    else groups[2].tasks.push(task);
+  });
+  return groups.filter((group) => group.tasks.length > 0);
 }
 
 function mergeMapTreeRecords(baseTrees: any[] = [], relocationTrees: any[] = []) {
@@ -2179,6 +2524,72 @@ function treePinSummary(tree: any): string {
 function treeMapSubtitle(tree: any): string {
   const parts = [tree.farm, tree.zone, tree.ranchOakType || tree.type || tree.treeType].filter(Boolean);
   return parts.length ? parts.join(' - ') : 'Project tree asset';
+}
+
+function treeAssetCategoryLabel(tree: any): string {
+  return String(tree.assetCategory || tree.asset_category || tree.category || 'Tree Asset').trim();
+}
+
+function treeFieldLocationLabel(tree: any): string {
+  return String(
+    tree.currentFieldLocation
+      || tree.current_field_location
+      || tree.existingLocationDescription
+      || tree.existing_location_description
+      || tree.farm
+      || tree.zone
+      || 'Field location not set',
+  ).trim();
+}
+
+function treeDestinationLabel(tree: any): string {
+  return String(
+    tree.relocationDestination
+      || tree.proposedFinalLocationDescription
+      || tree.proposed_final_location_description
+      || tree.destinationLocation
+      || 'Destination not set',
+  ).trim();
+}
+
+function treeHoldingAreaLabel(tree: any): string {
+  return String(tree.holdingAreaName || tree.holding_area_name || tree.holdingArea || 'No holding area').trim();
+}
+
+function treeFinalOutcomeLabel(tree: any): string {
+  return String(tree.treeFinalOutcome || tree.tree_final_outcome || tree.finalOutcome || tree.currentStatus || 'Active in Scope').trim();
+}
+
+function treeSourcePinStatus(tree: any): string {
+  return tree.relocationMap?.source ? 'Source pinned' : 'Needs Source Pin';
+}
+
+function treeDestinationPinStatus(tree: any): string {
+  return tree.relocationMap?.destination ? 'Destination pinned' : 'Needs Destination Pin';
+}
+
+function groupSavedSiteLocations(locations: any[]) {
+  const groups = new Map<string, any[]>();
+  locations.forEach((location) => {
+    const label = savedLocationGroupLabel(location);
+    groups.set(label, [...(groups.get(label) || []), location]);
+  });
+  return ['Project Address', 'Crew Access', 'Truck Access', 'Holding Area', 'Nursery/Farm', 'Client Meeting Point', 'Other']
+    .map((label) => ({ label, locations: groups.get(label) || [] }))
+    .filter((group) => group.locations.length > 0);
+}
+
+function savedLocationGroupLabel(location: any): string {
+  const type = String(location.locationType || location.accessType || location.type || '').toLowerCase();
+  const name = String(location.name || location.title || '').toLowerCase();
+  const search = `${type} ${name}`;
+  if (/main|project|jobsite|address/.test(search)) return 'Project Address';
+  if (/crew/.test(search)) return 'Crew Access';
+  if (/truck|equipment|construction|load|unload|access/.test(search)) return 'Truck Access';
+  if (/holding/.test(search)) return 'Holding Area';
+  if (/farm|nursery|acre|janet|home base|shop/.test(search)) return 'Nursery/Farm';
+  if (/client|meeting|contact/.test(search)) return 'Client Meeting Point';
+  return 'Other';
 }
 
 export function resolveMapWorkbenchBounds(inViewOnly: boolean, bounds: MapBounds | null): MapBounds | null {
@@ -2356,6 +2767,19 @@ function liveGpsStatusClass(status: string): string {
   if (/stopped|idle|scheduled/i.test(status)) return 'border-zinc-200 bg-zinc-50 text-zinc-700';
   if (/delayed|blocked|down/i.test(status)) return 'border-red-200 bg-red-50 text-red-800';
   return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+}
+
+function liveGpsConflictLabel(asset: LiveGpsAsset): { label: string; tone: string } {
+  if (asset.category === 'unmatched') {
+    return { label: 'GPS tracker needs to be matched to a JDT vehicle or equipment record.', tone: 'text-amber-900' };
+  }
+  if (/no signal|stale/i.test(asset.status)) {
+    return { label: 'GPS signal is stale or missing; verify before dispatch.', tone: 'text-amber-900' };
+  }
+  if (!asset.assignedProjectName && asset.category !== 'vehicle') {
+    return { label: 'No assigned project is saved for this asset.', tone: 'text-amber-900' };
+  }
+  return { label: 'No assignment conflict detected.', tone: 'text-emerald-800' };
 }
 
 function liveGpsAssetSubtitle(asset: LiveGpsAsset): string {

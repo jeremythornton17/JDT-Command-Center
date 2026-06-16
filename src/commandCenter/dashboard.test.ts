@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { buildDashboardSummary } from "./dashboard";
-import type { ClientRecord, CrewRecord, EquipmentRecord, FieldUpdateRecord, InventoryItemRecord, JobRecord, LoadRecord, ScheduleTaskRecord, TreeRelocationRecord } from "./records";
+import type { ClientRecord, CrewRecord, EquipmentRecord, FieldUpdateRecord, InventoryItemRecord, JobRecord, LoadRecord, ScheduleTaskRecord, TreeRelocationRecord, WorkOrderRecord } from "./records";
 
 describe("command board dashboard summary", () => {
   it("builds actionable command strip counts for the hybrid board", () => {
@@ -27,13 +27,12 @@ describe("command board dashboard summary", () => {
     assert.deepEqual(
       summary.commandAlerts.map((alert) => [alert.id, alert.value]),
       [
-        ["today", "4"],
-        ["blocked", "3"],
-        ["approved", "1"],
-        ["trees", "0"],
-        ["crew", "2"],
-        ["freight", "2"],
-        ["equipment", "1"],
+        ["todayWork", "4"],
+        ["blockedDecision", "3"],
+        ["treesReady", "0"],
+        ["rootPruneDue", "0"],
+        ["careFollowUps", "0"],
+        ["equipmentConflicts", "1"],
       ],
     );
   });
@@ -99,10 +98,10 @@ describe("command board dashboard summary", () => {
     ];
 
     const summary = buildDashboardSummary({ loads, fieldUpdates });
-    const crewAlert = summary.commandAlerts.find((alert) => alert.id === "crew");
+    const crewAlert = summary.commandAlerts.find((alert) => alert.id === "blockedDecision");
 
     assert.equal(crewAlert?.value, "1");
-    assert.equal(crewAlert?.targetTab, "crewView");
+    assert.equal(crewAlert?.targetTab, "alerts");
     assert.deepEqual(summary.ownerReviewQueue.map((item) => [item.id, item.title, item.assignee, item.targetTab]), [
       ["field-update-christian-delay", "Semi #1 dispatch", "Christian Crespo", "crewView"],
     ]);
@@ -215,10 +214,13 @@ describe("command board dashboard summary", () => {
     ];
 
     const summary = buildDashboardSummary({ jobs, treeRelocationRecords, todayIso: "2026-06-04" });
-    const lifecycleAlert = summary.commandAlerts.find((alert) => alert.id === "trees");
+    const rootPruneAlert = summary.commandAlerts.find((alert) => alert.id === "rootPruneDue");
+    const careFollowUpAlert = summary.commandAlerts.find((alert) => alert.id === "careFollowUps");
 
-    assert.equal(lifecycleAlert?.value, "3");
-    assert.equal(lifecycleAlert?.targetTab, "tracker");
+    assert.equal(rootPruneAlert?.value, "1");
+    assert.equal(rootPruneAlert?.targetTab, "tracker");
+    assert.equal(careFollowUpAlert?.value, "1");
+    assert.equal(careFollowUpAlert?.targetTab, "tracker");
     assert.deepEqual(summary.ownerReviewQueue.slice(0, 3).map((item) => [item.title, item.recordId]), [
       ["Schedule 1st Cut", "job-boca-course-1"],
       ["Invoice Relocated Tree", "job-boca-course-1"],
@@ -328,5 +330,76 @@ describe("command board dashboard summary", () => {
     assert.equal(summary.operations.freight.title, "Palm Beach Freight");
     assert.equal(summary.operations.nursery.value, "2");
     assert.equal(summary.operations.equipment.title, "Lowboy Trailer");
+  });
+
+  it("prioritizes daily field command metrics and tree pipeline buckets", () => {
+    const jobs: JobRecord[] = [
+      { id: "job-boca", title: "Boca West Course 1", status: "Scheduled", startDate: "2026-06-15", crew: "Carlos Reyes" },
+    ];
+    const workOrders: WorkOrderRecord[] = [
+      {
+        id: "wo-root-prune",
+        title: "Root prune Boca trees",
+        projectName: "Boca West Course 1",
+        workOrderType: "tree_pruning",
+        crewLeadName: "Carlos Reyes",
+        scheduledDate: "2026-06-15",
+        status: "Scheduled",
+        treeIds: ["1001", "1002"],
+        equipmentNames: ["544 Loader", "Mini Excavator"],
+      },
+    ];
+    const treeRelocationRecords: TreeRelocationRecord[] = [
+      { id: "tree-1", treeId: "1001", type: "Live Oak", relocationStatus: "Not Started", projectName: "Boca West Course 1" },
+      { id: "tree-2", treeId: "1002", type: "Live Oak", relocationStatus: "25% Cut", projectName: "Boca West Course 1" },
+      { id: "tree-3", treeId: "1003", type: "Live Oak", relocationStatus: "50% Cut", projectName: "Boca West Course 1" },
+      { id: "tree-4", treeId: "1004", type: "Live Oak", relocationStatus: "75% Cut", projectName: "Boca West Course 1" },
+      { id: "tree-5", treeId: "1005", type: "Live Oak", relocationStatus: "100% Cut", projectName: "Boca West Course 1" },
+      { id: "tree-6", treeId: "1006", type: "Live Oak", relocationStatus: "Ready for Relocation", projectName: "Boca West Course 1" },
+      { id: "tree-7", treeId: "1007", type: "Live Oak", relocationStatus: "Moved to Holding", projectName: "Boca West Course 1" },
+      { id: "tree-8", treeId: "1008", type: "Live Oak", relocationStatus: "Relocated", projectName: "Boca West Course 1" },
+    ];
+
+    const summary = buildDashboardSummary({ jobs, workOrders, treeRelocationRecords, todayIso: "2026-06-15" });
+
+    assert.deepEqual(summary.commandAlerts.map((alert) => alert.label), [
+      "Today's Work",
+      "Blocked / Needs Decision",
+      "Trees Ready to Move",
+      "Root Prune Due",
+      "Care Follow-Ups",
+      "Equipment Conflicts",
+    ]);
+    assert.deepEqual(summary.treePipeline.map((bucket) => [bucket.status, bucket.count]), [
+      ["Not Started", 1],
+      ["25% Cut", 1],
+      ["50% Cut", 1],
+      ["75% Cut", 1],
+      ["100% Cut", 1],
+      ["Ready for Relocation", 1],
+      ["Moved to Holding", 1],
+      ["Relocated", 1],
+    ]);
+    assert.equal(summary.todaySchedule[0].crewLeader, "Carlos Reyes");
+    assert.equal(summary.todaySchedule[0].workType, "Root Pruning");
+    assert.equal(summary.todaySchedule[0].treeCount, 2);
+    assert.deepEqual(summary.todaySchedule[0].treeTags, ["1001", "1002"]);
+    assert.deepEqual(summary.todaySchedule[0].equipmentAssigned, ["544 Loader", "Mini Excavator"]);
+  });
+
+  it("groups owner review items by operational decision bucket", () => {
+    const jobs: JobRecord[] = [
+      { id: "job-blocked", title: "Waterford Hold", status: "Blocked", client: "Waterford" },
+    ];
+    const treeRelocationRecords: TreeRelocationRecord[] = [
+      { id: "tree-invoice", treeId: "1008", type: "Live Oak", relocationStatus: "Relocated", relocationDate: "2026-06-12", projectName: "Waterford" },
+    ];
+
+    const summary = buildDashboardSummary({ jobs, treeRelocationRecords, todayIso: "2026-06-15" });
+
+    assert.equal(summary.ownerReviewGroups.some((group) => group.label === "Needs Jeremy Decision"), true);
+    assert.equal(summary.ownerReviewGroups.some((group) => group.label === "Needs Scheduling"), true);
+    assert.equal(summary.ownerReviewGroups.some((group) => group.label === "Needs Billing"), true);
+    assert.equal(summary.ownerReviewGroups.flatMap((group) => group.items).some((item) => item.suggestedNextAction), true);
   });
 });

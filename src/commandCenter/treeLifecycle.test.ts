@@ -23,16 +23,13 @@ describe("tree relocation lifecycle", () => {
     assert.equal(defaultRelocationStatus, "Not Started");
     assert.deepEqual(relocationStatusOptions, [
       "Not Started",
-      "1st Cut Scheduled",
-      "1st Cut Complete",
-      "2nd Cut Scheduled",
-      "2nd Cut Complete",
-      "Ready For Relocation",
+      "25% Cut",
+      "50% Cut",
+      "75% Cut",
+      "100% Cut",
+      "Ready for Relocation",
+      "Moved to Holding",
       "Relocated",
-      "Moved To Holding Area",
-      "Invoiced",
-      "Paid",
-      "In Nutrient Care Phase",
     ]);
   });
 
@@ -45,9 +42,10 @@ describe("tree relocation lifecycle", () => {
   it("maps relocation statuses through the shared explicit stoplight palette", () => {
     assert.match(relocationStatusBadgeClass("Not Started"), /bg-\[#FBE3DE\]/);
     assert.match(relocationStatusBadgeClass("1st Cut Scheduled"), /bg-\[#FFF4C2\]/);
-    assert.match(relocationStatusBadgeClass("2nd Cut Complete"), /bg-\[#DFF6FF\]/);
-    assert.match(relocationStatusBadgeClass("Moved To Holding Area"), /bg-\[#DFF6FF\]/);
-    assert.match(relocationStatusBadgeClass("Ready For Relocation"), /bg-\[#E4F6DA\]/);
+    assert.match(relocationStatusBadgeClass("25% Cut"), /bg-\[#DFF6FF\]/);
+    assert.match(relocationStatusBadgeClass("50% Cut"), /bg-\[#DFF6FF\]/);
+    assert.match(relocationStatusBadgeClass("Moved to Holding"), /bg-\[#DFF6FF\]/);
+    assert.match(relocationStatusBadgeClass("Ready for Relocation"), /bg-\[#E4F6DA\]/);
     assert.match(relocationStatusBadgeClass("Invoiced"), /bg-\[#E4F6DA\]/);
     assert.match(relocationStatusBadgeClass("Paid"), /bg-\[#E4F6DA\]/);
   });

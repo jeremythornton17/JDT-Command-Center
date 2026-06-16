@@ -1,0 +1,46 @@
+{
+  "type": "FeatureCollection",
+  "name": "JDT_Project_Boundaries",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "Project_ID": "SCHEMA-SEED",
+        "Project_Name": "Schema Seed - Replace",
+        "Client_ID": "SCHEMA-SEED",
+        "Client_Name": "Schema Seed - Replace",
+        "Project_Status": "Schema Seed",
+        "Start_Date": "2026-06-15T00:00:00.000Z",
+        "End_Date": "2026-06-15T00:00:00.000Z",
+        "Notes": "Schema Seed - Replace"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -80.91844,
+              26.7547
+            ],
+            [
+              -80.91844,
+              26.7554
+            ],
+            [
+              -80.91774000000001,
+              26.7554
+            ],
+            [
+              -80.91774000000001,
+              26.7547
+            ],
+            [
+              -80.91844,
+              26.7547
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

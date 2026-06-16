@@ -1,0 +1,38 @@
+{
+  "type": "FeatureCollection",
+  "name": "JDT_Nutrient_Care_Tasks",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "Nutrient_Care_ID": "JDT_Nutrient_Care_Tasks-SEED",
+        "Tree_Asset_ID": "SCHEMA-SEED-TREE",
+        "Project_ID": "SCHEMA-SEED",
+        "Related_Root_Pruning_ID": "JDT_Nutrient_Care_Tasks-SEED",
+        "Tree_Tag": "SEED",
+        "Care_Phase": "Schema Seed - Replace",
+        "Scheduled_Date": "2026-06-15T00:00:00.000Z",
+        "Completed_Date": "2026-06-15T00:00:00.000Z",
+        "Care_Task_Status": "Schema Seed",
+        "Treatment_Type": "Schema Seed - Replace",
+        "Treatment_Product": "Schema Seed - Replace",
+        "Condition_Observed": "Schema Seed - Replace",
+        "Stress_Level": "Schema Seed - Replace",
+        "Watering_Status": "Schema Seed",
+        "Irrigation_Status": "Schema Seed",
+        "Follow_Up_Needed": "Schema Seed - Replace",
+        "Next_Follow_Up_Date": "2026-06-15T00:00:00.000Z",
+        "Assigned_Crew": "Schema Seed - Replace",
+        "Vendor": "Schema Seed - Replace",
+        "Notes": "Schema Seed - Replace"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.91809,
+          26.75505
+        ]
+      }
+    }
+  ]
+}

@@ -100,18 +100,36 @@ describe("MapsBoard relocation pin editing", () => {
 
     assert.match(html, /Current Map View/);
     assert.match(html, /Boca West Course 1 Renovation/);
-    assert.match(html, /Map Items Workbench/);
+    assert.match(html, /Tree Map Workbench/);
+    assert.match(html, /Project Relocation Pipeline/);
+    assert.match(html, /ArcGIS Layers/);
+    assert.match(html, /Sync ArcGIS/);
+    assert.match(html, /Export KML/);
+    assert.match(html, /Import KML\/KMZ/);
+    assert.match(html, /Print Field Map/);
+    assert.match(html, /Fullscreen Map/);
     assert.match(html, /Search by tree type, tag, asset ID, or status/);
     assert.match(html, /In View/);
     assert.match(html, /Multi-Select/);
     assert.match(html, /Bulk Actions/);
     assert.match(html, /Assign Work/);
-    assert.match(html, /Root Pruning/);
-    assert.match(html, /Nutrient Care/);
-    assert.match(html, /Crew Work Order/);
+    assert.match(html, /Create Root Prune Events/);
+    assert.match(html, /Create Nutrient Care Tasks/);
+    assert.match(html, /Create Relocation Move Tasks/);
+    assert.match(html, /Assign Crew/);
+    assert.match(html, /Assign Equipment/);
+    assert.match(html, /Set Holding Area/);
+    assert.match(html, /Set Tree_Relocation_Status/);
     assert.match(html, /Export Selected/);
     assert.match(html, /Print Field Map/);
-    assert.match(html, /Active Tree/);
+    assert.match(html, /Selected Tree Command/);
+    assert.match(html, /Open Full Tree Record/);
+    assert.match(html, /Create Root Prune Event/);
+    assert.match(html, /Create Nutrient Care Task/);
+    assert.match(html, /Create Move Task/);
+    assert.match(html, /Mark Ready for Relocation/);
+    assert.match(html, /Mark Moved to Holding/);
+    assert.match(html, /Mark Relocated/);
     assert.match(html, /Pin Editor/);
     assert.match(html, /Select a source or destination pin on the map/);
     assert.match(html, /Use Phone GPS/);
@@ -126,8 +144,8 @@ describe("MapsBoard relocation pin editing", () => {
     assert.doesNotMatch(html, /Google Earth Project Map/);
     assert.doesNotMatch(html, /Download KML/);
     assert.doesNotMatch(html, /Open Google Earth/);
-    assert.equal(html.indexOf("Fallback Field Map") < html.indexOf("Active Tree"), true);
-    assert.equal(html.indexOf("Active Tree") < html.indexOf("Map Backup / Earth Export"), true);
+    assert.equal(html.indexOf("Fallback Field Map") < html.indexOf("Selected Tree Command"), true);
+    assert.equal(html.indexOf("Selected Tree Command") < html.indexOf("Map Backup / Earth Export"), true);
   });
 
   it("shows imported relocation tree records as job-scoped map pins", () => {
@@ -160,7 +178,7 @@ describe("MapsBoard relocation pin editing", () => {
       />,
     );
 
-    assert.match(html, /Map Items Workbench/);
+    assert.match(html, /Tree Map Workbench/);
     assert.match(html, /tree-boca-109/);
     assert.match(html, /Live Oak/);
     assert.match(html, /Needs Destination Pin/);

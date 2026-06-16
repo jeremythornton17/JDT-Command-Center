@@ -17,6 +17,10 @@ import {
   handleRevealVehiclesSyncRequest,
   revealApiCredentialsConfigured,
 } from './server/revealApi.js';
+import {
+  arcGisServerCredentialsConfigured,
+  handleArcGisTreeAssetApplyEditsRequest,
+} from './server/arcgisApi.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -268,11 +272,62 @@ app.post('/api/integrations/reveal/alerts', express.json({ limit: '2mb', type: [
   }
 });
 
+app.get('/api/integrations/arcgis/health', (_request, response) => {
+  response
+    .type('application/json')
+    .set('Cache-Control', 'no-store')
+    .send({
+      ok: true,
+      provider: 'ArcGIS Online',
+      endpoint: '/api/integrations/arcgis/tree-assets/apply-edits',
+      serverCredentialsConfigured: arcGisServerCredentialsConfigured(process.env),
+    });
+});
+
+app.post('/api/integrations/arcgis/tree-assets/apply-edits', express.json({ limit: '512kb', type: ['application/json', 'application/*+json'] }), async (request, response) => {
+  try {
+    const result = await handleArcGisTreeAssetApplyEditsRequest({
+      headers: request.headers,
+      body: request.body,
+      env: process.env,
+      firebaseApiKey: firebaseConfig.apiKey,
+    });
+
+    response
+      .status(result.statusCode)
+      .type('application/json')
+      .set('Cache-Control', 'no-store')
+      .send(result.body);
+  } catch (error) {
+    console.error('ArcGIS hosted layer sync failed', error);
+    response
+      .status(500)
+      .type('application/json')
+      .set('Cache-Control', 'no-store')
+      .send({
+        ok: false,
+        error: error instanceof Error ? error.message : 'ArcGIS hosted layer sync failed.',
+      });
+  }
+});
+
 app.get('/runtime-config.js', (_request, response) => {
   const runtimeConfig = {
     APP_URL: process.env.APP_URL || '',
     VITE_GOOGLE_MAPS_API_KEY: process.env.VITE_GOOGLE_MAPS_API_KEY || '',
     VITE_GOOGLE_MAPS_MAP_ID: process.env.VITE_GOOGLE_MAPS_MAP_ID || '',
+    VITE_ARCGIS_API_KEY: process.env.VITE_ARCGIS_API_KEY || '',
+    VITE_ARCGIS_ORG_URL: process.env.VITE_ARCGIS_ORG_URL || '',
+    VITE_ARCGIS_WEB_MAP_ID: process.env.VITE_ARCGIS_WEB_MAP_ID || '',
+    VITE_ARCGIS_LAYER_JDT_PROJECT_BOUNDARIES_URL: process.env.VITE_ARCGIS_LAYER_JDT_PROJECT_BOUNDARIES_URL || '',
+    VITE_ARCGIS_LAYER_JDT_TREE_ASSETS_URL: process.env.VITE_ARCGIS_LAYER_JDT_TREE_ASSETS_URL || '',
+    VITE_ARCGIS_LAYER_JDT_FINAL_TREE_LOCATIONS_URL: process.env.VITE_ARCGIS_LAYER_JDT_FINAL_TREE_LOCATIONS_URL || '',
+    VITE_ARCGIS_LAYER_JDT_HOLDING_AREAS_URL: process.env.VITE_ARCGIS_LAYER_JDT_HOLDING_AREAS_URL || '',
+    VITE_ARCGIS_LAYER_JDT_WORK_ZONES_URL: process.env.VITE_ARCGIS_LAYER_JDT_WORK_ZONES_URL || '',
+    VITE_ARCGIS_LAYER_JDT_ROOT_PRUNE_EVENTS_URL: process.env.VITE_ARCGIS_LAYER_JDT_ROOT_PRUNE_EVENTS_URL || '',
+    VITE_ARCGIS_LAYER_JDT_RELOCATION_WORK_URL: process.env.VITE_ARCGIS_LAYER_JDT_RELOCATION_WORK_URL || '',
+    VITE_ARCGIS_LAYER_JDT_NUTRIENT_CARE_TASKS_URL: process.env.VITE_ARCGIS_LAYER_JDT_NUTRIENT_CARE_TASKS_URL || '',
+    VITE_ARCGIS_LAYER_JDT_EQUIPMENT_LOCATIONS_URL: process.env.VITE_ARCGIS_LAYER_JDT_EQUIPMENT_LOCATIONS_URL || '',
   };
 
   response

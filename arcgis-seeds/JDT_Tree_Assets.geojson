@@ -1,0 +1,43 @@
+{
+  "type": "FeatureCollection",
+  "name": "JDT_Tree_Assets",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "Tree_Asset_ID": "SCHEMA-SEED-TREE",
+        "Project_ID": "SCHEMA-SEED",
+        "Client_ID": "SCHEMA-SEED",
+        "Asset_Category": "Schema Seed - Replace",
+        "Tree_Tag": "SEED",
+        "Tree_Type": "Live Oak",
+        "DBH_IN": 0,
+        "Height_FT": 0,
+        "Spread_FT": 0,
+        "Condition": "Schema Seed - Replace",
+        "Difficulty": "Schema Seed - Replace",
+        "Priority": "Schema Seed - Replace",
+        "Tree_Relocation_Status": "Not Started",
+        "Installation_Status": "Schema Seed",
+        "Tree_Final_Outcome": "Schema Seed - Replace",
+        "Current_Field_Location": "Schema Seed - Replace",
+        "Holding_Area_Name": "Schema Seed - Replace",
+        "Existing_Location_Description": "Schema Seed - Replace",
+        "Proposed_Final_Location_Description": "Schema Seed - Replace",
+        "Estimated_Relocation_Cost": 0,
+        "Contract_Relocation_Cost": 0,
+        "Risk_Level": "Schema Seed - Replace",
+        "Map_Geometry_Status": "Schema Seed",
+        "Last_Map_Sync_At": "2026-06-15T00:00:00.000Z",
+        "Notes": "Schema Seed - Replace"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.91809,
+          26.75505
+        ]
+      }
+    }
+  ]
+}

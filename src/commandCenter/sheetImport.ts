@@ -15,7 +15,11 @@ import type {
 import { normalizeDelimitedList, withHomeBaseEquipmentDefaults } from './equipmentFreight';
 import { clientIdFromName, jobIdFromName, projectIdFromName } from './relationships';
 import { defaultRelocationStatus } from './treeLifecycle';
-import { sourceRefFromWorkbookRow } from './workbookProjectFlow';
+import { sourceRefFromWorkbookRow, workbookColumnsForTab } from './workbookProjectFlow';
+import {
+  normalizeTreeRelocationStatus,
+  treeRelocationSchemaVersion,
+} from './treeRelocationSchema';
 
 export type SheetImportTemplateId =
   | 'inventory'
@@ -28,6 +32,7 @@ export type SheetImportTemplateId =
   | 'relocation'
   | 'jdt_project_flow_tree_assets'
   | 'jdt_project_flow_tree_pruning'
+  | 'jdt_project_flow_tree_relocation_work'
   | 'jdt_project_flow_treatment_aftercare'
   | 'jdt_project_flow_tree_photos'
   | 'jdt_project_flow_project_material_items';
@@ -146,17 +151,24 @@ export const sheetImportTemplates: SheetImportTemplate[] = [
     label: 'JDT Project Flow - Tree Assets',
     sourceSheet: 'Project_Tree_Assets',
     targetCollections: ['treeRelocationRecords'],
-    requiredHeaders: ['Tree_Asset_ID', 'Project_ID', 'Tree_Type'],
+    requiredHeaders: ['Tree_Type'],
     headerAliases: {
       Tree_Asset_ID: ['Tree_Assets_ID', 'Tree Assets_ID', 'Tree Assets ID'],
       Project_ID: ['Projects_ID', 'Project ID'],
       Tree_Type: ['Tree Type', 'TYPE'],
+      Tree_Tag: ['Tag', 'TAG'],
+      Asset_Category: ['Asset Category'],
+      Tree_Relocation_Status: ['Relocation_Status', 'Relocation Status', 'Current_Status', 'Current Status'],
+      Tree_Final_Outcome: ['Final Outcome'],
+      Estimated_Relocation_Cost: ['Relocation_Cost', 'Relocation Cost'],
+      Existing_Source_Pin: ['Source Pin'],
+      Destination_Pin: ['Destination Pin'],
     },
-    pasteHeaders: ['Tree_Asset_ID', 'Project_ID', 'Client_ID', 'Tree_Type', 'Tag', 'DBH_IN', 'Height', 'Spread', 'Difficulty', 'Condition', 'Existing_Location_Description', 'Existing_Source_Pin', 'Proposed_Final_Location_Description', 'Destination_Pin', 'Current_Status', 'Relocation_Required', 'Installation_Required', 'Preservation_Required', 'Removal_Required', 'Relocation_Status', 'Relocation_Cost', 'Priority', 'Notes', 'App_Record_ID', 'App_Updated_At', 'Last_Sync_Batch_ID', 'Schema_Version'],
+    pasteHeaders: workbookColumnsForTab('Project_Tree_Assets'),
     previewFields: [
       { label: 'Project', key: 'projectId' },
-      { label: 'Tree', key: 'type' },
-      { label: 'Status', key: 'status' },
+      { label: 'Tree', key: 'treeType' },
+      { label: 'Status', key: 'treeRelocationStatus' },
       { label: 'DBH', key: 'dbh' },
     ],
   },
@@ -170,11 +182,28 @@ export const sheetImportTemplates: SheetImportTemplate[] = [
       Tree_Asset_ID: ['Tree Assets_ID', 'Tree_Assets_ID', 'Tree Assets ID'],
       Root_Pruning_ID: ['Tree_Prune_ID'],
     },
-    pasteHeaders: ['Root_Pruning_ID', 'Tree_Asset_ID', 'Project_ID', 'Cut_Count', 'Date_1st_Cut', 'Date_2nd_Cut', 'Date_3rd_Cut', 'Prep_Checks', 'Readiness_Status', 'Next_Action', 'Notes', 'App_Record_ID', 'App_Updated_At', 'Last_Sync_Batch_ID', 'Schema_Version'],
+    pasteHeaders: workbookColumnsForTab('Project_Root_Pruning'),
     previewFields: [
       { label: 'Tree', key: 'treeNames' },
       { label: 'Status', key: 'status' },
       { label: 'Scheduled', key: 'scheduledDate' },
+    ],
+  },
+  {
+    id: 'jdt_project_flow_tree_relocation_work',
+    label: 'JDT Project Flow - Tree Relocation Work',
+    sourceSheet: 'Project_Tree_Relocation_Work',
+    targetCollections: ['workOrders'],
+    requiredHeaders: ['Relocation_Work_ID', 'Tree_Asset_ID'],
+    headerAliases: {
+      Tree_Asset_ID: ['Tree Assets_ID', 'Tree_Assets_ID', 'Tree Assets ID'],
+      Relocation_Work_ID: ['Tree_Relocation_Work_ID', 'Move_Work_ID'],
+    },
+    pasteHeaders: workbookColumnsForTab('Project_Tree_Relocation_Work'),
+    previewFields: [
+      { label: 'Tree', key: 'treeNames' },
+      { label: 'Move', key: 'moveType' },
+      { label: 'Status', key: 'moveTaskStatus' },
     ],
   },
   {
@@ -187,7 +216,7 @@ export const sheetImportTemplates: SheetImportTemplate[] = [
       Nutrient_Care_ID: ['Treatment_Aftercare Logs_ID', 'Treatment_Aftercare_Logs_ID'],
       Tree_Asset_ID: ['Tree Assets_ID', 'Tree_Assets_ID', 'Tree Assets ID'],
     },
-    pasteHeaders: ['Nutrient_Care_ID', 'Tree_Asset_ID', 'Project_ID', 'Treatment', 'Treatment_Type', 'Date_Last_Treatment', 'Treatment_Action', 'Completed_By', 'Condition_Observed', 'Watering_Status', 'Irrigation_Status', 'Stress_Level', 'Follow_Up_Needed', 'Next_Follow_Up_Date', 'Notes', 'App_Record_ID', 'App_Updated_At', 'Last_Sync_Batch_ID', 'Schema_Version'],
+    pasteHeaders: workbookColumnsForTab('Project_Nutrient_Care'),
     previewFields: [
       { label: 'Tree', key: 'treeNames' },
       { label: 'Action', key: 'taskType' },
@@ -332,7 +361,8 @@ export function pasteHeadersForTemplate(template: SheetImportTemplate): string[]
 
 function normalizeIncludedHeaders(template: SheetImportTemplate, includedHeaders?: string[]): string[] {
   if (!includedHeaders?.length) return [];
-  const allowedHeaders = new Set(pasteHeadersForTemplate(template).map(normalizedHeader));
+  const aliasHeaders = Object.values(template.headerAliases || {}).flat();
+  const allowedHeaders = new Set([...pasteHeadersForTemplate(template), ...aliasHeaders].map(normalizedHeader));
   const seen = new Set<string>();
   return includedHeaders
     .map(cleanText)
@@ -430,6 +460,8 @@ function mapTemplate(template: SheetImportTemplate, rows: string[][], options: B
       return mapJdtProjectFlowTreeAssets(template, rows, options.projectContext);
     case 'jdt_project_flow_tree_pruning':
       return mapJdtProjectFlowTreePruning(template, rows);
+    case 'jdt_project_flow_tree_relocation_work':
+      return mapJdtProjectFlowTreeRelocationWork(template, rows);
     case 'jdt_project_flow_treatment_aftercare':
       return mapJdtProjectFlowTreatmentAftercare(template, rows);
     case 'jdt_project_flow_tree_photos':
@@ -853,12 +885,19 @@ function mapJdtProjectFlowTreeAssets(template: SheetImportTemplate, rows: string
       const projectsId = firstValue(row, 'Project_ID', 'Projects_ID') || contextProjectId;
       const clientId = firstValue(row, 'Client_ID', 'Companies_ID') || normalizedContext?.clientId;
       const type = firstValue(row, 'Tree_Type', 'Tree Type', 'TYPE');
-      const tag = firstValue(row, 'Tag', 'TAG');
+      const tag = firstValue(row, 'Tree_Tag', 'Tag', 'TAG');
       const treeAssetId = firstValue(row, 'Tree_Asset_ID', 'Tree_Assets_ID', 'Tree Assets_ID') || generatedTreeAssetId(projectsId, tag, index);
       const existingLocationDescription = firstValue(row, 'Existing_Location_Description', 'Existing Location Description', 'LOCATION', 'Location');
       const proposedFinalLocationDescription = firstValue(row, 'Proposed_Final_Location_Description', 'Proposed Final Location Description');
-      const sourcePin = coordinatePointFromText(firstValue(row, 'Existing_Source_Pin', 'Source Pin') || existingLocationDescription, 'Imported source pin');
-      const destinationPin = coordinatePointFromText(firstValue(row, 'Destination_Pin', 'Destination Pin') || proposedFinalLocationDescription, 'Imported destination pin');
+      const explicitSourcePin = firstValue(row, 'Existing_Source_Pin', 'Source Pin');
+      const explicitDestinationPin = firstValue(row, 'Destination_Pin', 'Destination Pin');
+      const sourcePin = coordinatePointFromLatLng(firstValue(row, 'Existing_Latitude'), firstValue(row, 'Existing_Longitude'), 'Imported source pin')
+        || coordinatePointFromText(explicitSourcePin || existingLocationDescription, 'Imported source pin');
+      const destinationPin = coordinatePointFromLatLng(firstValue(row, 'Destination_Latitude'), firstValue(row, 'Destination_Longitude'), 'Imported destination pin')
+        || coordinatePointFromText(explicitDestinationPin || proposedFinalLocationDescription, 'Imported destination pin');
+      const legacyRelocationStatus = firstValue(row, 'Relocation_Status', 'Relocation Status');
+      const treeRelocationStatus = normalizeTreeRelocationStatus(firstValue(row, 'Tree_Relocation_Status', 'Current_Status', 'Current Status', 'Relocation_Status', 'Relocation Status'));
+      const mapGeometryStatus = firstValue(row, 'Map_Geometry_Status') || (sourcePin || destinationPin ? 'Parsed' : 'Missing');
 
       if (!treeAssetId && !projectsId && !type && !tag) {
         warnings.push(`Row ${index} skipped: blank tree asset row`);
@@ -888,27 +927,60 @@ function mapJdtProjectFlowTreeAssets(template: SheetImportTemplate, rows: string
         projectId: projectsId,
         projectsId,
         projectName: firstValue(row, 'Project_Name', 'Project Name') || normalizedContext?.projectName,
+        assetCategory: firstValue(row, 'Asset_Category') || 'Relocation',
         tag,
+        treeTag: tag,
         type,
         ranchOakType: type,
         treeType: type,
+        speciesCommonName: firstValue(row, 'Species_Common_Name'),
+        speciesBotanicalName: firstValue(row, 'Species_Botanical_Name'),
         dbh: numberFrom(firstValue(row, 'DBH_IN', 'DBH (IN)')) ?? cleanOptional(firstValue(row, 'DBH_IN', 'DBH (IN)')),
-        height: firstValue(row, 'Height'),
-        spread: firstValue(row, 'Spread'),
+        height: firstValue(row, 'Height_FT', 'Height'),
+        heightFt: numberFrom(firstValue(row, 'Height_FT', 'Height')) ?? cleanOptional(firstValue(row, 'Height_FT', 'Height')),
+        spread: firstValue(row, 'Spread_FT', 'Spread'),
+        spreadFt: numberFrom(firstValue(row, 'Spread_FT', 'Spread')) ?? cleanOptional(firstValue(row, 'Spread_FT', 'Spread')),
         difficulty: firstValue(row, 'Difficulty', 'Difficulty '),
         condition: value(row, 'Condition'),
         existingLocationDescription,
+        existingSourcePin: explicitSourcePin,
+        existingLatitude: sourcePin?.lat,
+        existingLongitude: sourcePin?.lng,
         proposedFinalLocationDescription,
-        currentStatus: firstValue(row, 'Current_Status', 'Current Status') || defaultRelocationStatus,
-        status: firstValue(row, 'Current_Status', 'Current Status', 'Relocation_Status', 'Relocation Status') || defaultRelocationStatus,
+        destinationPin: explicitDestinationPin,
+        destinationLatitude: destinationPin?.lat,
+        destinationLongitude: destinationPin?.lng,
+        holdingAreaName: firstValue(row, 'Holding_Area_Name'),
+        currentFieldLocation: firstValue(row, 'Current_Field_Location') || 'Existing Location',
+        currentStatus: firstValue(row, 'Current_Status', 'Current Status') || treeRelocationStatus,
+        status: treeRelocationStatus || defaultRelocationStatus,
+        treeRelocationStatus,
         relocationRequired: firstValue(row, 'Relocation_Required', 'Relocation Required'),
-        relocationCost: moneyFrom(firstValue(row, 'Relocation_Cost', 'Relocation Cost')) ?? cleanOptional(firstValue(row, 'Relocation_Cost', 'Relocation Cost')),
-        relocationStatus: firstValue(row, 'Relocation_Status', 'Relocation Status') || defaultRelocationStatus,
+        rootPruneRequired: firstValue(row, 'Root_Prune_Required'),
+        nutrientCareRequired: firstValue(row, 'Nutrient_Care_Required'),
+        relocationCost: moneyFrom(firstValue(row, 'Estimated_Relocation_Cost', 'Relocation_Cost', 'Relocation Cost')) ?? cleanOptional(firstValue(row, 'Estimated_Relocation_Cost', 'Relocation_Cost', 'Relocation Cost')),
+        estimatedRelocationCost: moneyFrom(firstValue(row, 'Estimated_Relocation_Cost', 'Relocation_Cost', 'Relocation Cost')) ?? cleanOptional(firstValue(row, 'Estimated_Relocation_Cost', 'Relocation_Cost', 'Relocation Cost')),
+        contractRelocationCost: moneyFrom(firstValue(row, 'Contract_Relocation_Cost')) ?? cleanOptional(firstValue(row, 'Contract_Relocation_Cost')),
+        relocationStatus: legacyRelocationStatus || treeRelocationStatus,
+        installationStatus: firstValue(row, 'Installation_Status', 'Install_Status') || 'Not Started',
         installationRequired: firstValue(row, 'Installation_Required', 'Installation Required'),
-        preservationRequired: firstValue(row, 'Preservation_Required', 'Preservation Required'),
-        removalRequired: firstValue(row, 'Removal_Required', 'Removal Required'),
+        treeFinalOutcome: firstValue(row, 'Tree_Final_Outcome') || 'Active in Scope',
+        outcomeDate: firstValue(row, 'Outcome_Date'),
+        outcomeReason: firstValue(row, 'Outcome_Reason'),
+        outcomeDecidedBy: firstValue(row, 'Outcome_Decided_By'),
+        outcomeNotes: firstValue(row, 'Outcome_Notes'),
+        riskLevel: firstValue(row, 'Risk_Level'),
+        riskNotes: firstValue(row, 'Risk_Notes'),
+        accessNotes: firstValue(row, 'Access_Notes'),
+        wateringResponsibility: firstValue(row, 'Watering_Responsibility'),
+        mapGeometryStatus,
+        arcGisFeatureId: firstValue(row, 'ArcGIS_Feature_ID'),
+        photosComplete: firstValue(row, 'Photos_Complete'),
         priority: value(row, 'Priority'),
         notes: value(row, 'Notes'),
+        appUpdatedAt: firstValue(row, 'App_Updated_At'),
+        lastSyncBatchId: firstValue(row, 'Last_Sync_Batch_ID'),
+        schemaVersion: firstValue(row, 'Schema_Version') || treeRelocationSchemaVersion,
         relocationMap: sourcePin || destinationPin ? {
           ...(sourcePin ? { source: sourcePin } : {}),
           ...(destinationPin ? { destination: destinationPin } : {}),
@@ -933,13 +1005,18 @@ function mapJdtProjectFlowTreePruning(template: SheetImportTemplate, rows: strin
       const treeAssetId = firstValue(row, 'Tree_Asset_ID', 'Tree Assets_ID', 'Tree_Assets_ID');
       const treePruneId = firstValue(row, 'Root_Pruning_ID', 'Tree_Prune_ID');
       const projectId = firstValue(row, 'Project_ID', 'Projects_ID');
-      const firstCutDate = firstValue(row, 'Date_1st_Cut', 'Date of 1st Cut');
+      const scheduledDate = firstValue(row, 'Scheduled_Date', 'Date_1st_Cut', 'Date of 1st Cut');
+      const completedDate = firstValue(row, 'Completed_Date');
       const rootPruneCuts = firstValue(row, 'Cut_Count', 'Root Prune Cuts');
       const prepChecks = firstValue(row, 'Prep_Checks', 'Prep Checks');
       const readinessReview = firstValue(row, 'Readiness_Status', 'Readiness Reviews');
       const nextAction = firstValue(row, 'Next_Action', 'Next Action');
+      const rootPruneTaskStatus = firstValue(row, 'Root_Prune_Task_Status') || readinessReview || 'Not Assigned';
+      const plannedCutPercent = firstValue(row, 'Planned_Cut_Percent');
+      const actualCutPercent = firstValue(row, 'Actual_Cut_Percent');
+      const cumulativePercent = firstValue(row, 'Cumulative_Cut_Percent_After_Event');
 
-      if (!treeAssetId && !treePruneId && !rootPruneCuts && !firstCutDate) {
+      if (!treeAssetId && !treePruneId && !rootPruneCuts && !scheduledDate && !plannedCutPercent && !actualCutPercent) {
         warnings.push(`Row ${index} skipped: blank tree pruning row`);
         return null;
       }
@@ -953,24 +1030,118 @@ function mapJdtProjectFlowTreePruning(template: SheetImportTemplate, rows: strin
         id: treePruneId,
         title: `Root prune ${treeAssetId}`,
         projectId,
+        clientId: firstValue(row, 'Client_ID'),
         workOrderType: 'tree_pruning',
         division: 'Relocation & Installation',
         taskType: 'Root Pruning',
-        status: readinessReview || 'Ready',
-        scheduledDate: firstCutDate,
+        status: rootPruneTaskStatus,
+        scheduledDate,
+        completedDate,
+        rootPruneCycleId: firstValue(row, 'Root_Prune_Cycle_ID'),
+        rootPruneTaskStatus,
+        rootPruneEventNumber: firstValue(row, 'Root_Prune_Event_Number') || rootPruneCuts,
+        recommendedRootPruningPeriodMonths: numberFrom(firstValue(row, 'Recommended_Root_Pruning_Period_Months')) ?? cleanOptional(firstValue(row, 'Recommended_Root_Pruning_Period_Months')),
+        monthsFromCycleStart: numberFrom(firstValue(row, 'Months_From_Cycle_Start')) ?? cleanOptional(firstValue(row, 'Months_From_Cycle_Start')),
+        plannedCutPercent: numberFrom(plannedCutPercent) ?? cleanOptional(plannedCutPercent),
+        actualCutPercent: numberFrom(actualCutPercent) ?? cleanOptional(actualCutPercent),
+        cumulativeCutPercentAfterEvent: numberFrom(cumulativePercent) ?? cleanOptional(cumulativePercent),
+        cutStageCompleted: firstValue(row, 'Cut_Stage_Completed'),
+        rootPruneMethod: firstValue(row, 'Root_Prune_Method'),
+        rootballSize: firstValue(row, 'Rootball_Size'),
+        rootballDepth: firstValue(row, 'Rootball_Depth'),
+        equipmentNames: normalizeDelimitedList(firstValue(row, 'Equipment_Used')),
+        utilityClearanceStatus: firstValue(row, 'Utility_Clearance_Status'),
+        locateTicket: firstValue(row, 'Locate_Ticket'),
+        nutrientCareRequiredAfterEvent: firstValue(row, 'Nutrient_Care_Required_After_Event'),
+        waterStarted: firstValue(row, 'Water_Started'),
+        photosRequired: firstValue(row, 'Photos_Required'),
+        photosComplete: firstValue(row, 'Photos_Complete'),
         sourceSheetName: 'Project_Root_Pruning',
         sourceRowId: treePruneId,
         treeIds: [treeAssetId],
-        treeNames: [treeAssetId],
+        treeNames: [firstValue(row, 'Tree_Tag') || treeAssetId],
+        schemaVersion: firstValue(row, 'Schema_Version') || treeRelocationSchemaVersion,
         notes: [
           rootPruneCuts && `Root prune cuts: ${rootPruneCuts}`,
           prepChecks && `Prep checks: ${prepChecks}`,
           nextAction && `Next action: ${nextAction}`,
+          firstValue(row, 'Blocker_Reason') && `Blocker: ${firstValue(row, 'Blocker_Reason')}`,
           value(row, 'Notes'),
         ].filter(Boolean).join('\n'),
         sourceRefs: [sourceRefFromWorkbookRow('Project_Root_Pruning', {
           Tree_Asset_ID: treeAssetId,
           Root_Pruning_ID: treePruneId,
+        }, index)],
+      } satisfies WorkOrderRecord;
+    })
+    .filter(Boolean) as WorkOrderRecord[];
+
+  return makeTarget(template, workOrders, warnings, 'workOrders');
+}
+
+function mapJdtProjectFlowTreeRelocationWork(template: SheetImportTemplate, rows: string[][]): ImportTarget {
+  const { records, warnings } = objectRows(rows, template.requiredHeaders, template.headerAliases);
+  const workOrders = records
+    .map(({ row, index }) => {
+      const relocationWorkId = firstValue(row, 'Relocation_Work_ID', 'Tree_Relocation_Work_ID', 'Move_Work_ID');
+      const treeAssetId = firstValue(row, 'Tree_Asset_ID', 'Tree Assets_ID', 'Tree_Assets_ID');
+      const projectId = firstValue(row, 'Project_ID', 'Projects_ID');
+      const moveType = firstValue(row, 'Move_Type');
+      const moveTaskStatus = firstValue(row, 'Move_Task_Status') || 'Not Assigned';
+      const scheduledMoveDate = firstValue(row, 'Scheduled_Move_Date', 'Scheduled_Date');
+      const actualMoveDate = firstValue(row, 'Actual_Move_Date', 'Completed_Date');
+
+      if (!relocationWorkId && !treeAssetId && !moveType && !scheduledMoveDate && !actualMoveDate) {
+        warnings.push(`Row ${index} skipped: blank tree relocation work row`);
+        return null;
+      }
+
+      if (!relocationWorkId || !treeAssetId) {
+        warnings.push(`Row ${index} skipped: tree relocation work rows need Relocation_Work_ID and Tree_Asset_ID`);
+        return null;
+      }
+
+      return {
+        id: relocationWorkId,
+        title: [moveType || 'Tree Relocation Work', treeAssetId].filter(Boolean).join(' '),
+        projectId,
+        clientId: firstValue(row, 'Client_ID'),
+        workOrderType: 'tree_relocation_work',
+        division: 'Relocation & Installation',
+        taskType: moveType || 'Tree Relocation Work',
+        status: moveTaskStatus,
+        scheduledDate: scheduledMoveDate,
+        completedDate: actualMoveDate,
+        moveTaskStatus,
+        moveType,
+        origin: firstValue(row, 'Origin_Location'),
+        destination: firstValue(row, 'Destination_Location'),
+        holdingAreaName: firstValue(row, 'Holding_Area_Name'),
+        assignedCrewNames: normalizeDelimitedList(firstValue(row, 'Assigned_Crew')),
+        crewLeadName: firstValue(row, 'Assigned_Crew_Leader'),
+        equipmentNames: normalizeDelimitedList(firstValue(row, 'Equipment_Used')),
+        truckNames: normalizeDelimitedList(firstValue(row, 'Truck_Used')),
+        trailerNames: normalizeDelimitedList(firstValue(row, 'Trailer_Used')),
+        operator: firstValue(row, 'Operator'),
+        accessConfirmed: firstValue(row, 'Access_Confirmed'),
+        irrigationReady: firstValue(row, 'Irrigation_Ready'),
+        finalGradeReady: firstValue(row, 'Final_Grade_Ready'),
+        treeSetComplete: firstValue(row, 'Tree_Set_Complete'),
+        backfillComplete: firstValue(row, 'Backfill_Complete'),
+        stakingGuyingComplete: firstValue(row, 'Staking_Guying_Complete'),
+        waterInComplete: firstValue(row, 'Water_In_Complete'),
+        photosRequired: firstValue(row, 'Photos_Required'),
+        photosComplete: firstValue(row, 'Photos_Complete'),
+        blockerReason: firstValue(row, 'Blocker_Reason'),
+        sourceSheetName: 'Project_Tree_Relocation_Work',
+        sourceRowId: relocationWorkId,
+        treeIds: [treeAssetId],
+        treeNames: [firstValue(row, 'Tree_Tag') || treeAssetId],
+        schemaVersion: firstValue(row, 'Schema_Version') || treeRelocationSchemaVersion,
+        notes: value(row, 'Notes'),
+        sourceRefs: [sourceRefFromWorkbookRow('Project_Tree_Relocation_Work', {
+          Relocation_Work_ID: relocationWorkId,
+          Tree_Asset_ID: treeAssetId,
         }, index)],
       } satisfies WorkOrderRecord;
     })
@@ -986,9 +1157,13 @@ function mapJdtProjectFlowTreatmentAftercare(template: SheetImportTemplate, rows
       const treatmentId = firstValue(row, 'Nutrient_Care_ID', 'Treatment_Aftercare Logs_ID', 'Treatment_Aftercare_Logs_ID');
       const treeAssetId = firstValue(row, 'Tree_Asset_ID', 'Tree Assets_ID', 'Tree_Assets_ID');
       const projectId = firstValue(row, 'Project_ID', 'Projects_ID');
+      const carePhase = firstValue(row, 'Care_Phase');
+      const careTaskStatus = firstValue(row, 'Care_Task_Status');
       const treatmentType = firstValue(row, 'Treatment_Type', 'Treatments Type', 'Treatment Type');
       const treatmentAction = firstValue(row, 'Treatment_Action', 'Treatment Action');
       const nextFollowUpDate = firstValue(row, 'Next_Follow_Up_Date', 'Next Follow-up Date');
+      const scheduledDate = firstValue(row, 'Scheduled_Date') || nextFollowUpDate;
+      const completedDate = firstValue(row, 'Completed_Date', 'Date_Last_Treatment', 'Date Of Last Treatment');
 
       if (!treatmentId && !treeAssetId && !treatmentType && !treatmentAction) {
         warnings.push(`Row ${index} skipped: blank treatment or aftercare row`);
@@ -1004,17 +1179,43 @@ function mapJdtProjectFlowTreatmentAftercare(template: SheetImportTemplate, rows
         id: treatmentId,
         title: [treatmentType || treatmentAction || 'Nutrient Care', treeAssetId].filter(Boolean).join(' '),
         projectId,
+        clientId: firstValue(row, 'Client_ID'),
         workOrderType: 'treatment_aftercare',
         division: 'Relocation & Installation',
         taskType: treatmentType || treatmentAction || 'Nutrient Care',
-        status: /yes|true|needed/i.test(firstValue(row, 'Follow_Up_Needed', 'Follow-up Needed')) ? 'Ready' : (treatmentAction || 'Complete'),
-        scheduledDate: nextFollowUpDate,
-        completedDate: firstValue(row, 'Date_Last_Treatment', 'Date Of Last Treatment'),
-        crewLeadName: firstValue(row, 'Completed_By', 'Completed By'),
+        status: careTaskStatus || (/yes|true|needed/i.test(firstValue(row, 'Follow_Up_Needed', 'Follow-up Needed')) ? 'Needs Follow-Up' : (treatmentAction || 'Completed')),
+        scheduledDate,
+        completedDate,
+        relatedRootPruningId: firstValue(row, 'Related_Root_Pruning_ID'),
+        carePhase,
+        careTaskStatus: careTaskStatus || 'Not Assigned',
+        assignedCrewNames: normalizeDelimitedList(firstValue(row, 'Assigned_Crew')),
+        crewLeadName: firstValue(row, 'Assigned_Crew_Leader', 'Completed_By', 'Completed By'),
+        vendor: firstValue(row, 'Vendor'),
+        treatmentRequired: firstValue(row, 'Treatment_Required'),
+        treatmentType,
+        treatmentProduct: firstValue(row, 'Treatment_Product', 'Treatment', 'Treatments'),
+        treatmentRate: numberFrom(firstValue(row, 'Treatment_Rate')) ?? cleanOptional(firstValue(row, 'Treatment_Rate')),
+        treatmentQuantity: numberFrom(firstValue(row, 'Treatment_Quantity')) ?? cleanOptional(firstValue(row, 'Treatment_Quantity')),
+        conditionObserved: firstValue(row, 'Condition_Observed', 'Condition Observed'),
+        stressLevel: firstValue(row, 'Stress_Level', 'Stress Level'),
+        canopyStatus: firstValue(row, 'Canopy_Status'),
+        leafStatus: firstValue(row, 'Leaf_Status'),
+        wateringStatus: firstValue(row, 'Watering_Status', 'Watering Status'),
+        irrigationStatus: firstValue(row, 'Irrigation_Status', 'Irrigation Status'),
+        soilMoistureStatus: firstValue(row, 'Soil_Moisture_Status'),
+        siltBuildupObserved: firstValue(row, 'Silt_Buildup_Observed'),
+        drainageIssueObserved: firstValue(row, 'Drainage_Issue_Observed'),
+        followUpAction: firstValue(row, 'Follow_Up_Action'),
+        warrantyRisk: firstValue(row, 'Warranty_Risk'),
+        photosRequired: firstValue(row, 'Photos_Required'),
+        photosComplete: firstValue(row, 'Photos_Complete'),
+        blockerReason: firstValue(row, 'Blocker_Reason'),
         sourceSheetName: 'Project_Nutrient_Care',
         sourceRowId: treatmentId,
         treeIds: [treeAssetId],
-        treeNames: [treeAssetId],
+        treeNames: [firstValue(row, 'Tree_Tag') || treeAssetId],
+        schemaVersion: firstValue(row, 'Schema_Version') || treeRelocationSchemaVersion,
         notes: [
           firstValue(row, 'Treatment', 'Treatments') && `Treatments: ${firstValue(row, 'Treatment', 'Treatments')}`,
           treatmentType && `Treatment type: ${treatmentType}`,
@@ -1131,6 +1332,19 @@ function mapJdtProjectFlowProjectMaterialItems(template: SheetImportTemplate, ro
     .filter(Boolean) as ProjectMaterialItemRecord[];
 
   return makeTarget(template, materialItems, warnings, 'projectMaterialItems');
+}
+
+function coordinatePointFromLatLng(latText: string, lngText: string, label: string) {
+  const lat = numberFrom(latText);
+  const lng = numberFrom(lngText);
+  if (lat === undefined || lng === undefined) return undefined;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return undefined;
+
+  return {
+    lat: Number(lat.toFixed(5)),
+    lng: Number(lng.toFixed(5)),
+    label,
+  };
 }
 
 function coordinatePointFromText(text: string, label: string) {

@@ -466,6 +466,85 @@ describe("work order UI wiring", () => {
     assert.match(html, /Lowboy move/);
   });
 
+  it("groups project tree work into batched work-order sections instead of one card per tree", () => {
+    const treeAssets: TreeRelocationRecord[] = Array.from({ length: 12 }, (_, index) => {
+      const tag = String(index + 41);
+      return {
+        id: `tree-bellaire-${tag}`,
+        treeId: tag,
+        treeTag: tag,
+        projectId: "project-bellaire-course-renovation",
+        projectName: "Bellaire CC Course Renovation",
+        type: "Live Oak",
+        dbh: index % 2 ? 31 : 16,
+        relocationStatus: "Ready for Relocation",
+      };
+    });
+
+    const rootPruningOrders: WorkOrderRecord[] = treeAssets.map((tree) => ({
+      id: `rp-bellaire-${tree.treeId}`,
+      title: `Tree #${tree.treeId} Root Pruning`,
+      projectId: "project-bellaire-course-renovation",
+      projectName: "Bellaire CC Course Renovation",
+      workOrderType: "tree_pruning",
+      rootPruneCycleId: "rp-bellaire-50-batch-1",
+      scheduledDate: "2026-06-18",
+      assignedCrewNames: ["Carlos Crew"],
+      plannedCutPercent: 50,
+      rootPruneTaskStatus: "Scheduled",
+      treeIds: [String(tree.treeId)],
+      treeNames: [String(tree.treeId)],
+    }));
+
+    const nutrientCareOrders: WorkOrderRecord[] = treeAssets.slice(0, 6).map((tree) => ({
+      id: `nc-bellaire-${tree.treeId}`,
+      title: `Tree #${tree.treeId} Nutrient Care`,
+      projectId: "project-bellaire-course-renovation",
+      projectName: "Bellaire CC Course Renovation",
+      workOrderType: "treatment_aftercare",
+      carePhase: "After 50% Cut",
+      scheduledDate: "2026-06-19",
+      vendor: "Burrow",
+      treatmentType: "Injection / Nutrient",
+      careTaskStatus: "Scheduled",
+      treeIds: [String(tree.treeId)],
+      treeNames: [String(tree.treeId)],
+    }));
+
+    const html = renderToString(
+      <CommandDrawer
+        isOpen
+        onClose={() => undefined}
+        type="job"
+        itemId="job-bellaire-renovation"
+        defaultTab="work orders"
+        openModal={() => undefined}
+        jobsList={[{
+          id: "job-bellaire-renovation",
+          title: "Bellaire CC Course Renovation",
+          projectId: "project-bellaire-course-renovation",
+          projectName: "Bellaire CC Course Renovation",
+        }]}
+        treeRelocationRecordsList={treeAssets}
+        workOrdersList={[...rootPruningOrders, ...nutrientCareOrders]}
+      />,
+    );
+
+    assert.match(html, /Root Pruning Work Orders/);
+    assert.match(html, /Nutrient Care Work Orders/);
+    assert.match(html, /Relocation Work Orders/);
+    assert.match(html, /Freight \/ Equipment Support/);
+    assert.match(html, /Root Pruning - 50% Cut - Batch 1/);
+    assert.match(html, /12 trees/);
+    assert.match(html, /Carlos Crew/);
+    assert.match(html, /Print Tree List/);
+    assert.match(html, /Complete Batch/);
+    assert.match(html, /Nutrient Care - After 50% Cut - Injection \/ Nutrient/);
+    assert.match(html, /6 trees/);
+    assert.doesNotMatch(html, /Tree #41 Root Pruning/);
+    assert.doesNotMatch(html, /Tree #41 Nutrient Care/);
+  });
+
   it("shows project equipment currently on site with an equipment change request action", () => {
     const html = renderToString(
       <CommandDrawer
@@ -699,14 +778,17 @@ describe("work order UI wiring", () => {
     );
 
     assert.match(html, /Tree Assets/);
+    assert.match(html, /Compact Tree List/);
     assert.match(html, /Live Oak/);
     assert.match(html, /DBH/);
     assert.match(html, /\$12,732\.50/);
-    assert.match(html, /Aftercare tree-boca-109/);
-    assert.match(html, /Before relocation/);
+    assert.match(html, /Destination/);
+    assert.match(html, /Actions/);
+    assert.doesNotMatch(html, /Aftercare tree-boca-109/);
+    assert.doesNotMatch(html, /Before relocation/);
   });
 
-  it("keeps empty tree work sections visible and exposes per-tree edit actions", () => {
+  it("keeps project tree assets compact by default and expands tree work only after a row is selected", () => {
     const treeAsset: TreeRelocationRecord = {
       id: "tree-boca-1003",
       treeId: "1003",
@@ -734,16 +816,14 @@ describe("work order UI wiring", () => {
     );
 
     assert.match(html, /LIVE OAK/);
+    assert.match(html, /Compact Tree List/);
     assert.match(html, /Edit Tree/);
-    assert.match(html, /Root Pruning/);
-    assert.match(html, /No root pruning records yet/);
     assert.match(html, /Add Root Pruning/);
-    assert.match(html, /Nutrient Care/);
-    assert.match(html, /No nutrient care records yet/);
     assert.match(html, /Add Nutrient Care/);
-    assert.match(html, /Photos/);
-    assert.match(html, /No tree photos yet/);
     assert.match(html, /Add Photo/);
+    assert.doesNotMatch(html, /No root pruning records yet/);
+    assert.doesNotMatch(html, /No nutrient care records yet/);
+    assert.doesNotMatch(html, /No tree photos yet/);
   });
 
   it("defaults project tree assets from lowest tree asset id to highest", () => {
@@ -899,6 +979,56 @@ describe("work order UI wiring", () => {
     assert.match(html, /Active Work Orders/);
     assert.match(html, /Root prune Hole 7/);
     assert.match(html, /Assign Crew Work/);
+  });
+
+  it("defaults the crews page to a compact dispatch roster with expandable personnel detail", () => {
+    const crews: CrewRecord[] = [
+      {
+        id: "personnel-carlos-reyes",
+        name: "Carlos Reyes",
+        role: "Crew Leader",
+        phone: "863-228-1031",
+        skill: "Root pruning",
+        type: "Operations Leadership",
+        availability: "Available",
+        assignedEquipment: ["Kubota SVL97-1"],
+      },
+      {
+        id: "personnel-christian-crespo",
+        name: "Christian Crespo",
+        role: "Driver",
+        phone: "863-228-0351",
+        skill: "Semi transport",
+        type: "Transportation",
+        availability: "Active",
+        cdlCertified: true,
+      },
+    ];
+
+    const html = renderToString(
+      <CrewsBoard
+        crews={crews}
+        workOrders={[rootPruneOrder]}
+        openModal={() => undefined}
+        openDrawer={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Roster View/);
+    assert.match(html, /Card View/);
+    assert.match(html, /Available Today/);
+    assert.match(html, /Driver Compliance Issues/);
+    assert.match(html, /Crew Leaders Available/);
+    assert.match(html, /Today(?:&#x27;|')s Assignment Count/);
+    assert.match(html, /Compliance Status/);
+    assert.match(html, /Equipment Assigned/);
+    assert.match(html, /Personnel Detail/);
+    assert.match(html, /Active Work Orders/);
+    assert.match(html, /Root prune Hole 7/);
+    assert.match(html, /View Schedule/);
+    assert.match(html, /View Map/);
+    assert.match(html, /Call \/ Phone/);
+    assert.doesNotMatch(html, /grid gap-4 md:grid-cols-2 lg:grid-cols-3/);
   });
 
   it("shows driver license and CDL medical card compliance on driver crew cards", () => {

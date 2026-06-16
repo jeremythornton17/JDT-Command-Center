@@ -1,0 +1,33 @@
+{
+  "type": "FeatureCollection",
+  "name": "JDT_Root_Prune_Events",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "Root_Pruning_ID": "JDT_Root_Prune_Events-SEED",
+        "Root_Prune_Cycle_ID": "JDT_Root_Prune_Events-SEED",
+        "Tree_Asset_ID": "SCHEMA-SEED-TREE",
+        "Project_ID": "SCHEMA-SEED",
+        "Tree_Tag": "SEED",
+        "Scheduled_Date": "2026-06-15T00:00:00.000Z",
+        "Completed_Date": "2026-06-15T00:00:00.000Z",
+        "Root_Prune_Task_Status": "Schema Seed",
+        "Root_Prune_Event_Number": 0,
+        "Planned_Cut_Percent": 0,
+        "Actual_Cut_Percent": 0,
+        "Cumulative_Cut_Percent_After_Event": 0,
+        "Assigned_Crew": "Schema Seed - Replace",
+        "Assigned_Crew_Leader": "Schema Seed - Replace",
+        "Notes": "Schema Seed - Replace"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.91809,
+          26.75505
+        ]
+      }
+    }
+  ]
+}

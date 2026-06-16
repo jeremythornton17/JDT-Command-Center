@@ -20,8 +20,29 @@ import {
 } from '../commandCenter/equipmentFreight';
 import { personnelCrewAllocationOptions, personnelLanguageOptions, personnelRoleOptions } from '../commandCenter/personnel';
 import { relocationInstallationDivisionLabel, relocationInstallationJobTypes } from '../commandCenter/relocationInstallation';
-import { defaultRelocationStatus, relocationStatusOptions } from '../commandCenter/treeLifecycle';
 import { jdtProjectFlowWorkbook } from '../commandCenter/workbookProjectFlow';
+import {
+  assetCategoryOptions,
+  carePhaseOptions,
+  careTaskStatusOptions,
+  canopyStatusOptions,
+  conditionObservedOptions,
+  currentFieldLocationOptions,
+  installationStatusOptions,
+  irrigationStatusOptions,
+  leafStatusOptions,
+  mapGeometryStatusOptions,
+  moveTaskStatusOptions,
+  moveTypeOptions,
+  rootPruneTaskStatusOptions,
+  soilMoistureStatusOptions,
+  stressLevelOptions,
+  treatmentTypeOptions,
+  treeFinalOutcomeOptions,
+  treeRelocationStatusOptions,
+  wateringStatusOptions,
+  warrantyRiskOptions,
+} from '../commandCenter/treeRelocationSchema';
 
 type FieldConfig = {
   key: string;
@@ -90,8 +111,8 @@ const propagationHealthOptions = ['Rooting', 'Healthy', 'Needs Water', 'Needs Nu
 const divisionOptions = [relocationInstallationDivisionLabel, 'Nursery', 'Freight', 'Maintenance / Equipment', 'Administration'];
 const workOrderStatusOptions = ['Draft', 'Ready', 'Scheduled', 'Active', 'Blocked', 'Complete', 'Cancelled'];
 const workOrderPriorityOptions = ['Low', 'Normal', 'High', 'Urgent', 'Critical'];
-const crewAssignmentTypeOptions = ['general_task', 'tree_pruning', 'treatment_aftercare', 'move_readiness', 'daily_field_update', 'change_order', 'billing_milestone'];
-const projectTreeFormTypes = new Set(['project_tree_asset', 'project_tree_pruning', 'project_tree_aftercare', 'project_tree_photo']);
+const crewAssignmentTypeOptions = ['general_task', 'tree_pruning', 'tree_relocation_work', 'treatment_aftercare', 'move_readiness', 'daily_field_update', 'change_order', 'billing_milestone'];
+const projectTreeFormTypes = new Set(['project_tree_asset', 'project_tree_pruning', 'project_tree_relocation_work', 'project_tree_aftercare', 'project_tree_photo']);
 const revealTableOptions = ['Unit-1.0', 'NonPoweredAsset-1.0'];
 const revealAssetTypeOptions = ['Unit', 'NonPoweredAsset'];
 
@@ -322,52 +343,127 @@ const fieldSets: Record<string, FieldConfig[]> = {
   ],
   project_tree_asset: [
     { key: 'treeId', label: 'Tree Asset ID', required: true },
+    { key: 'treeTag', label: 'Field Tag / Tree Number' },
     { key: 'type', label: 'Tree Type', required: true },
+    { key: 'assetCategory', label: 'Asset Category', type: 'select', options: [...assetCategoryOptions], defaultValue: 'Relocation' },
     { key: 'dbh', label: 'DBH (IN)', type: 'number' },
+    { key: 'heightFt', label: 'Height (FT)', type: 'number' },
+    { key: 'spreadFt', label: 'Spread (FT)', type: 'number' },
     { key: 'difficulty', label: 'Difficulty' },
     { key: 'condition', label: 'Condition' },
-    { key: 'existingLocationDescription', label: 'Existing Location Description', wide: true },
+    { key: 'existingLocationDescription', label: 'Existing Location Description', wide: true, section: 'Source / Destination' },
+    { key: 'existingSourcePin', label: 'Existing Source Pin', wide: true, hint: 'Paste Google Maps link, lat,long, or saved pin text.' },
     { key: 'proposedFinalLocationDescription', label: 'Proposed Final Location Description', wide: true },
-    { key: 'status', label: 'Current Status', type: 'select', options: ['Open', 'Ready for Root Pruning', 'Root Pruning', 'Ready for Relocation', 'Relocated', 'Installed', 'Preservation', 'Removed', 'On Hold'] },
+    { key: 'destinationPin', label: 'Destination Pin', wide: true, hint: 'Paste Google Maps link, lat,long, or saved pin text.' },
+    { key: 'holdingAreaName', label: 'Holding Area Name' },
+    { key: 'currentFieldLocation', label: 'Current Field Location', type: 'select', options: [...currentFieldLocationOptions], defaultValue: 'Existing Location' },
+    { key: 'treeRelocationStatus', label: 'Tree Relocation Status', type: 'select', options: [...treeRelocationStatusOptions], defaultValue: 'Not Started', section: 'Relocation Status' },
+    { key: 'installationStatus', label: 'Installation Status', type: 'select', options: [...installationStatusOptions], defaultValue: 'Not Started' },
+    { key: 'treeFinalOutcome', label: 'Tree Final Outcome', type: 'select', options: [...treeFinalOutcomeOptions], defaultValue: 'Active in Scope' },
+    { key: 'mapGeometryStatus', label: 'Map Geometry Status', type: 'select', options: [...mapGeometryStatusOptions], defaultValue: 'Missing' },
     { key: 'relocationRequired', label: 'Relocation Required', type: 'checkbox' },
-    { key: 'relocationCost', label: 'Relocation Cost', type: 'number' },
-    { key: 'relocationStatus', label: 'Relocation Status', type: 'select', options: [...relocationStatusOptions], defaultValue: defaultRelocationStatus },
+    { key: 'installationRequired', label: 'Installation Required', type: 'checkbox' },
+    { key: 'rootPruneRequired', label: 'Root Prune Required', type: 'checkbox' },
+    { key: 'nutrientCareRequired', label: 'Nutrient Care Required', type: 'checkbox' },
+    { key: 'estimatedRelocationCost', label: 'Estimated Relocation Cost', type: 'number' },
+    { key: 'contractRelocationCost', label: 'Contract Relocation Cost', type: 'number' },
     {
       key: 'rootPruningPeriodMonths',
       label: 'Tree Root Pruning Months',
       type: 'number',
       hint: 'Leave blank to use the project default. Use this when a tree needs more or less root-pruning time.',
     },
-    { key: 'installationRequired', label: 'Installation Required', type: 'checkbox' },
-    { key: 'preservationRequired', label: 'Preservation Required', type: 'checkbox' },
-    { key: 'removalRequired', label: 'Removal Required', type: 'checkbox' },
     { key: 'priority', label: 'Priority', type: 'select', options: ['Low', 'Normal', 'High', 'Urgent', 'Critical'] },
+    { key: 'riskLevel', label: 'Risk Level', type: 'select', options: ['Low', 'Medium', 'High', 'Critical'] },
+    { key: 'riskNotes', label: 'Risk Notes', type: 'textarea', rows: 2 },
+    { key: 'accessNotes', label: 'Access Notes', type: 'textarea', rows: 2 },
+    { key: 'wateringResponsibility', label: 'Watering Responsibility' },
     { key: 'notes', label: 'Notes', type: 'textarea' },
   ],
   project_tree_pruning: [
     { key: 'title', label: 'Root Pruning Record', required: true },
     { key: 'treeIds', label: 'Tree Asset ID', required: true },
-    { key: 'scheduledDate', label: 'Date of 1st Cut', type: 'date' },
-    { key: 'secondCutDate', label: 'Date of 2nd Cut', type: 'date' },
-    { key: 'thirdCutDate', label: 'Date of 3rd Cut', type: 'date' },
-    { key: 'prepChecks', label: 'Prep Checks', type: 'textarea' },
-    { key: 'status', label: 'Readiness Reviews', type: 'select', options: ['Draft', 'Ready', 'Scheduled', 'Active', 'Blocked', 'Complete', 'Cancelled'] },
+    { key: 'rootPruneCycleId', label: 'Root Prune Cycle ID' },
+    { key: 'rootPruneTaskStatus', label: 'Root Prune Task Status', type: 'select', options: [...rootPruneTaskStatusOptions], defaultValue: 'Not Assigned' },
+    { key: 'scheduledDate', label: 'Scheduled Date', type: 'date' },
+    { key: 'completedDate', label: 'Completed Date', type: 'date' },
+    { key: 'rootPruneEventNumber', label: 'Root Prune Event Number', type: 'number' },
+    { key: 'recommendedRootPruningPeriodMonths', label: 'Recommended Root Pruning Period Months', type: 'number' },
+    { key: 'plannedCutPercent', label: 'Planned Cut Percent', type: 'number' },
+    { key: 'actualCutPercent', label: 'Actual Cut Percent', type: 'number' },
+    { key: 'cumulativeCutPercentAfterEvent', label: 'Cumulative Cut Percent After Event', type: 'number' },
+    { key: 'rootPruneMethod', label: 'Root Prune Method' },
+    { key: 'rootballSize', label: 'Rootball Size' },
+    { key: 'rootballDepth', label: 'Rootball Depth' },
+    { key: 'equipmentNames', label: 'Equipment Used', type: 'multiselect' },
+    { key: 'utilityClearanceStatus', label: 'Utility Clearance Status' },
+    { key: 'locateTicket', label: 'Locate Ticket' },
+    { key: 'nutrientCareRequiredAfterEvent', label: 'Nutrient Care Required After Event', type: 'checkbox' },
+    { key: 'waterStarted', label: 'Water Started', type: 'checkbox' },
+    { key: 'photosRequired', label: 'Photos Required', type: 'checkbox' },
+    { key: 'photosComplete', label: 'Photos Complete', type: 'checkbox' },
+    { key: 'blockerReason', label: 'Blocker Reason', type: 'textarea', rows: 2 },
+    { key: 'notes', label: 'Notes', type: 'textarea' },
+  ],
+  project_tree_relocation_work: [
+    { key: 'title', label: 'Relocation Work Record', required: true },
+    { key: 'treeIds', label: 'Tree Asset ID', required: true },
+    { key: 'moveTaskStatus', label: 'Move Task Status', type: 'select', options: [...moveTaskStatusOptions], defaultValue: 'Not Assigned' },
+    { key: 'moveType', label: 'Move Type', type: 'select', options: [...moveTypeOptions] },
+    { key: 'scheduledDate', label: 'Scheduled Move Date', type: 'date' },
+    { key: 'completedDate', label: 'Actual Move Date', type: 'date' },
+    { key: 'origin', label: 'Origin Location', wide: true },
+    { key: 'destination', label: 'Destination Location', wide: true },
+    { key: 'holdingAreaName', label: 'Holding Area Name' },
+    { key: 'assignedCrewNames', label: 'Assigned Crew', type: 'multiselect' },
+    { key: 'crewLeadName', label: 'Assigned Crew Leader' },
+    { key: 'equipmentNames', label: 'Equipment Used', type: 'multiselect' },
+    { key: 'truckNames', label: 'Truck Used', type: 'multiselect' },
+    { key: 'trailerNames', label: 'Trailer Used', type: 'multiselect' },
+    { key: 'operator', label: 'Operator' },
+    { key: 'accessConfirmed', label: 'Access Confirmed', type: 'checkbox' },
+    { key: 'irrigationReady', label: 'Irrigation Ready', type: 'checkbox' },
+    { key: 'finalGradeReady', label: 'Final Grade Ready', type: 'checkbox' },
+    { key: 'treeSetComplete', label: 'Tree Set Complete', type: 'checkbox' },
+    { key: 'backfillComplete', label: 'Backfill Complete', type: 'checkbox' },
+    { key: 'stakingGuyingComplete', label: 'Staking / Guying Complete', type: 'checkbox' },
+    { key: 'waterInComplete', label: 'Water-In Complete', type: 'checkbox' },
+    { key: 'photosRequired', label: 'Photos Required', type: 'checkbox' },
+    { key: 'photosComplete', label: 'Photos Complete', type: 'checkbox' },
+    { key: 'blockerReason', label: 'Blocker Reason', type: 'textarea', rows: 2 },
     { key: 'notes', label: 'Notes', type: 'textarea' },
   ],
   project_tree_aftercare: [
     { key: 'title', label: 'Nutrient Care Record', required: true },
     { key: 'treeIds', label: 'Tree Asset ID', required: true },
-    { key: 'treatments', label: 'Treatments' },
-    { key: 'taskType', label: 'Treatments Type' },
-    { key: 'completedDate', label: 'Date Of Last Treatment', type: 'date' },
-    { key: 'treatmentAction', label: 'Treatment Action' },
-    { key: 'crewLeadName', label: 'Completed By' },
-    { key: 'conditionObserved', label: 'Condition Observed' },
-    { key: 'wateringStatus', label: 'Watering Status' },
-    { key: 'irrigationStatus', label: 'Irrigation Status' },
-    { key: 'stressLevel', label: 'Stress Level', type: 'select', options: ['Low', 'Moderate', 'High', 'Severe'] },
+    { key: 'relatedRootPruningId', label: 'Related Root Pruning ID' },
+    { key: 'carePhase', label: 'Care Phase', type: 'select', options: [...carePhaseOptions] },
+    { key: 'careTaskStatus', label: 'Care Task Status', type: 'select', options: [...careTaskStatusOptions], defaultValue: 'Not Assigned' },
+    { key: 'scheduledDate', label: 'Scheduled Date', type: 'date' },
+    { key: 'completedDate', label: 'Completed Date', type: 'date' },
+    { key: 'assignedCrewNames', label: 'Assigned Crew', type: 'multiselect' },
+    { key: 'crewLeadName', label: 'Assigned Crew Leader / Completed By' },
+    { key: 'vendor', label: 'Vendor' },
+    { key: 'treatmentRequired', label: 'Treatment Required', type: 'checkbox' },
+    { key: 'treatmentType', label: 'Treatment Type', type: 'select', options: [...treatmentTypeOptions] },
+    { key: 'treatmentProduct', label: 'Treatment Product' },
+    { key: 'treatmentRate', label: 'Treatment Rate', type: 'number' },
+    { key: 'treatmentQuantity', label: 'Treatment Quantity', type: 'number' },
+    { key: 'conditionObserved', label: 'Condition Observed', type: 'select', options: [...conditionObservedOptions] },
+    { key: 'stressLevel', label: 'Stress Level', type: 'select', options: [...stressLevelOptions] },
+    { key: 'canopyStatus', label: 'Canopy Status', type: 'select', options: [...canopyStatusOptions] },
+    { key: 'leafStatus', label: 'Leaf Status', type: 'select', options: [...leafStatusOptions] },
+    { key: 'wateringStatus', label: 'Watering Status', type: 'select', options: [...wateringStatusOptions] },
+    { key: 'irrigationStatus', label: 'Irrigation Status', type: 'select', options: [...irrigationStatusOptions] },
+    { key: 'soilMoistureStatus', label: 'Soil Moisture Status', type: 'select', options: [...soilMoistureStatusOptions] },
+    { key: 'siltBuildupObserved', label: 'Silt Buildup Observed', type: 'checkbox' },
+    { key: 'drainageIssueObserved', label: 'Drainage Issue Observed', type: 'checkbox' },
     { key: 'followUpNeeded', label: 'Follow-up Needed', type: 'checkbox' },
-    { key: 'scheduledDate', label: 'Next Follow-up Date', type: 'date' },
+    { key: 'followUpAction', label: 'Follow-up Action' },
+    { key: 'warrantyRisk', label: 'Warranty Risk', type: 'select', options: [...warrantyRiskOptions] },
+    { key: 'photosRequired', label: 'Photos Required', type: 'checkbox' },
+    { key: 'photosComplete', label: 'Photos Complete', type: 'checkbox' },
+    { key: 'blockerReason', label: 'Blocker Reason', type: 'textarea', rows: 2 },
     { key: 'notes', label: 'Notes', type: 'textarea' },
   ],
   project_tree_photo: [
@@ -700,7 +796,7 @@ function canonicalType(type: string) {
   if (['ranch_oak', 'edit_tree'].includes(normalized)) return 'ranchOak';
   if (['propagation', 'edit_propagation'].includes(normalized)) return 'propagation';
   if (['add_tree', 'log_prune', 'treatment', 'move_check', 'assign_tree'].includes(normalized)) return 'tree';
-  if (['project_tree_asset', 'project_tree_pruning', 'project_tree_aftercare', 'project_tree_photo'].includes(normalized)) return normalized;
+  if (['project_tree_asset', 'project_tree_pruning', 'project_tree_relocation_work', 'project_tree_aftercare', 'project_tree_photo'].includes(normalized)) return normalized;
   if (['maintenance', 'log_issue', 'set_eq_status'].includes(normalized)) return 'equipment';
   if (['crew'].includes(normalized)) return 'employee';
   if (['contact'].includes(normalized)) return 'contact';
@@ -756,6 +852,59 @@ function withAssignmentIntentDefaults(type: string, formData: Record<string, unk
       workOrderType: hasValue('workOrderType') ? formData.workOrderType : 'general_task',
       status: hasValue('status') ? formData.status : 'Draft',
       priority: hasValue('priority') ? formData.priority : 'Normal',
+    };
+  }
+
+  if (normalized === 'project_tree_asset') {
+    const treeRelocationStatus = hasValue('treeRelocationStatus') ? formData.treeRelocationStatus : 'Not Started';
+    return {
+      ...formData,
+      assetCategory: hasValue('assetCategory') ? formData.assetCategory : 'Relocation',
+      currentFieldLocation: hasValue('currentFieldLocation') ? formData.currentFieldLocation : 'Existing Location',
+      treeRelocationStatus,
+      relocationStatus: hasValue('relocationStatus') ? formData.relocationStatus : treeRelocationStatus,
+      status: hasValue('status') ? formData.status : treeRelocationStatus,
+      treeFinalOutcome: hasValue('treeFinalOutcome') ? formData.treeFinalOutcome : 'Active in Scope',
+      mapGeometryStatus: hasValue('mapGeometryStatus') ? formData.mapGeometryStatus : 'Missing',
+    };
+  }
+
+  if (normalized === 'project_tree_pruning') {
+    const rootPruneTaskStatus = hasValue('rootPruneTaskStatus') ? formData.rootPruneTaskStatus : 'Not Assigned';
+    return {
+      ...formData,
+      division: hasValue('division') ? formData.division : relocationInstallationDivisionLabel,
+      workOrderType: 'tree_pruning',
+      taskType: hasValue('taskType') ? formData.taskType : 'Root Pruning',
+      rootPruneTaskStatus,
+      status: hasValue('status') ? formData.status : rootPruneTaskStatus,
+      sourceSheetName: hasValue('sourceSheetName') ? formData.sourceSheetName : 'Project_Root_Pruning',
+    };
+  }
+
+  if (normalized === 'project_tree_relocation_work') {
+    const moveTaskStatus = hasValue('moveTaskStatus') ? formData.moveTaskStatus : 'Not Assigned';
+    return {
+      ...formData,
+      division: hasValue('division') ? formData.division : relocationInstallationDivisionLabel,
+      workOrderType: 'tree_relocation_work',
+      taskType: hasValue('taskType') ? formData.taskType : 'Tree Relocation Work',
+      moveTaskStatus,
+      status: hasValue('status') ? formData.status : moveTaskStatus,
+      sourceSheetName: hasValue('sourceSheetName') ? formData.sourceSheetName : 'Project_Tree_Relocation_Work',
+    };
+  }
+
+  if (normalized === 'project_tree_aftercare') {
+    const careTaskStatus = hasValue('careTaskStatus') ? formData.careTaskStatus : 'Not Assigned';
+    return {
+      ...formData,
+      division: hasValue('division') ? formData.division : relocationInstallationDivisionLabel,
+      workOrderType: 'treatment_aftercare',
+      taskType: hasValue('taskType') ? formData.taskType : 'Nutrient Care',
+      careTaskStatus,
+      status: hasValue('status') ? formData.status : careTaskStatus,
+      sourceSheetName: hasValue('sourceSheetName') ? formData.sourceSheetName : 'Project_Nutrient_Care',
     };
   }
 

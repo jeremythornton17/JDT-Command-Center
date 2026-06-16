@@ -27,6 +27,17 @@ describe("AI Studio deployment source guard", () => {
     assert.match(serverSource, /sendFile\(path\.join\(distDir,\s*'index\.html'\)\)/);
   });
 
+  it("loads runtime environment config before the app bundle", () => {
+    const indexHtml = readProjectFile("index.html");
+    const runtimeConfigIndex = indexHtml.indexOf('src="/runtime-config.js?v=runtime"');
+    const appEntryIndex = indexHtml.indexOf('src="/src/main.tsx"');
+
+    assert.ok(runtimeConfigIndex > -1);
+    assert.ok(appEntryIndex > -1);
+    assert.ok(runtimeConfigIndex < appEntryIndex);
+    assert.equal(existsSync(path.join(repoRoot, "public/runtime-config.js")), false);
+  });
+
   it("exposes the Reveal recommended API sync and alert webhook routes from Cloud Run", () => {
     const serverSource = readProjectFile("server.js");
 

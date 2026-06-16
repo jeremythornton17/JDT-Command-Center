@@ -1,0 +1,27 @@
+{
+  "type": "FeatureCollection",
+  "name": "JDT_Equipment_Locations",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "Equipment_ID": "JDT_Equipment_Locations-SEED",
+        "Equipment_Name": "Schema Seed - Replace",
+        "Equipment_Type": "Schema Seed - Replace",
+        "Project_ID": "SCHEMA-SEED",
+        "Current_Status": "Schema Seed",
+        "Assigned_Crew": "Schema Seed - Replace",
+        "Last_Seen_At": "2026-06-15T00:00:00.000Z",
+        "Verizon_Asset_ID": "JDT_Equipment_Locations-SEED",
+        "Notes": "Schema Seed - Replace"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.91809,
+          26.75505
+        ]
+      }
+    }
+  ]
+}

@@ -91,7 +91,7 @@ test('freight move form exposes dispatcher stop planning fields from the FleetFl
   assert.equal(html.indexOf('Add Another Stop') < html.indexOf('Driver Instructions'), true);
 });
 
-test('project tree asset forms expose editable tree, pruning, aftercare, and photo fields', () => {
+test('project tree asset forms expose editable tree, pruning, relocation work, nutrient care, and photo fields', () => {
   const treeHtml = renderToString(
     <EntityForms
       type="project_tree_asset"
@@ -119,6 +119,15 @@ test('project tree asset forms expose editable tree, pruning, aftercare, and pho
       data={{ treeIds: ['1003'] }}
     />,
   );
+  const relocationWorkHtml = renderToString(
+    <EntityForms
+      type="project_tree_relocation_work"
+      onClose={() => undefined}
+      openModal={() => undefined}
+      onSaveRecord={() => undefined}
+      data={{ treeIds: ['1003'] }}
+    />,
+  );
   const photoHtml = renderToString(
     <EntityForms
       type="project_tree_photo"
@@ -131,15 +140,18 @@ test('project tree asset forms expose editable tree, pruning, aftercare, and pho
 
   assert.match(treeHtml, /Tree Type/);
   assert.match(treeHtml, /Existing Location Description/);
-  assert.match(treeHtml, /Relocation Status/);
+  assert.match(treeHtml, /Tree Relocation Status/);
   assert.match(treeHtml, /Not Started/);
-  assert.match(treeHtml, /1st Cut Scheduled/);
-  assert.match(treeHtml, /In Nutrient Care Phase/);
+  assert.match(treeHtml, /25% Cut/);
+  assert.match(treeHtml, /Tree Final Outcome/);
+  assert.match(treeHtml, /Active in Scope/);
   assert.match(treeHtml, /Tree Root Pruning Months/);
-  assert.match(pruningHtml, /Date of 1st Cut/);
-  assert.match(pruningHtml, /Readiness Reviews/);
-  assert.match(aftercareHtml, /Treatment Action/);
-  assert.match(aftercareHtml, /Next Follow-up Date/);
+  assert.match(pruningHtml, /Root Prune Task Status/);
+  assert.match(pruningHtml, /Planned Cut Percent/);
+  assert.match(relocationWorkHtml, /Move Task Status/);
+  assert.match(relocationWorkHtml, /Existing to Holding/);
+  assert.match(aftercareHtml, /Care Phase/);
+  assert.match(aftercareHtml, /Warranty Risk/);
   assert.match(photoHtml, /Photo/);
   assert.match(photoHtml, /Captured Date/);
 });

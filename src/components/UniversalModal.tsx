@@ -65,6 +65,7 @@ export default function UniversalModal({
     'project_material_item': { title: 'Project Material Item', desc: 'Add material quantities, source, size, status, and notes for this project', btn: 'Save Material' },
     'project_tree_asset': { title: 'Project Tree Asset', desc: 'Add or update a tree assigned to this project', btn: 'Save Tree Asset' },
     'project_tree_pruning': { title: 'Root Pruning', desc: 'Add or update root pruning details for this tree', btn: 'Save Root Pruning' },
+    'project_tree_relocation_work': { title: 'Tree Relocation Work', desc: 'Add or update tree move, holding area, install, and relocation work details', btn: 'Save Relocation Work' },
     'project_tree_aftercare': { title: 'Nutrient Care', desc: 'Add or update nutrient care and treatment details for this tree', btn: 'Save Nutrient Care' },
     'project_tree_photo': { title: 'Tree Photo', desc: 'Add or update a photo linked to this tree', btn: 'Save Photo' },
     
@@ -110,7 +111,7 @@ export default function UniversalModal({
     'delay', 'assign_crew', 'assign_work', 'assign_equipment', 'assign_freight', 'work_order', 'project_material_item', 'create_move', 'complete_job', 'complete', 'log_issue', 'set_eq_status', 'schedule_disruption', 
     'move_unfinished', 'edit_project', 'print_packet', 'import_csv', 'export_csv', 'closeout', 'sync_all', 'connect_source', 
     'add_mapping', 'apply_sync', 'save_profile', 'review_errors', 'set_freight_status', 'edit_freight', 'edit_equipment',
-    'project_tree_asset', 'project_tree_pruning', 'project_tree_aftercare', 'project_tree_photo',
+    'project_tree_asset', 'project_tree_pruning', 'project_tree_relocation_work', 'project_tree_aftercare', 'project_tree_photo',
     'advance_freight_stop', 'complete_freight_route_step', 'complete_freight_pod', 'report_vehicle_issue', 'spot_vehicle', 'drop_trailer', 'hook_trailer', 'mark_vehicle_empty', 'mark_vehicle_loaded',
     'assign_tree', 'add_tree', 'log_prune', 'treatment', 'move_check', 'edit_tree'
   ].includes(typeLower);

@@ -212,6 +212,53 @@ describe("sheet import mapping", () => {
     assert.doesNotMatch(nurseryBoard, /Tree ID \/ Type/);
   });
 
+  it("imports project tree assets from selected workbook columns and lets the app generate stable ids", () => {
+    const preview = buildImportPreview("jdt_project_flow_tree_assets", [
+      ["Tree_Type", "Tree_Tag", "DBH_IN", "Tree_Relocation_Status"],
+      ["Live Oak", "7", "24", ""],
+      ["Sabal Palm", "8", "14", "2nd Cut Complete"],
+    ], {
+      projectContext: {
+        clientId: "CLIENT-ACA",
+        clientName: "A Cut Above",
+        projectId: "CARMAX-061126",
+        projectName: "Carmax",
+      },
+      includedHeaders: ["Tree_Type", "Tree_Tag", "DBH_IN", "Tree_Relocation_Status"],
+    });
+
+    const trees = preview.targets.find((target) => target.collectionName === "treeRelocationRecords")?.records as any[];
+
+    assert.equal(trees?.length, 2);
+    assert.equal(trees[0].id, "CARMAX-061126-TREE-7");
+    assert.equal(trees[0].projectId, "CARMAX-061126");
+    assert.equal(trees[0].clientId, "CLIENT-ACA");
+    assert.equal(trees[0].treeType, "Live Oak");
+    assert.equal(trees[0].treeTag, "7");
+    assert.equal(trees[0].dbh, 24);
+    assert.equal(trees[0].assetCategory, "Relocation");
+    assert.equal(trees[0].treeRelocationStatus, "Not Started");
+    assert.equal(trees[0].treeFinalOutcome, "Active in Scope");
+    assert.equal(trees[1].treeRelocationStatus, "50% Cut");
+  });
+
+  it("imports tree relocation work as its own assignment table instead of mutating the tree asset", () => {
+    const preview = buildImportPreview("jdt_project_flow_tree_relocation_work", [
+      ["Relocation_Work_ID", "Tree_Asset_ID", "Project_ID", "Move_Type", "Move_Task_Status", "Origin_Location", "Destination_Location", "Truck_Used", "Trailer_Used"],
+      ["MOVE-CARMAX-007", "CARMAX-061126-TREE-7", "CARMAX-061126", "Existing to Holding", "Scheduled", "Existing Row 1", "North Holding", "Semi #1", "Black Lowboy"],
+    ]);
+
+    const workOrders = preview.targets.find((target) => target.collectionName === "workOrders")?.records as any[];
+
+    assert.equal(workOrders?.length, 1);
+    assert.equal(workOrders[0].workOrderType, "tree_relocation_work");
+    assert.equal(workOrders[0].moveType, "Existing to Holding");
+    assert.equal(workOrders[0].moveTaskStatus, "Scheduled");
+    assert.deepEqual(workOrders[0].treeIds, ["CARMAX-061126-TREE-7"]);
+    assert.deepEqual(workOrders[0].truckNames, ["Semi #1"]);
+    assert.deepEqual(workOrders[0].trailerNames, ["Black Lowboy"]);
+  });
+
   it("reconstructs a readable Nursery label when only a generated inventory id is available", () => {
     const record = {
       id: "inventory-main-office-2b-fox-tail-4",

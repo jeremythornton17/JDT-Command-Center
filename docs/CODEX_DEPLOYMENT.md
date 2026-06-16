@@ -49,7 +49,7 @@ gcloud beta run deploy jd-thornton-nurseries-command-center \
 ```
 
 The service should use the buildpack image default command. Do not add a custom `command` or `args` override.
-`/runtime-config.js` exposes only browser-safe runtime values, currently the app URL and Google Maps browser key settings. Do not add server-side secrets such as Gemini keys to that route.
+`/runtime-config.js` exposes only browser-safe runtime values, including the app URL, Google Maps browser key settings, and ArcGIS browser map/layer settings. Do not add server-side secrets such as Gemini keys to that route.
 
 ## Verify Production
 

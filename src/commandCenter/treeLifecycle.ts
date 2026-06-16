@@ -1,22 +1,11 @@
 import type { JobRecord, TreeRelocationRecord, WorkOrderRecord } from "./records";
 import { sameProject } from "./relationships";
+import { treeRelocationStatusOptions } from "./treeRelocationSchema";
 import { statusPillClass } from "./visualLanguage";
 
 export const defaultRelocationStatus = "Not Started";
 
-export const relocationStatusOptions = [
-  "Not Started",
-  "1st Cut Scheduled",
-  "1st Cut Complete",
-  "2nd Cut Scheduled",
-  "2nd Cut Complete",
-  "Ready For Relocation",
-  "Relocated",
-  "Moved To Holding Area",
-  "Invoiced",
-  "Paid",
-  "In Nutrient Care Phase",
-] as const;
+export const relocationStatusOptions = treeRelocationStatusOptions;
 
 export type TreeLifecycleAction =
   | "schedule_first_cut"
@@ -95,7 +84,7 @@ function treeLabel(tree: TreeRelocationRecord): string {
 }
 
 function treeStatus(tree: TreeRelocationRecord): string {
-  return clean(tree.relocationStatus || tree.status || tree.currentStatus || defaultRelocationStatus);
+  return clean(tree.treeRelocationStatus || tree.relocationStatus || tree.status || tree.currentStatus || defaultRelocationStatus);
 }
 
 function relatedJob(tree: TreeRelocationRecord, jobs: JobRecord[]): JobRecord | undefined {
@@ -124,7 +113,11 @@ function relatedTreeWorkOrders(tree: TreeRelocationRecord, workOrders: WorkOrder
 }
 
 function isComplete(record: Record<string, unknown>): boolean {
-  return normalized(record.status).includes("complete") || Boolean(record.completedDate);
+  return normalized(record.status).includes("complete")
+    || normalized(record.rootPruneTaskStatus).includes("complete")
+    || normalized(record.moveTaskStatus).includes("relocated")
+    || normalized(record.careTaskStatus).includes("complete")
+    || Boolean(record.completedDate);
 }
 
 function rootPruningMonths(tree: TreeRelocationRecord, job: JobRecord | undefined): number {
@@ -199,7 +192,7 @@ export function buildTreeLifecycleAlerts(input: TreeLifecycleInput): TreeLifecyc
     }
 
     const scheduledFirstCut = rootPruningOrders.find((order) => dateOnly(order.scheduledDate) && !isComplete(order));
-    if (statusIn(status, ["1st Cut Scheduled"]) && isOnOrBefore(dateOnly(scheduledFirstCut?.scheduledDate), todayIso)) {
+    if (scheduledFirstCut && !statusIn(status, ["25% Cut", "50% Cut", "75% Cut", "100% Cut", "Ready for Relocation", "Ready For Relocation", "Relocated", "Moved to Holding", "Moved To Holding Area"]) && isOnOrBefore(dateOnly(scheduledFirstCut.scheduledDate), todayIso)) {
       alerts.push(alertFor(tree, job, "confirm_first_cut_complete", "Confirm 1st Cut Complete", `${treeLabel(tree)} ${id} had a first cut scheduled for ${dateOnly(scheduledFirstCut?.scheduledDate)}. Confirm completion or reschedule.`, dateOnly(scheduledFirstCut?.scheduledDate)));
     }
 
@@ -207,7 +200,7 @@ export function buildTreeLifecycleAlerts(input: TreeLifecycleInput): TreeLifecyc
     const secondCutDue = firstCutDate ? addMonthsIso(firstCutDate, months / 2) : "";
     const readyDue = firstCutDate ? addMonthsIso(firstCutDate, months) : "";
 
-    if (firstCutDate && !secondCutDate && !statusIn(status, ["2nd Cut Scheduled", "2nd Cut Complete", "Ready For Relocation", "Relocated", "Moved To Holding Area", "Invoiced", "Paid", "In Nutrient Care Phase"]) && isOnOrBefore(secondCutDue, todayIso)) {
+    if (firstCutDate && !secondCutDate && !statusIn(status, ["2nd Cut Scheduled", "2nd Cut Complete", "50% Cut", "75% Cut", "100% Cut", "Ready for Relocation", "Ready For Relocation", "Relocated", "Moved to Holding", "Moved To Holding Area", "Invoiced", "Paid", "In Nutrient Care Phase"]) && isOnOrBefore(secondCutDue, todayIso)) {
       alerts.push(alertFor(tree, job, "schedule_second_cut", "Schedule 2nd Cut", `${treeLabel(tree)} ${id} is due for the halfway root pruning cut.`, secondCutDue));
     }
 
@@ -216,15 +209,15 @@ export function buildTreeLifecycleAlerts(input: TreeLifecycleInput): TreeLifecyc
       alerts.push(alertFor(tree, job, "confirm_second_cut_complete", "Confirm 2nd Cut Complete", `${treeLabel(tree)} ${id} had a second cut scheduled for ${dateOnly(scheduledSecondCut?.secondCutDate)}. Confirm completion or reschedule.`, dateOnly(scheduledSecondCut?.secondCutDate)));
     }
 
-    if (firstCutDate && !statusIn(status, ["Ready For Relocation", "Relocated", "Moved To Holding Area", "Invoiced", "Paid", "In Nutrient Care Phase"]) && isOnOrBefore(readyDue, todayIso)) {
+    if (firstCutDate && !statusIn(status, ["Ready for Relocation", "Ready For Relocation", "Relocated", "Moved to Holding", "Moved To Holding Area", "Invoiced", "Paid", "In Nutrient Care Phase"]) && isOnOrBefore(readyDue, todayIso)) {
       alerts.push(alertFor(tree, job, "mark_ready_for_relocation", "Mark Ready For Relocation", `${treeLabel(tree)} ${id} has reached the ${months}-month root pruning window.`, readyDue));
     }
 
-    if (statusIn(status, ["1st Cut Complete", "2nd Cut Scheduled", "2nd Cut Complete", "Ready For Relocation"]) && firstCutDate && !hasNutrientAfterFirstCut) {
+    if (statusIn(status, ["1st Cut Complete", "25% Cut", "2nd Cut Scheduled", "2nd Cut Complete", "50% Cut", "75% Cut", "100% Cut", "Ready for Relocation", "Ready For Relocation"]) && firstCutDate && !hasNutrientAfterFirstCut) {
       alerts.push(alertFor(tree, job, "schedule_nutrient_after_first_cut", "Schedule Nutrient Care After 1st Cut", `${treeLabel(tree)} ${id} needs nutrient care after the first cut.`, firstCutDate));
     }
 
-    if ((secondCutDate || statusIn(status, ["2nd Cut Complete", "Ready For Relocation"])) && !hasNutrientAfterSecondCut) {
+    if ((secondCutDate || statusIn(status, ["2nd Cut Complete", "50% Cut", "75% Cut", "100% Cut", "Ready for Relocation", "Ready For Relocation"])) && !hasNutrientAfterSecondCut) {
       alerts.push(alertFor(tree, job, "schedule_nutrient_after_second_cut", "Schedule Nutrient Care After 2nd Cut", `${treeLabel(tree)} ${id} needs nutrient care after the second cut.`, secondCutDate || todayIso));
     }
 
@@ -236,7 +229,7 @@ export function buildTreeLifecycleAlerts(input: TreeLifecycleInput): TreeLifecyc
       alerts.push(alertFor(tree, job, "start_nutrient_care_phase", "Start Nutrient Care Phase", `${treeLabel(tree)} ${id} is paid. Move it into nutrient care tracking.`, todayIso));
     }
 
-    if ((relocationDate || statusIn(status, ["Relocated", "Moved To Holding Area", "Invoiced", "Paid", "In Nutrient Care Phase"])) && !hasNutrientAfterRelocation) {
+    if ((relocationDate || statusIn(status, ["Relocated", "Moved to Holding", "Moved To Holding Area", "Invoiced", "Paid", "In Nutrient Care Phase"])) && !hasNutrientAfterRelocation) {
       alerts.push(alertFor(tree, job, "schedule_nutrient_after_relocation", "Schedule Nutrient Care After Relocation", `${treeLabel(tree)} ${id} needs nutrient care after relocation.`, relocationDate || todayIso));
     }
   }

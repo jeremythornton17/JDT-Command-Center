@@ -1,0 +1,47 @@
+{
+  "type": "FeatureCollection",
+  "name": "JDT_Holding_Areas",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "Holding_Area_ID": "JDT_Holding_Areas-SEED",
+        "Project_ID": "SCHEMA-SEED",
+        "Holding_Area_Name": "Schema Seed - Replace",
+        "Capacity_Estimate": 0,
+        "Current_Tree_Count": 0,
+        "Irrigation_Available": "Schema Seed - Replace",
+        "Access_Notes": "Schema Seed - Replace",
+        "Status": "Schema Seed",
+        "Notes": "Schema Seed - Replace"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -80.91844,
+              26.7547
+            ],
+            [
+              -80.91844,
+              26.7554
+            ],
+            [
+              -80.91774000000001,
+              26.7554
+            ],
+            [
+              -80.91774000000001,
+              26.7547
+            ],
+            [
+              -80.91844,
+              26.7547
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

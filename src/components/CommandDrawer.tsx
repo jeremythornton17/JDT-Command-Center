@@ -101,7 +101,18 @@ function treeAssetType(tree: TreeRelocationRecord): string {
 }
 
 function treeAssetStatus(tree: TreeRelocationRecord): string {
-  return cleanFilterValue(tree.relocationStatus || tree.status || tree.currentStatus);
+  return cleanFilterValue(tree.treeRelocationStatus || tree.relocationStatus || tree.status || tree.currentStatus);
+}
+
+function treeAssetCardTitle(tree: TreeRelocationRecord): string {
+  const tag = cleanFilterValue(tree.treeTag || tree.tag || tree.treeId || tree.treeAssetId || tree.id);
+  const type = cleanFilterValue(tree.treeType || tree.type || tree.species || tree.title);
+  const dbh = cleanFilterValue(tree.dbh);
+  return [
+    tag ? `Tree #${tag}` : '',
+    type,
+    dbh ? `${dbh} inch DBH` : '',
+  ].filter(Boolean).join(' - ') || 'Project tree';
 }
 
 function sortedTreeAssetsByAssetId(trees: TreeRelocationRecord[]): TreeRelocationRecord[] {
@@ -356,7 +367,7 @@ function treeWorkOrdersForRecord(workOrders: WorkOrderRecord[], treeAssets: Tree
   const treeIds = new Set(treeAssets.flatMap((tree) => [tree.id, tree.treeId]).filter(Boolean).map(String));
   return workOrders.filter((workOrder) => (
     (Array.isArray(workOrder.treeIds) && workOrder.treeIds.some((treeId) => treeIds.has(String(treeId))))
-    || ['tree_pruning', 'treatment_aftercare'].includes(String(workOrder.workOrderType || ''))
+    || ['tree_pruning', 'tree_relocation_work', 'treatment_aftercare'].includes(String(workOrder.workOrderType || ''))
   ));
 }
 
@@ -381,6 +392,445 @@ function documentsForTree(documents: DocumentRecord[], tree: TreeRelocationRecor
     Boolean(doc.treeId && ids.has(String(doc.treeId)))
     || (Array.isArray(doc.treeIds) && doc.treeIds.some((treeId) => ids.has(String(treeId))))
   ));
+}
+
+const treeWorkOrderTypes = new Set(['tree_pruning', 'tree_relocation_work', 'treatment_aftercare']);
+
+type TreeWorkOrderGroupKind = 'rootPruning' | 'relocationWork' | 'nutrientCare';
+
+type TreeWorkOrderGroup = {
+  key: string;
+  kind: TreeWorkOrderGroupKind;
+  title: string;
+  projectName: string;
+  scheduledDate: string;
+  assignedTo: string;
+  treeCount: number;
+  status: string;
+  blockers: string[];
+  nextAction: string;
+  workOrders: WorkOrderRecord[];
+  trees: TreeRelocationRecord[];
+  plannedCutPercent?: string;
+  actualCutPercent?: string;
+  cumulativeCutPercent?: string;
+  carePhase?: string;
+  treatmentType?: string;
+  followUpCount?: number;
+  highStressCount?: number;
+  moveType?: string;
+  holdingAreaName?: string;
+  originDestinationSummary?: string;
+  equipmentNeeded?: string;
+  equipmentNames?: string;
+  implementNames?: string;
+  loadNames?: string;
+};
+
+function isTreeWorkOrder(workOrder: WorkOrderRecord) {
+  return treeWorkOrderTypes.has(String(workOrder.workOrderType || ''));
+}
+
+function workOrderKind(workOrder: WorkOrderRecord): TreeWorkOrderGroupKind | null {
+  if (workOrder.workOrderType === 'tree_pruning') return 'rootPruning';
+  if (workOrder.workOrderType === 'tree_relocation_work') return 'relocationWork';
+  if (workOrder.workOrderType === 'treatment_aftercare') return 'nutrientCare';
+  return null;
+}
+
+function workOrderTreeIds(workOrder: WorkOrderRecord): string[] {
+  return [...(workOrder.treeIds || []), ...(workOrder.treeNames || [])]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+}
+
+function treeIdentitySet(tree: TreeRelocationRecord): Set<string> {
+  return new Set(idsForTree(tree));
+}
+
+function uniqueDisplayList(values: unknown[]): string[] {
+  const seen = new Set<string>();
+  const results: string[] = [];
+  for (const value of values.flatMap((item) => Array.isArray(item) ? item : [item])) {
+    const clean = String(value || '').trim();
+    const key = clean.toLowerCase();
+    if (!clean || seen.has(key)) continue;
+    seen.add(key);
+    results.push(clean);
+  }
+  return results;
+}
+
+function assignedWorkOrderLabel(workOrder: WorkOrderRecord) {
+  return uniqueDisplayList([
+    workOrder.assignedCrewNames,
+    workOrder.crewLeadName,
+    workOrder.vendor,
+    workOrder.operator,
+  ]).join(', ') || 'Unassigned';
+}
+
+function treeRecordsForWorkOrders(workOrders: WorkOrderRecord[], treeAssets: TreeRelocationRecord[]) {
+  const ids = new Set(workOrders.flatMap(workOrderTreeIds));
+  if (!ids.size) return [];
+  return treeAssets.filter((tree) => {
+    const treeIds = treeIdentitySet(tree);
+    return [...ids].some((id) => treeIds.has(id));
+  });
+}
+
+function uniqueTreeCount(workOrders: WorkOrderRecord[], trees: TreeRelocationRecord[]) {
+  const ids = new Set(workOrders.flatMap(workOrderTreeIds));
+  if (ids.size) return ids.size;
+  if (trees.length) return trees.length;
+  return workOrders.length;
+}
+
+function groupDate(workOrder: WorkOrderRecord) {
+  return cleanFilterValue(workOrder.scheduledDate || workOrder.dueDate || workOrder.startDate || workOrder.endDate || 'TBD');
+}
+
+function groupProjectName(workOrder: WorkOrderRecord) {
+  return cleanFilterValue(workOrder.projectName || workOrder.jobName || workOrder.title || 'Project');
+}
+
+function formatCutPlan(value: unknown) {
+  const clean = cleanFilterValue(value);
+  if (!clean) return 'Cut Plan TBD';
+  if (/cut/i.test(clean)) return clean;
+  return clean.includes('%') ? `${clean} Cut` : `${clean}% Cut`;
+}
+
+function batchLabelFromCycle(cycleId: unknown, fallbackIndex: number) {
+  const clean = cleanFilterValue(cycleId);
+  const match = clean.match(/batch[-_\s]*(\d+)/i);
+  if (match?.[1]) return `Batch ${match[1]}`;
+  return `Batch ${fallbackIndex + 1}`;
+}
+
+function groupKeyForWorkOrder(workOrder: WorkOrderRecord, kind: TreeWorkOrderGroupKind) {
+  const base = [
+    kind,
+    workOrder.projectId || workOrder.projectsId || workOrder.projectName || workOrder.jobId || workOrder.jobName,
+    groupDate(workOrder),
+    assignedWorkOrderLabel(workOrder),
+  ];
+  if (kind === 'rootPruning') {
+    return [...base, workOrder.rootPruneCycleId, workOrder.plannedCutPercent, workOrder.rootPruneTaskStatus || workOrder.status].map(cleanFilterValue).join('|');
+  }
+  if (kind === 'nutrientCare') {
+    return [...base, workOrder.carePhase, workOrder.treatmentType || workOrder.taskType, workOrder.careTaskStatus || workOrder.status].map(cleanFilterValue).join('|');
+  }
+  return [...base, workOrder.moveType || workOrder.taskType, workOrder.moveTaskStatus || workOrder.status, workOrder.holdingAreaName].map(cleanFilterValue).join('|');
+}
+
+function statusForGroup(kind: TreeWorkOrderGroupKind, workOrders: WorkOrderRecord[]) {
+  return uniqueDisplayList(workOrders.map((workOrder) => (
+    kind === 'rootPruning'
+      ? workOrder.rootPruneTaskStatus || workOrder.status
+      : kind === 'nutrientCare'
+        ? workOrder.careTaskStatus || workOrder.status
+        : workOrder.moveTaskStatus || workOrder.status
+  ))).join(', ') || 'Draft';
+}
+
+function nextActionForGroup(kind: TreeWorkOrderGroupKind, group: TreeWorkOrderGroup) {
+  const status = normalizeFilterValue(group.status);
+  if (group.blockers.length) return 'Resolve blocker';
+  if (status.includes('complete') || status.includes('relocated')) return 'Review closeout';
+  if (status.includes('scheduled')) return kind === 'nutrientCare' ? 'Prepare care list' : kind === 'relocationWork' ? 'Confirm equipment' : 'Print tree list';
+  if (group.assignedTo === 'Unassigned') return 'Assign crew';
+  if (group.scheduledDate === 'TBD') return 'Schedule';
+  return 'Open work package';
+}
+
+function titleForWorkOrderGroup(kind: TreeWorkOrderGroupKind, workOrders: WorkOrderRecord[], groupIndex: number) {
+  const first = workOrders[0];
+  const treeCount = uniqueTreeCount(workOrders, []);
+  const isSingleLegacyOrder = workOrders.length === 1 && treeCount <= 1 && !first.rootPruneCycleId && !first.carePhase && !first.moveType;
+  if (isSingleLegacyOrder && first.title) return first.title;
+
+  if (kind === 'rootPruning') {
+    return `Root Pruning - ${formatCutPlan(first.plannedCutPercent)} - ${batchLabelFromCycle(first.rootPruneCycleId, groupIndex)}`;
+  }
+  if (kind === 'nutrientCare') {
+    return `Nutrient Care - ${cleanFilterValue(first.carePhase || 'Care Phase TBD')} - ${cleanFilterValue(first.treatmentType || first.taskType || 'Treatment TBD')}`;
+  }
+  return `Relocation Work - ${cleanFilterValue(first.moveType || first.taskType || 'Move Task')} - ${batchLabelFromCycle(first.sourceRowId || first.id, groupIndex)}`;
+}
+
+function buildTreeWorkOrderGroups(workOrders: WorkOrderRecord[], treeAssets: TreeRelocationRecord[]): TreeWorkOrderGroup[] {
+  const buckets = new Map<string, { kind: TreeWorkOrderGroupKind; workOrders: WorkOrderRecord[] }>();
+  for (const workOrder of workOrders) {
+    const kind = workOrderKind(workOrder);
+    if (!kind) continue;
+    const key = groupKeyForWorkOrder(workOrder, kind);
+    const bucket = buckets.get(key) || { kind, workOrders: [] };
+    bucket.workOrders.push(workOrder);
+    buckets.set(key, bucket);
+  }
+
+  return Array.from(buckets.entries()).map(([key, bucket], index) => {
+    const first = bucket.workOrders[0];
+    const trees = treeRecordsForWorkOrders(bucket.workOrders, treeAssets);
+    const blockers = uniqueDisplayList(bucket.workOrders.map((workOrder) => workOrder.blockerReason));
+    const equipmentNames = uniqueDisplayList(bucket.workOrders.flatMap((workOrder) => workOrder.equipmentNames)).join(', ');
+    const implementNames = uniqueDisplayList(bucket.workOrders.flatMap((workOrder) => workOrder.implementNames)).join(', ');
+    const loadNames = uniqueDisplayList(bucket.workOrders.flatMap((workOrder) => workOrder.loadNames)).join(', ');
+    const group: TreeWorkOrderGroup = {
+      key,
+      kind: bucket.kind,
+      title: titleForWorkOrderGroup(bucket.kind, bucket.workOrders, index),
+      projectName: groupProjectName(first),
+      scheduledDate: groupDate(first),
+      assignedTo: assignedWorkOrderLabel(first),
+      treeCount: uniqueTreeCount(bucket.workOrders, trees),
+      status: statusForGroup(bucket.kind, bucket.workOrders),
+      blockers,
+      nextAction: 'Open work package',
+      workOrders: bucket.workOrders,
+      trees,
+      plannedCutPercent: cleanFilterValue(first.plannedCutPercent),
+      actualCutPercent: cleanFilterValue(first.actualCutPercent),
+      cumulativeCutPercent: cleanFilterValue(first.cumulativeCutPercentAfterEvent),
+      carePhase: cleanFilterValue(first.carePhase),
+      treatmentType: cleanFilterValue(first.treatmentType || first.taskType),
+      followUpCount: bucket.workOrders.filter((workOrder) => Boolean(workOrder.followUpAction)).length,
+      highStressCount: bucket.workOrders.filter((workOrder) => /high|severe|critical/i.test(String(workOrder.stressLevel || ''))).length,
+      moveType: cleanFilterValue(first.moveType || first.taskType),
+      holdingAreaName: cleanFilterValue(first.holdingAreaName),
+      originDestinationSummary: uniqueDisplayList(bucket.workOrders.map((workOrder) => [workOrder.origin, workOrder.destination].filter(Boolean).join(' -> '))).join('; '),
+      equipmentNeeded: uniqueDisplayList([equipmentNames, implementNames]).join(', '),
+      equipmentNames,
+      implementNames,
+      loadNames,
+    };
+    group.nextAction = nextActionForGroup(bucket.kind, group);
+    return group;
+  }).sort((left, right) => (
+    treeAssetIdCollator.compare(left.scheduledDate, right.scheduledDate)
+    || treeAssetIdCollator.compare(left.title, right.title)
+  ));
+}
+
+function WorkOrderActionButton({ label, onClick }: { label: string; onClick?: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="rounded-lg border border-jdt-border bg-white px-2.5 py-1.5 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
+      {label}
+    </button>
+  );
+}
+
+function WorkOrderTreeTable({ group }: { group: TreeWorkOrderGroup }) {
+  const rows = group.trees.length
+    ? group.trees.map((tree) => ({ tree, workOrder: group.workOrders.find((order) => workOrdersForTree([order], tree, order.workOrderType || '').length) }))
+    : group.workOrders.map((workOrder) => ({
+      tree: {
+        id: workOrder.treeIds?.[0] || workOrder.treeNames?.[0] || workOrder.id,
+        treeId: workOrder.treeIds?.[0] || workOrder.treeNames?.[0] || '-',
+        type: workOrder.taskType || '',
+      } as TreeRelocationRecord,
+      workOrder,
+    }));
+
+  if (group.kind === 'rootPruning') {
+    return (
+      <CompactTable
+        headers={['Tree Tag', 'Tree Type', 'DBH', 'Planned Cut', 'Actual Cut', 'Cumulative Cut', 'Status', 'Notes']}
+        rows={rows.map(({ tree, workOrder }) => [
+          displayValue(tree.treeTag || tree.tag || tree.treeId || tree.id),
+          displayValue(treeAssetType(tree)),
+          displayValue(tree.dbh),
+          displayValue(workOrder?.plannedCutPercent || group.plannedCutPercent),
+          displayValue(workOrder?.actualCutPercent || group.actualCutPercent),
+          displayValue(workOrder?.cumulativeCutPercentAfterEvent || group.cumulativeCutPercent),
+          displayValue(workOrder?.rootPruneTaskStatus || workOrder?.status || group.status),
+          displayValue(workOrder?.notes),
+        ])}
+      />
+    );
+  }
+
+  if (group.kind === 'nutrientCare') {
+    return (
+      <CompactTable
+        headers={['Tree Tag', 'Tree Type', 'DBH', 'Care Phase', 'Treatment', 'Stress', 'Condition', 'Status', 'Follow-Up', 'Notes']}
+        rows={rows.map(({ tree, workOrder }) => [
+          displayValue(tree.treeTag || tree.tag || tree.treeId || tree.id),
+          displayValue(treeAssetType(tree)),
+          displayValue(tree.dbh),
+          displayValue(workOrder?.carePhase || group.carePhase),
+          displayValue(workOrder?.treatmentType || group.treatmentType),
+          displayValue(workOrder?.stressLevel),
+          displayValue(workOrder?.conditionObserved),
+          displayValue(workOrder?.careTaskStatus || workOrder?.status || group.status),
+          displayValue(workOrder?.followUpAction),
+          displayValue(workOrder?.notes),
+        ])}
+      />
+    );
+  }
+
+  return (
+    <CompactTable
+      headers={['Tree Tag', 'Tree Type', 'DBH', 'Move Type', 'Origin / Destination', 'Holding Area', 'Equipment', 'Status', 'Notes']}
+      rows={rows.map(({ tree, workOrder }) => [
+        displayValue(tree.treeTag || tree.tag || tree.treeId || tree.id),
+        displayValue(treeAssetType(tree)),
+        displayValue(tree.dbh),
+        displayValue(workOrder?.moveType || group.moveType),
+        displayValue([workOrder?.origin, workOrder?.destination].filter(Boolean).join(' -> ') || group.originDestinationSummary),
+        displayValue(workOrder?.holdingAreaName || group.holdingAreaName),
+        displayValue([...(workOrder?.equipmentNames || []), ...(workOrder?.implementNames || [])]),
+        displayValue(workOrder?.moveTaskStatus || workOrder?.status || group.status),
+        displayValue(workOrder?.notes),
+      ])}
+    />
+  );
+}
+
+function CompactTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-jdt-border bg-white">
+      <table className="w-full min-w-[760px] text-left text-[11px]">
+        <thead className="bg-jdt-sand text-[9px] font-black uppercase text-jdt-muted">
+          <tr>{headers.map((header) => <th key={header} className="px-2 py-2">{header}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={rowIndex} className="border-t border-jdt-border">
+              {row.map((cell, cellIndex) => (
+                <td key={`${rowIndex}-${cellIndex}`} className="px-2 py-2 font-bold text-zinc-600">{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ProjectWorkOrderSections({
+  groups,
+  supportWorkOrders,
+  openModal,
+  openTrees,
+}: {
+  groups: TreeWorkOrderGroup[];
+  supportWorkOrders: WorkOrderRecord[];
+  openModal: (type: string, data?: any) => void;
+  openTrees: () => void;
+}) {
+  const rootGroups = groups.filter((group) => group.kind === 'rootPruning');
+  const relocationGroups = groups.filter((group) => group.kind === 'relocationWork');
+  const careGroups = groups.filter((group) => group.kind === 'nutrientCare');
+  return (
+    <div className="space-y-4">
+      <TreeWorkOrderSection title="Root Pruning Work Orders" emptyLabel="No root pruning work packages are linked yet." groups={rootGroups} openModal={openModal} openTrees={openTrees} />
+      <TreeWorkOrderSection title="Relocation Work Orders" emptyLabel="No relocation move work packages are linked yet." groups={relocationGroups} openModal={openModal} openTrees={openTrees} />
+      <TreeWorkOrderSection title="Nutrient Care Work Orders" emptyLabel="No nutrient care work packages are linked yet." groups={careGroups} openModal={openModal} openTrees={openTrees} />
+      <section className="rounded-lg border border-jdt-border bg-white p-3">
+        <h4 className="text-xs font-black uppercase text-jdt-text">Freight / Equipment Support</h4>
+        {supportWorkOrders.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {supportWorkOrders.map((workOrder) => (
+              <article key={workOrder.id || workOrder.title} className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-jdt-primary">{workOrder.title || 'Support work order'}</p>
+                    <p className="mt-1 text-[10px] font-bold uppercase text-zinc-400">{workOrder.workOrderType || 'general_task'} - {workOrder.sourceSheetName || 'Manual'}</p>
+                  </div>
+                  <span className="rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{workOrder.status || 'Draft'}</span>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Crew:</span> {assignedWorkOrderLabel(workOrder)}</p>
+                  <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Due:</span> {workOrder.dueDate || workOrder.scheduledDate || 'No due date'}</p>
+                  <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Equipment:</span> {displayValue(workOrder.equipmentNames)}</p>
+                  <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Freight:</span> {displayValue(workOrder.loadNames)}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 rounded-lg border border-dashed border-jdt-border bg-jdt-panel px-3 py-4 text-sm font-bold text-zinc-500">No freight or equipment support work orders are linked yet.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function TreeWorkOrderSection({
+  title,
+  emptyLabel,
+  groups,
+  openModal,
+  openTrees,
+}: {
+  title: string;
+  emptyLabel: string;
+  groups: TreeWorkOrderGroup[];
+  openModal: (type: string, data?: any) => void;
+  openTrees: () => void;
+}) {
+  return (
+    <section className="rounded-lg border border-jdt-border bg-white p-3">
+      <h4 className="text-xs font-black uppercase text-jdt-text">{title}</h4>
+      {groups.length > 0 ? (
+        <div className="mt-3 space-y-3">
+          {groups.map((group) => {
+            const representative = group.workOrders[0];
+            return (
+              <article key={group.key} className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-jdt-primary">{group.title}</p>
+                    <p className="mt-1 text-[10px] font-bold uppercase text-zinc-400">{group.projectName}</p>
+                  </div>
+                  <span className="rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{group.status}</span>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Scheduled:</span> {group.scheduledDate}</p>
+                  <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Assigned:</span> {group.assignedTo}</p>
+                  <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Trees:</span> {`${group.treeCount} trees`}</p>
+                  {group.kind === 'rootPruning' && <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Cut Plan:</span> {formatCutPlan(group.plannedCutPercent)}</p>}
+                  {group.kind === 'nutrientCare' && <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Treatment:</span> {displayValue(group.treatmentType)}</p>}
+                  {group.kind === 'nutrientCare' && <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Care Phase:</span> {displayValue(group.carePhase)}</p>}
+                  {group.kind === 'nutrientCare' && <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Follow-Ups / Stress:</span> {group.followUpCount || 0} follow-up | {group.highStressCount || 0} high stress</p>}
+                  {group.kind === 'relocationWork' && <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Move Type:</span> {displayValue(group.moveType)}</p>}
+                  {group.kind === 'relocationWork' && <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Origin / Destination:</span> {displayValue(group.originDestinationSummary)}</p>}
+                  {group.equipmentNames && <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Equipment:</span> {group.equipmentNames}</p>}
+                  {group.implementNames && <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Implements:</span> {group.implementNames}</p>}
+                  {group.loadNames && <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Freight:</span> {group.loadNames}</p>}
+                  <p className="text-xs font-bold text-zinc-600"><span className="font-black uppercase text-zinc-400">Next Action:</span> {group.nextAction}</p>
+                </div>
+                {group.blockers.length > 0 && <p className="mt-2 rounded bg-red-50 px-2 py-1 text-xs font-bold text-red-700">{group.blockers.join(', ')}</p>}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <WorkOrderActionButton label="Open" onClick={() => openModal('assign_work', representative)} />
+                  <WorkOrderActionButton label={group.kind === 'nutrientCare' ? 'Assign Crew/Vendor' : 'Assign Crew'} onClick={() => openModal('assign_work', representative)} />
+                  <WorkOrderActionButton label="Schedule" onClick={() => openModal('assign_work', representative)} />
+                  <WorkOrderActionButton label="View Trees" onClick={openTrees} />
+                  <WorkOrderActionButton label="View Map" />
+                  <WorkOrderActionButton label={group.kind === 'nutrientCare' ? 'Print Care List' : group.kind === 'relocationWork' ? 'Print Move List' : 'Print Tree List'} />
+                  {group.kind === 'relocationWork' && <WorkOrderActionButton label="Assign Equipment" onClick={() => openModal('assign_equipment', representative)} />}
+                  {group.kind === 'relocationWork' && <WorkOrderActionButton label="Mark Moved to Holding" onClick={() => openModal('project_tree_relocation_work', { ...representative, moveTaskStatus: 'Moved to Holding' })} />}
+                  {group.kind === 'relocationWork' && <WorkOrderActionButton label="Mark Relocated" onClick={() => openModal('project_tree_relocation_work', { ...representative, moveTaskStatus: 'Relocated' })} />}
+                  {group.kind !== 'relocationWork' && <WorkOrderActionButton label="Complete Batch" onClick={() => openModal('assign_work', { ...representative, status: 'Complete' })} />}
+                </div>
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-[10px] font-black uppercase text-jdt-primary">Open compact tree table</summary>
+                  <div className="mt-2">
+                    <WorkOrderTreeTable group={group} />
+                  </div>
+                </details>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-lg border border-dashed border-jdt-border bg-jdt-panel px-3 py-4 text-sm font-bold text-zinc-500">{emptyLabel}</p>
+      )}
+    </section>
+  );
 }
 
 function cleanMatchValue(value: unknown): string {
@@ -632,6 +1082,124 @@ function ClientContactPanel({ record, openModal }: { record: any; openModal: Com
   );
 }
 
+function ProjectTreeExpandedDetail({
+  tree,
+  rootPruningRecords,
+  relocationWorkRecords,
+  nutrientCareRecords,
+  treeDocuments,
+  openModal,
+  seedTreeWork,
+  seedTreePhoto,
+}: {
+  tree: TreeRelocationRecord;
+  rootPruningRecords: WorkOrderRecord[];
+  relocationWorkRecords: WorkOrderRecord[];
+  nutrientCareRecords: WorkOrderRecord[];
+  treeDocuments: DocumentRecord[];
+  openModal: (type: string, data?: any) => void;
+  seedTreeWork: (tree: TreeRelocationRecord, workOrder: WorkOrderRecord | undefined, type: 'tree_pruning' | 'tree_relocation_work' | 'treatment_aftercare') => any;
+  seedTreePhoto: (tree: TreeRelocationRecord, document?: DocumentRecord) => any;
+}) {
+  return (
+    <div className="grid gap-3 border-t border-jdt-border bg-jdt-panel p-3 xl:grid-cols-4">
+      <TreeMiniSection
+        title="Root Pruning"
+        emptyLabel="No root pruning records yet."
+        addLabel="Add"
+        onAdd={() => openModal('project_tree_pruning', seedTreeWork(tree, undefined, 'tree_pruning'))}
+        records={rootPruningRecords.map((workOrder) => ({
+          id: workOrder.id || workOrder.title || '',
+          title: workOrder.title || 'Root pruning',
+          detail: `${workOrder.rootPruneTaskStatus || workOrder.status || 'Open'}${workOrder.scheduledDate ? ` - ${workOrder.scheduledDate}` : ''}`,
+          onEdit: () => openModal('project_tree_pruning', seedTreeWork(tree, workOrder, 'tree_pruning')),
+          onDelete: () => openModal('delete_work_order', workOrder),
+        }))}
+      />
+      <TreeMiniSection
+        title="Relocation Work"
+        emptyLabel="No relocation work records yet."
+        addLabel="Add"
+        onAdd={() => openModal('project_tree_relocation_work', seedTreeWork(tree, undefined, 'tree_relocation_work'))}
+        records={relocationWorkRecords.map((workOrder) => ({
+          id: workOrder.id || workOrder.title || '',
+          title: workOrder.title || workOrder.moveType || 'Tree relocation work',
+          detail: `${workOrder.moveTaskStatus || workOrder.status || 'Open'}${workOrder.scheduledDate ? ` - ${workOrder.scheduledDate}` : ''}`,
+          note: displayValue([workOrder.origin, workOrder.destination].filter(Boolean).join(' -> ')),
+          onEdit: () => openModal('project_tree_relocation_work', seedTreeWork(tree, workOrder, 'tree_relocation_work')),
+          onDelete: () => openModal('delete_work_order', workOrder),
+        }))}
+      />
+      <TreeMiniSection
+        title="Nutrient Care"
+        emptyLabel="No nutrient care records yet."
+        addLabel="Add"
+        onAdd={() => openModal('project_tree_aftercare', seedTreeWork(tree, undefined, 'treatment_aftercare'))}
+        records={nutrientCareRecords.map((workOrder) => ({
+          id: workOrder.id || workOrder.title || '',
+          title: workOrder.title || 'Nutrient care',
+          detail: `${workOrder.careTaskStatus || workOrder.status || 'Open'}${workOrder.scheduledDate ? ` - ${workOrder.scheduledDate}` : ''}`,
+          onEdit: () => openModal('project_tree_aftercare', seedTreeWork(tree, workOrder, 'treatment_aftercare')),
+          onDelete: () => openModal('delete_work_order', workOrder),
+        }))}
+      />
+      <TreeMiniSection
+        title="Photos"
+        emptyLabel="No tree photos yet."
+        addLabel="Add"
+        onAdd={() => openModal('project_tree_photo', seedTreePhoto(tree))}
+        records={treeDocuments.map((doc) => ({
+          id: doc.id || doc.name || doc.title || '',
+          title: displayValue(doc.title || doc.name || 'Tree photo'),
+          detail: displayValue(doc.photoDate || doc.photoLocation || doc.treeId),
+          onEdit: () => openModal('project_tree_photo', seedTreePhoto(tree, doc)),
+          onDelete: () => openModal('delete_document', doc),
+        }))}
+      />
+    </div>
+  );
+}
+
+function TreeMiniSection({
+  title,
+  emptyLabel,
+  addLabel,
+  onAdd,
+  records,
+}: {
+  title: string;
+  emptyLabel: string;
+  addLabel: string;
+  onAdd: () => void;
+  records: Array<{ id: string; title: string; detail: string; note?: string; onEdit: () => void; onDelete: () => void }>;
+}) {
+  return (
+    <div className="rounded-lg border border-jdt-border bg-white p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h4 className="text-[10px] font-black uppercase text-jdt-text">{title}</h4>
+        <button type="button" onClick={onAdd} className="text-[9px] font-black uppercase text-jdt-primary">{addLabel}</button>
+      </div>
+      {records.length > 0 ? (
+        <div className="space-y-2">
+          {records.map((record) => (
+            <div key={record.id} className="rounded border border-jdt-border bg-jdt-panel p-2">
+              <p className="text-xs font-black text-jdt-primary">{record.title}</p>
+              <p className="text-[10px] font-bold text-zinc-500">{record.detail}</p>
+              {record.note && record.note !== '-' && <p className="mt-1 text-[10px] font-semibold text-zinc-500">{record.note}</p>}
+              <div className="mt-2 flex gap-2">
+                <button type="button" onClick={record.onEdit} className="text-[9px] font-black uppercase text-jdt-primary">Edit</button>
+                <button type="button" onClick={record.onDelete} className="text-[9px] font-black uppercase text-red-700">Delete</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] font-bold text-zinc-500">{emptyLabel}</p>
+      )}
+    </div>
+  );
+}
+
 function LinkedRecordCard({ record, type, openDrawer }: { record: any; type?: string; openDrawer?: CommandDrawerProps['openDrawer'] }) {
   const status = displayValue(record.status || record.projectStatus || record.jobStatus || record.fieldStatus || record.updateType || record.category || 'Open');
   const detail = [
@@ -802,11 +1370,13 @@ export default function CommandDrawer(props: CommandDrawerProps) {
   } = props;
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [treeAssetFilters, setTreeAssetFilters] = useState<TreeAssetFilterState>(emptyTreeAssetFilters);
+  const [expandedTreeAssetKey, setExpandedTreeAssetKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setActiveTab(defaultTab);
       setTreeAssetFilters(emptyTreeAssetFilters);
+      setExpandedTreeAssetKey(null);
     }
   }, [isOpen, defaultTab, type, itemId]);
 
@@ -840,8 +1410,11 @@ export default function CommandDrawer(props: CommandDrawerProps) {
   const hasTreeAssetFilters = Object.values(treeAssetFilters).some((value) => value.trim());
   const updateTreeAssetFilter = (key: keyof TreeAssetFilterState, value: string) => {
     setTreeAssetFilters((current) => ({ ...current, [key]: value }));
+    setExpandedTreeAssetKey(null);
   };
   const relatedTreeWorkOrders = treeWorkOrdersForRecord(relatedWorkOrders, relatedTreeAssets);
+  const treeWorkOrderGroups = buildTreeWorkOrderGroups(relatedWorkOrders, relatedTreeAssets);
+  const supportWorkOrders = relatedWorkOrders.filter((workOrder) => !isTreeWorkOrder(workOrder));
   const relatedDocuments = type === 'client'
     ? clientDocumentsForRecord(record, props.documentsList || [], relatedClientProjects, relatedClientJobs)
     : documentsForRecord(record, props.documentsList || [], relatedTreeAssets);
@@ -862,9 +1435,18 @@ export default function CommandDrawer(props: CommandDrawerProps) {
     ...(tree || {}),
     treeId: tree ? treeIdFor(tree) : '',
   });
-  const seedTreeWork = (tree: TreeRelocationRecord, workOrder: WorkOrderRecord | undefined, workOrderType: 'tree_pruning' | 'treatment_aftercare') => {
+  const seedTreeWork = (tree: TreeRelocationRecord, workOrder: WorkOrderRecord | undefined, workOrderType: 'tree_pruning' | 'tree_relocation_work' | 'treatment_aftercare') => {
     const treeId = treeIdFor(tree);
-    const titlePrefix = workOrderType === 'tree_pruning' ? 'Root Pruning' : 'Nutrient Care';
+    const titlePrefix = workOrderType === 'tree_pruning'
+      ? 'Root Pruning'
+      : workOrderType === 'tree_relocation_work'
+        ? 'Tree Relocation Work'
+        : 'Nutrient Care';
+    const sourceSheetName = workOrderType === 'tree_pruning'
+      ? 'Project_Root_Pruning'
+      : workOrderType === 'tree_relocation_work'
+        ? 'Project_Tree_Relocation_Work'
+        : 'Project_Nutrient_Care';
     return {
       ...projectContext,
       ...(workOrder || {}),
@@ -873,7 +1455,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
       treeNames: workOrder?.treeNames || [treeId],
       workOrderType,
       taskType: workOrder?.taskType || titlePrefix,
-      sourceSheetName: workOrder?.sourceSheetName || (workOrderType === 'tree_pruning' ? 'Project_Root_Pruning' : 'Project_Nutrient_Care'),
+      sourceSheetName: workOrder?.sourceSheetName || sourceSheetName,
     };
   };
   const seedTreePhoto = (tree: TreeRelocationRecord, document?: DocumentRecord) => {
@@ -1108,30 +1690,15 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                   )}
                 </section>
               )}
-              {relatedWorkOrders.length > 0 ? (
-                <div className="space-y-2">
-                  {relatedWorkOrders.map((workOrder) => (
-                    <article key={workOrder.id || workOrder.title} className="rounded-lg border border-jdt-border bg-white p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-black text-jdt-primary">{workOrder.title || 'Untitled work order'}</p>
-                          <p className="mt-1 text-[10px] font-bold uppercase text-zinc-400">{workOrder.workOrderType || 'general_task'} - {workOrder.sourceSheetName || 'Manual'}</p>
-                        </div>
-                        <span className="rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{workOrder.status || 'Draft'}</span>
-                      </div>
-                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                        <p className="text-xs font-bold text-zinc-600"><span className="font-black text-zinc-400 uppercase">Crew:</span> {(workOrder.assignedCrewNames || []).join(', ') || workOrder.crewLeadName || 'Needs crew'}</p>
-                        <p className="text-xs font-bold text-zinc-600"><span className="font-black text-zinc-400 uppercase">Due:</span> {workOrder.dueDate || workOrder.scheduledDate || 'No due date'}</p>
-                        <p className="text-xs font-bold text-zinc-600"><span className="font-black text-zinc-400 uppercase">Equipment:</span> {(workOrder.equipmentNames || []).join(', ') || 'None linked'}</p>
-                        <p className="text-xs font-bold text-zinc-600"><span className="font-black text-zinc-400 uppercase">Implements:</span> {(workOrder.implementNames || []).join(', ') || 'None linked'}</p>
-                        <p className="text-xs font-bold text-zinc-600"><span className="font-black text-zinc-400 uppercase">Freight:</span> {(workOrder.loadNames || []).join(', ') || 'None linked'}</p>
-                        <p className="text-xs font-bold text-zinc-600"><span className="font-black text-zinc-400 uppercase">Trees:</span> {(workOrder.treeNames || []).join(', ') || 'None linked'}</p>
-                        {(workOrder.origin || workOrder.destination) && <p className="text-xs font-bold text-zinc-600"><span className="font-black text-zinc-400 uppercase">Route:</span> {[workOrder.origin, workOrder.destination].filter(Boolean).join(' to ')}</p>}
-                      </div>
-                      {workOrder.blockerReason && <p className="mt-2 rounded bg-red-50 px-2 py-1 text-xs font-bold text-red-700">{workOrder.blockerReason}</p>}
-                    </article>
-                  ))}
-                </div>
+              {isProjectProfile ? (
+                <ProjectWorkOrderSections
+                  groups={treeWorkOrderGroups}
+                  supportWorkOrders={supportWorkOrders}
+                  openModal={openModal}
+                  openTrees={() => setActiveTab('trees')}
+                />
+              ) : relatedWorkOrders.length > 0 ? (
+                <LinkedRecordList records={relatedWorkOrders} emptyLabel="work orders" type="job" openDrawer={openDrawer} />
               ) : (
                 <p className="text-sm font-bold text-zinc-500">No work orders are linked to this record yet.</p>
               )}
@@ -1208,6 +1775,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                     {props.openImportTemplate && [
                         ['Import Trees to This Project', 'jdt_project_flow_tree_assets'],
                         ['Root Pruning', 'jdt_project_flow_tree_pruning'],
+                        ['Relocation Work', 'jdt_project_flow_tree_relocation_work'],
                         ['Nutrient Care', 'jdt_project_flow_treatment_aftercare'],
                         ['Photos', 'jdt_project_flow_tree_photos'],
                       ].map(([label, templateId]) => (
@@ -1303,115 +1871,87 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                       </div>
                     </div>
 
-                    {visibleTreeAssets.length > 0 ? visibleTreeAssets.map((tree) => {
-                      const treeKey = String(tree.id || tree.treeId || tree.title);
-                      const treeLabel = displayValue(tree.type || tree.treeType || tree.title || tree.treeId || 'Project tree');
-                      const locationLine = [tree.existingLocationDescription, tree.proposedFinalLocationDescription]
-                        .map(displayValue)
-                        .filter((item) => item !== '-')
-                        .join(' -> ');
-                      const rootPruningRecords = workOrdersForTree(relatedTreeWorkOrders, tree, 'tree_pruning');
-                      const nutrientCareRecords = workOrdersForTree(relatedTreeWorkOrders, tree, 'treatment_aftercare');
-                      const treeDocuments = documentsForTree(relatedDocuments, tree);
+                    {visibleTreeAssets.length > 0 ? (
+                      <div className="overflow-x-auto rounded-lg border border-jdt-border bg-white">
+                        <div className="flex flex-col gap-1 border-b border-jdt-border bg-jdt-sand px-3 py-2">
+                          <h4 className="text-[11px] font-black uppercase text-jdt-text">Compact Tree List</h4>
+                          <p className="text-[10px] font-bold uppercase text-zinc-500">Click Details on one tree when you need root pruning, relocation work, nutrient care, or photos.</p>
+                        </div>
+                        <table className="w-full min-w-[980px] text-left text-[11px]">
+                          <thead className="bg-jdt-panel text-[9px] font-black uppercase text-jdt-muted">
+                            <tr>
+                              <th className="px-2 py-2">Tree Tag</th>
+                              <th className="px-2 py-2">Tree Type</th>
+                              <th className="px-2 py-2">DBH</th>
+                              <th className="px-2 py-2">Tree Relocation Status</th>
+                              <th className="px-2 py-2">Current Field Location</th>
+                              <th className="px-2 py-2">Destination</th>
+                              <th className="px-2 py-2">Final Outcome</th>
+                              <th className="px-2 py-2">Cost</th>
+                              <th className="px-2 py-2">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {visibleTreeAssets.map((tree) => {
+                              const treeKey = String(tree.id || tree.treeId || tree.title);
+                              const rootPruningRecords = workOrdersForTree(relatedTreeWorkOrders, tree, 'tree_pruning');
+                              const relocationWorkRecords = workOrdersForTree(relatedTreeWorkOrders, tree, 'tree_relocation_work');
+                              const nutrientCareRecords = workOrdersForTree(relatedTreeWorkOrders, tree, 'treatment_aftercare');
+                              const treeDocuments = documentsForTree(relatedDocuments, tree);
+                              const treeRelocationStatus = tree.treeRelocationStatus || tree.relocationStatus || tree.status || defaultRelocationStatus;
+                              const destinationValue = tree.proposedFinalLocationDescription || tree.destinationPin || '';
+                              const isExpanded = expandedTreeAssetKey === treeKey;
 
-                      return (
-                        <article key={treeKey} className="rounded-lg border border-jdt-border bg-white p-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-black text-jdt-primary">{treeLabel}</p>
-                              <p className="mt-1 text-[10px] font-bold uppercase text-zinc-400">{displayValue(tree.treeId || tree.id)}</p>
-                            </div>
-                            <span className={`rounded border px-2 py-1 text-[9px] font-black uppercase ${relocationStatusBadgeClass(tree.relocationStatus || tree.status || defaultRelocationStatus)}`}>
-                              {displayValue(tree.relocationStatus || tree.status || defaultRelocationStatus)}
-                            </span>
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <button type="button" onClick={() => openModal('project_tree_asset', seedTreeAsset(tree))} className="rounded-lg border border-jdt-border bg-jdt-panel px-3 py-1.5 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Edit Tree</button>
-                            <button type="button" onClick={() => openModal('project_tree_pruning', seedTreeWork(tree, undefined, 'tree_pruning'))} className="rounded-lg border border-jdt-border bg-jdt-panel px-3 py-1.5 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Add Root Pruning</button>
-                            <button type="button" onClick={() => openModal('project_tree_aftercare', seedTreeWork(tree, undefined, 'treatment_aftercare'))} className="rounded-lg border border-jdt-border bg-jdt-panel px-3 py-1.5 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Add Nutrient Care</button>
-                            <button type="button" onClick={() => openModal('project_tree_photo', seedTreePhoto(tree))} className="rounded-lg border border-jdt-border bg-jdt-panel px-3 py-1.5 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Add Photo</button>
-                            <button type="button" onClick={() => openModal('delete_tree', tree)} className="rounded-lg border border-red-100 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase text-red-700 hover:border-red-300">Delete Tree</button>
-                          </div>
-                          <div className="mt-3 grid gap-2 sm:grid-cols-4">
-                            <p className="text-xs font-bold text-zinc-600"><span className="font-black text-zinc-400 uppercase">DBH:</span> {displayValue(tree.dbh)}</p>
-                            <p className="text-xs font-bold text-zinc-600"><span className="font-black text-zinc-400 uppercase">Difficulty:</span> {displayValue(tree.difficulty)}</p>
-                            <p className="text-xs font-bold text-zinc-600"><span className="font-black text-zinc-400 uppercase">Priority:</span> {displayValue(tree.priority)}</p>
-                            <p className="text-xs font-bold text-zinc-600"><span className="font-black text-zinc-400 uppercase">Cost:</span> {formatRelocationCost(tree.relocationCost)}</p>
-                          </div>
-                          {locationLine && <p className="mt-2 text-xs font-semibold text-zinc-600">{locationLine}</p>}
-                          <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                            <div className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
-                              <div className="mb-2 flex items-center justify-between gap-2">
-                                <h4 className="text-[10px] font-black uppercase text-jdt-text">Root Pruning</h4>
-                                <button type="button" onClick={() => openModal('project_tree_pruning', seedTreeWork(tree, undefined, 'tree_pruning'))} className="text-[9px] font-black uppercase text-jdt-primary">Add</button>
-                              </div>
-                              {rootPruningRecords.length > 0 ? (
-                                <div className="space-y-2">
-                                  {rootPruningRecords.map((workOrder) => (
-                                    <div key={workOrder.id} className="rounded border border-jdt-border bg-white p-2">
-                                      <p className="text-xs font-black text-jdt-primary">{workOrder.title || 'Root pruning'}</p>
-                                      <p className="text-[10px] font-bold text-zinc-500">{workOrder.status || 'Open'}{workOrder.scheduledDate ? ` - ${workOrder.scheduledDate}` : ''}</p>
-                                      <div className="mt-2 flex gap-2">
-                                        <button type="button" onClick={() => openModal('project_tree_pruning', seedTreeWork(tree, workOrder, 'tree_pruning'))} className="text-[9px] font-black uppercase text-jdt-primary">Edit</button>
-                                        <button type="button" onClick={() => openModal('delete_work_order', workOrder)} className="text-[9px] font-black uppercase text-red-700">Delete</button>
+                              return (
+                                <React.Fragment key={treeKey}>
+                                  <tr className="border-t border-jdt-border align-top">
+                                    <td className="px-2 py-2 font-black text-jdt-primary">{displayValue(tree.treeTag || tree.tag || tree.treeId || tree.id)}</td>
+                                    <td className="px-2 py-2 font-bold text-zinc-600">{displayValue(treeAssetType(tree))}</td>
+                                    <td className="px-2 py-2 font-bold text-zinc-600">{displayValue(tree.dbh)}</td>
+                                    <td className="px-2 py-2">
+                                      <span className={`inline-block rounded border px-2 py-1 text-[9px] font-black uppercase ${relocationStatusBadgeClass(treeRelocationStatus)}`}>
+                                        {displayValue(treeRelocationStatus)}
+                                      </span>
+                                    </td>
+                                    <td className="px-2 py-2 font-bold text-zinc-600">{displayValue(tree.currentFieldLocation || tree.existingLocationDescription || 'Existing Location')}</td>
+                                    <td className="px-2 py-2 font-bold text-zinc-600">{destinationValue ? displayValue(destinationValue) : 'Needs Destination'}</td>
+                                    <td className="px-2 py-2 font-bold text-zinc-600">{displayValue(tree.treeFinalOutcome || 'Active in Scope')}</td>
+                                    <td className="px-2 py-2 font-bold text-zinc-600">{formatRelocationCost(tree.estimatedRelocationCost || tree.relocationCost)}</td>
+                                    <td className="px-2 py-2">
+                                      <div className="flex flex-wrap gap-1.5">
+                                        <button type="button" onClick={() => setExpandedTreeAssetKey(isExpanded ? null : treeKey)} className="rounded border border-jdt-border bg-jdt-panel px-2 py-1 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive">{isExpanded ? 'Hide Details' : 'Details'}</button>
+                                        <button type="button" onClick={() => openModal('project_tree_asset', seedTreeAsset(tree))} className="rounded border border-jdt-border bg-jdt-panel px-2 py-1 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Edit Tree</button>
+                                        <button type="button" onClick={() => openModal('project_tree_pruning', seedTreeWork(tree, undefined, 'tree_pruning'))} className="rounded border border-jdt-border bg-jdt-panel px-2 py-1 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Add Root Pruning</button>
+                                        <button type="button" onClick={() => openModal('project_tree_relocation_work', seedTreeWork(tree, undefined, 'tree_relocation_work'))} className="rounded border border-jdt-border bg-jdt-panel px-2 py-1 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Add Relocation Work</button>
+                                        <button type="button" onClick={() => openModal('project_tree_aftercare', seedTreeWork(tree, undefined, 'treatment_aftercare'))} className="rounded border border-jdt-border bg-jdt-panel px-2 py-1 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Add Nutrient Care</button>
+                                        <button type="button" onClick={() => openModal('project_tree_photo', seedTreePhoto(tree))} className="rounded border border-jdt-border bg-jdt-panel px-2 py-1 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Add Photo</button>
+                                        <button type="button" onClick={() => openModal('delete_tree', tree)} className="rounded border border-red-100 bg-red-50 px-2 py-1 text-[9px] font-black uppercase text-red-700 hover:border-red-300">Delete</button>
                                       </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-[11px] font-bold text-zinc-500">No root pruning records yet.</p>
-                              )}
-                            </div>
-
-                            <div className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
-                              <div className="mb-2 flex items-center justify-between gap-2">
-                                <h4 className="text-[10px] font-black uppercase text-jdt-text">Nutrient Care</h4>
-                                <button type="button" onClick={() => openModal('project_tree_aftercare', seedTreeWork(tree, undefined, 'treatment_aftercare'))} className="text-[9px] font-black uppercase text-jdt-primary">Add</button>
-                              </div>
-                              {nutrientCareRecords.length > 0 ? (
-                                <div className="space-y-2">
-                                  {nutrientCareRecords.map((workOrder) => (
-                                    <div key={workOrder.id} className="rounded border border-jdt-border bg-white p-2">
-                                      <p className="text-xs font-black text-jdt-primary">{workOrder.title || 'Nutrient care'}</p>
-                                      <p className="text-[10px] font-bold text-zinc-500">{workOrder.status || 'Open'}{workOrder.scheduledDate ? ` - ${workOrder.scheduledDate}` : ''}</p>
-                                      <div className="mt-2 flex gap-2">
-                                        <button type="button" onClick={() => openModal('project_tree_aftercare', seedTreeWork(tree, workOrder, 'treatment_aftercare'))} className="text-[9px] font-black uppercase text-jdt-primary">Edit</button>
-                                        <button type="button" onClick={() => openModal('delete_work_order', workOrder)} className="text-[9px] font-black uppercase text-red-700">Delete</button>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-[11px] font-bold text-zinc-500">No nutrient care records yet.</p>
-                              )}
-                            </div>
-
-                            <div className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
-                              <div className="mb-2 flex items-center justify-between gap-2">
-                                <h4 className="text-[10px] font-black uppercase text-jdt-text">Photos</h4>
-                                <button type="button" onClick={() => openModal('project_tree_photo', seedTreePhoto(tree))} className="text-[9px] font-black uppercase text-jdt-primary">Add</button>
-                              </div>
-                              {treeDocuments.length > 0 ? (
-                                <div className="space-y-2">
-                                  {treeDocuments.map((doc) => (
-                                    <div key={doc.id || doc.name} className="rounded border border-jdt-border bg-white p-2">
-                                      <p className="text-xs font-black text-jdt-primary">{displayValue(doc.title || doc.name || 'Tree photo')}</p>
-                                      <p className="text-[10px] font-bold text-zinc-500">{displayValue(doc.photoDate || doc.photoLocation || doc.treeId)}</p>
-                                      <div className="mt-2 flex gap-2">
-                                        <button type="button" onClick={() => openModal('project_tree_photo', seedTreePhoto(tree, doc))} className="text-[9px] font-black uppercase text-jdt-primary">Edit</button>
-                                        <button type="button" onClick={() => openModal('delete_document', doc)} className="text-[9px] font-black uppercase text-red-700">Delete</button>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-[11px] font-bold text-zinc-500">No tree photos yet.</p>
-                              )}
-                            </div>
-                          </div>
-                        </article>
-                      );
-                    }) : (
+                                    </td>
+                                  </tr>
+                                  {isExpanded && (
+                                    <tr className="border-t border-jdt-border">
+                                      <td colSpan={9} className="p-0">
+                                        <ProjectTreeExpandedDetail
+                                          tree={tree}
+                                          rootPruningRecords={rootPruningRecords}
+                                          relocationWorkRecords={relocationWorkRecords}
+                                          nutrientCareRecords={nutrientCareRecords}
+                                          treeDocuments={treeDocuments}
+                                          openModal={openModal}
+                                          seedTreeWork={seedTreeWork}
+                                          seedTreePhoto={seedTreePhoto}
+                                        />
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
                       <p className="rounded-lg border border-dashed border-jdt-border bg-white p-4 text-sm font-bold text-zinc-500">No tree assets match these filters.</p>
                     )}
                   </div>

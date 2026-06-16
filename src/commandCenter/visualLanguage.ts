@@ -268,6 +268,11 @@ export const explicitStatusToneLabels: Record<string, StoplightTone> = {
   'root pruning': 'active',
   '1st cut complete': 'active',
   '2nd cut complete': 'active',
+  '25% cut': 'active',
+  '50% cut': 'active',
+  '75% cut': 'active',
+  '100% cut': 'active',
+  'moved to holding': 'active',
 
   complete: 'ready',
   completed: 'ready',
