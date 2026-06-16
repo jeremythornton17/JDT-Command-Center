@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Layers, MapPin, Save, TreePine } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Layers, MapPin, Maximize2, Minimize2, Save, TreePine } from 'lucide-react';
 import type {
   EquipmentRecord,
   JobRecord,
@@ -142,6 +142,8 @@ export default function ArcGisMapBoard({
   const [selectedTreeId, setSelectedTreeId] = useState('');
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>('layers');
   const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(() => defaultLayerVisibility());
+  const [isGisWorkbenchCollapsed, setIsGisWorkbenchCollapsed] = useState(false);
+  const [isGisMapFullscreen, setIsGisMapFullscreen] = useState(false);
 
   const arcGisConfig = getArcGisConfig();
   const treeFeatures = useMemo(() => buildArcGisTreeAssetFeatures({
@@ -495,15 +497,36 @@ export default function ArcGisMapBoard({
   };
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${isGisMapFullscreen ? 'fixed inset-0 z-[135] overflow-hidden bg-jdt-bg p-3' : ''}`}>
       <header className="flex flex-col gap-4 border-b border-jdt-border pb-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.22em] text-zinc-400">GIS Workspace</p>
           <h1 className="mt-2 text-3xl font-black tracking-tight text-jdt-primary">ArcGIS Operations Map</h1>
           <p className="mt-1 text-sm font-bold text-zinc-500">Project tree assets, final locations, boundaries, holding areas, work zones, equipment, and task overlays in one GIS layer stack.</p>
         </div>
-        <div className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-xs font-black uppercase text-jdt-text shadow-sm">
-          {filteredTreeFeatures.length}/{treeFeatures.length} Tree Assets Visible
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-xs font-black uppercase text-jdt-text shadow-sm">
+            {filteredTreeFeatures.length}/{treeFeatures.length} Tree Assets Visible
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsGisWorkbenchCollapsed((value) => !value)}
+            title={isGisWorkbenchCollapsed ? 'Expand GIS workbench' : 'Collapse GIS workbench'}
+            aria-label={isGisWorkbenchCollapsed ? 'Expand GIS workbench' : 'Collapse GIS workbench'}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-jdt-border bg-white text-jdt-primary shadow-sm hover:border-jdt-olive"
+          >
+            {isGisWorkbenchCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsGisMapFullscreen((value) => !value)}
+            title={isGisMapFullscreen ? 'Exit full screen GIS map' : 'Expand GIS map workspace'}
+            aria-label={isGisMapFullscreen ? 'Exit full screen GIS map' : 'Expand GIS map workspace'}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 text-[10px] font-black uppercase text-jdt-primary shadow-sm hover:border-jdt-olive"
+          >
+            {isGisMapFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            Fullscreen Map
+          </button>
         </div>
       </header>
 
@@ -517,7 +540,7 @@ export default function ArcGisMapBoard({
 
       <PipelineSummary summary={pipelineSummary} />
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_430px]">
+      <section className={`grid gap-4 ${isGisWorkbenchCollapsed ? 'xl:grid-cols-[minmax(0,1fr)_4.5rem]' : 'xl:grid-cols-[minmax(0,1fr)_390px]'}`}>
         <div className="overflow-hidden rounded-lg border border-jdt-border bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-jdt-border bg-jdt-panel px-4 py-3">
             <div className="flex items-center gap-2">
@@ -526,7 +549,7 @@ export default function ArcGisMapBoard({
             </div>
             <p className="text-xs font-bold text-zinc-500">{mapStatus}</p>
           </div>
-          <div ref={mapContainerRef} className="relative h-[calc(100vh-360px)] min-h-[560px] max-h-[760px] bg-[#e7e1d2]">
+          <div ref={mapContainerRef} className={`relative bg-[#e7e1d2] ${isGisMapFullscreen ? 'h-[calc(100vh-17rem)] min-h-[520px]' : 'h-[calc(100vh-330px)] min-h-[640px] max-h-[calc(100vh-220px)]'}`}>
             {!arcGisConfig.isReady && (
               <div className="absolute inset-0 flex items-center justify-center p-6">
                 <div className="max-w-md rounded-lg border border-amber-200 bg-amber-50 p-5 text-center shadow-sm">
@@ -539,7 +562,23 @@ export default function ArcGisMapBoard({
           <TreeStatusLegend />
         </div>
 
-        <aside className="space-y-4 xl:max-h-[calc(100vh-260px)] xl:overflow-y-auto xl:pr-1">
+        <aside className={`space-y-4 xl:max-h-[calc(100vh-230px)] xl:overflow-y-auto xl:pr-1 ${isGisWorkbenchCollapsed ? 'xl:overflow-visible xl:pr-0' : ''}`}>
+          {isGisWorkbenchCollapsed ? (
+            <div className="sticky top-4 flex flex-col items-center gap-2 rounded-xl border border-jdt-border bg-white p-2 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setIsGisWorkbenchCollapsed(false)}
+                title="Expand GIS workbench"
+                aria-label="Expand GIS workbench"
+                className="flex h-10 w-10 items-center justify-center rounded-lg bg-jdt-primary text-white hover:bg-jdt-dark"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <Layers className="h-5 w-5 text-jdt-primary" />
+              <span className="[writing-mode:vertical-rl] text-[10px] font-black uppercase tracking-wide text-zinc-400">GIS</span>
+            </div>
+          ) : (
+          <>
           <section className="rounded-lg border border-jdt-border bg-white shadow-sm">
             <div className="border-b border-jdt-border px-3 py-2">
               <div className="grid grid-cols-4 gap-1">
@@ -642,6 +681,8 @@ export default function ArcGisMapBoard({
               </FormSection>
             </div>
           </section>
+          </>
+          )}
         </aside>
       </section>
 

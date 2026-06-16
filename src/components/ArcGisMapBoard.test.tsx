@@ -91,6 +91,9 @@ describe("ArcGisMapBoard", () => {
     assert.match(html, /Latitude/);
     assert.match(html, /Longitude/);
     assert.match(html, /ArcGIS API key missing/);
+    assert.match(html, /Collapse GIS workbench/);
+    assert.match(html, /Expand GIS map workspace/);
+    assert.match(html, /Fullscreen Map/);
   });
 
   it("explains when the ArcGIS sync API route is missing from the served app", () => {

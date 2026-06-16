@@ -189,6 +189,44 @@ describe("MapsBoard relocation pin editing", () => {
     assert.equal(html.indexOf("Selected Tree Command") < html.indexOf("Online GIS Import / KML Backup"), true);
   });
 
+  it("exposes Reveal-style map workspace controls on shared project maps", () => {
+    const html = renderToString(
+      <MapsBoard
+        initialSelectedJobId="job-boca-course-1"
+        jobs={[
+          {
+            id: "job-boca-course-1",
+            title: "Boca West Course 1 Renovation",
+            division: "Relocation & Installation",
+            clientName: "Boca West Country Club",
+          },
+        ]}
+        ranchOaks={[
+          {
+            id: "tree-1",
+            treeId: "inventory-10-acre-2-densa-pine-8",
+            ranchOakType: "Densa Pine",
+            farm: "10 Acre",
+            zone: "2",
+            jobId: "job-boca-course-1",
+            relocationMap: {
+              source: { lat: 26.75505, lng: -80.91809, label: "Current field position" },
+            },
+          },
+        ]}
+        onUpdateTreeLocation={() => undefined}
+        openDrawer={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Collapse map workbench/);
+    assert.match(html, /Expand map workspace/);
+    assert.match(html, /Fullscreen Map/);
+    assert.match(html, /Tree Map Workbench/);
+    assert.match(html, /title="Zoom In"/);
+    assert.match(html, /title="Zoom Out"/);
+  });
+
   it("shows imported relocation tree records as job-scoped map pins", () => {
     const html = renderToString(
       <MapsBoard

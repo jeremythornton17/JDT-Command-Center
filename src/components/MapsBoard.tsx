@@ -401,6 +401,8 @@ export default function MapsBoard({
   const [showGpsLabels, setShowGpsLabels] = useState(true);
   const [isIconClusteringEnabled, setIsIconClusteringEnabled] = useState(true);
   const [showGpsTraffic, setShowGpsTraffic] = useState(true);
+  const [isMapWorkbenchCollapsed, setIsMapWorkbenchCollapsed] = useState(false);
+  const [isMapWorkspaceFullscreen, setIsMapWorkspaceFullscreen] = useState(false);
   const filteredGpsAssets = useMemo(
     () => filterLiveGpsAssets(liveGpsAssets, {
       categories: activeGpsCategories,
@@ -2002,7 +2004,7 @@ export default function MapsBoard({
   }
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-5 ${isMapWorkspaceFullscreen ? 'fixed inset-0 z-[135] overflow-hidden bg-jdt-bg p-3' : ''}`}>
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-jdt-border pb-5">
         <div>
           <h2 className="text-2xl font-black text-jdt-primary">{pageTitle}</h2>
@@ -2012,10 +2014,28 @@ export default function MapsBoard({
           <button onClick={() => zoomMapBy(-1)} className="p-1.5 hover:bg-jdt-sand rounded text-zinc-600" title="Zoom Out"><ZoomOut className="h-4 w-4" /></button>
           <span className="text-xs font-black uppercase text-zinc-700 px-3">ZOOM: {zoomLevel}</span>
           <button onClick={() => zoomMapBy(1)} className="p-1.5 hover:bg-jdt-sand rounded text-zinc-600" title="Zoom In"><ZoomIn className="h-4 w-4" /></button>
+          <button
+            type="button"
+            onClick={() => setIsMapWorkbenchCollapsed((value) => !value)}
+            className="p-1.5 hover:bg-jdt-sand rounded text-zinc-600"
+            title={isMapWorkbenchCollapsed ? 'Expand map workbench' : 'Collapse map workbench'}
+            aria-label={isMapWorkbenchCollapsed ? 'Expand map workbench' : 'Collapse map workbench'}
+          >
+            {isMapWorkbenchCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsMapWorkspaceFullscreen((value) => !value)}
+            className="p-1.5 hover:bg-jdt-sand rounded text-zinc-600"
+            title={isMapWorkspaceFullscreen ? 'Exit full screen map' : 'Expand map workspace'}
+            aria-label={isMapWorkspaceFullscreen ? 'Exit full screen map' : 'Expand map workspace'}
+          >
+            {isMapWorkspaceFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </button>
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_440px]">
+      <div className={`grid gap-4 ${isMapWorkbenchCollapsed ? 'xl:grid-cols-[minmax(0,1fr)_4.5rem]' : 'xl:grid-cols-[minmax(0,1fr)_390px]'}`}>
         <div className="space-y-4">
           <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
             <div className="grid gap-3 xl:grid-cols-[1fr_auto]">
@@ -2126,8 +2146,13 @@ export default function MapsBoard({
                     <button type="button" onClick={printFieldMap} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
                       <ClipboardList className="h-4 w-4" /> Print Field Map
                     </button>
-                    <button type="button" onClick={() => setFieldStatus('Fullscreen map mode requested. Use the browser fullscreen control while the dedicated map shell is finalized.')} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
-                      <Eye className="h-4 w-4" /> Fullscreen Map
+                    <button
+                      type="button"
+                      onClick={() => setIsMapWorkspaceFullscreen((value) => !value)}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                      title={isMapWorkspaceFullscreen ? 'Exit full screen map' : 'Expand map workspace'}
+                    >
+                      {isMapWorkspaceFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />} Fullscreen Map
                     </button>
                   </>
                 )}
@@ -2142,7 +2167,7 @@ export default function MapsBoard({
 
           {showTreeMapPanels && <RelocationPipelineSummary pipeline={projectRelocationPipeline} />}
 
-          <div className="relative min-h-[560px] bg-zinc-950 rounded-2xl border border-jdt-border shadow-sm overflow-hidden isolate">
+          <div className={`relative bg-zinc-950 rounded-2xl border border-jdt-border shadow-sm overflow-hidden isolate ${isMapWorkspaceFullscreen ? 'min-h-[calc(100vh-15rem)]' : 'min-h-[calc(100vh-310px)]'}`}>
             {mapsConfig.isReady ? (
               <>
                 <div ref={googleMapRef} className="absolute inset-0" />
@@ -2205,7 +2230,24 @@ export default function MapsBoard({
           )}
         </div>
 
-        <aside className="space-y-4">
+        <aside className={`space-y-4 xl:max-h-[calc(100vh-230px)] xl:overflow-y-auto xl:pr-1 ${isMapWorkbenchCollapsed ? 'xl:overflow-visible xl:pr-0' : ''}`}>
+          {isMapWorkbenchCollapsed ? (
+            <div className="sticky top-4 flex flex-col items-center gap-2 rounded-xl border border-jdt-border bg-white p-2 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setIsMapWorkbenchCollapsed(false)}
+                title="Expand map workbench"
+                aria-label="Expand map workbench"
+                className="flex h-10 w-10 items-center justify-center rounded-lg bg-jdt-primary text-white hover:bg-jdt-dark"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="sr-only">Map workbench collapsed</span>
+              {isLiveGpsView ? <Truck className="h-5 w-5 text-sky-700" /> : showTreeMapPanels ? <TreePine className="h-5 w-5 text-jdt-primary" /> : <MapPin className="h-5 w-5 text-amber-700" />}
+              <span className="[writing-mode:vertical-rl] text-[10px] font-black uppercase tracking-wide text-zinc-400">Workbench</span>
+            </div>
+          ) : (
+          <>
           {isLiveGpsView && (
             <div className="bg-jdt-panel rounded-xl border border-jdt-border p-4 shadow-sm">
               <div className="mb-3 flex items-start justify-between gap-3">
@@ -2891,6 +2933,8 @@ export default function MapsBoard({
               )}
             </div>
           </div>
+          )}
+          </>
           )}
         </aside>
       </div>
