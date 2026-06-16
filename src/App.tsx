@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   BarChart2,
   Calendar,
+  ChevronLeft,
   ChevronRight,
   Database,
   DollarSign,
@@ -573,6 +574,7 @@ export default function App() {
   const [modalConfig, setModalConfig] = useState<ModalConfig>({ isOpen: false, type: '' });
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [projectImportContext, setProjectImportContext] = useState<ProjectImportContext | null>(null);
   const [isSyncingRevealVehicles, setIsSyncingRevealVehicles] = useState(false);
   const [revealVehicleSyncStatus, setRevealVehicleSyncStatus] = useState('Ready to sync Verizon Reveal vehicles');
@@ -1651,6 +1653,8 @@ export default function App() {
     }
   };
 
+  const isMapActive = ['jdtLocations', 'treeGisMap', 'fleetGps', 'mapImports'].includes(activeTab);
+
   return (
     <div className="min-h-screen bg-jdt-bg text-jdt-text">
       <div className="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-jdt-border bg-jdt-primary px-4 py-3 text-white">
@@ -1660,25 +1664,48 @@ export default function App() {
       </div>
 
       <div className="flex">
-        <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed inset-y-0 left-0 z-50 w-72 bg-jdt-primary text-white transition-transform lg:sticky lg:top-0 lg:translate-x-0 lg:h-screen`}>
+        <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed inset-y-0 left-0 z-50 w-72 bg-jdt-primary text-white transition-[width,transform] duration-200 lg:sticky lg:top-0 lg:translate-x-0 lg:h-screen ${isSidebarCollapsed ? 'lg:w-20' : 'lg:w-72'}`}>
           <div className="flex h-full flex-col">
-            <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
-              <div>
+            <div className={`flex items-center justify-between gap-3 border-b border-white/10 py-5 ${isSidebarCollapsed ? 'px-3 lg:px-2' : 'px-5'}`}>
+              <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50">JD Thornton</p>
-                <h1 className="text-lg font-black">Command Center</h1>
+                <h1 className={`text-lg font-black ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>Command Center</h1>
               </div>
-              <button type="button" onClick={() => setIsSidebarOpen(false)} className="lg:hidden rounded-lg p-2 hover:bg-white/10"><X className="h-5 w-5" /></button>
+              <div className="flex items-center gap-1">
+                {isSidebarCollapsed ? (
+                  <button
+                    type="button"
+                    aria-label="Expand sidebar"
+                    title="Expand sidebar"
+                    onClick={() => setIsSidebarCollapsed(false)}
+                    className="hidden h-9 w-9 items-center justify-center rounded-lg border border-white/15 bg-white/10 hover:bg-white/20 lg:flex"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label="Collapse sidebar"
+                    title="Collapse sidebar"
+                    onClick={() => setIsSidebarCollapsed(true)}
+                    className="hidden h-9 w-9 items-center justify-center rounded-lg border border-white/15 bg-white/10 hover:bg-white/20 lg:flex"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                )}
+                <button type="button" onClick={() => setIsSidebarOpen(false)} className="lg:hidden rounded-lg p-2 hover:bg-white/10"><X className="h-5 w-5" /></button>
+              </div>
             </div>
 
-            <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
-              <NavGroup label="Operations" items={mainNav} activeTab={activeTab} setActiveTab={setActiveTab} closeMenu={() => setIsSidebarOpen(false)} />
-              <NavGroup label="Maps" items={mapNav} activeTab={activeTab} setActiveTab={setActiveTab} closeMenu={() => setIsSidebarOpen(false)} />
-              <NavGroup label="Workspace" items={secondaryNav} activeTab={activeTab} setActiveTab={setActiveTab} closeMenu={() => setIsSidebarOpen(false)} />
+            <nav className={`flex-1 overflow-y-auto py-4 space-y-6 ${isSidebarCollapsed ? 'px-3 lg:px-2' : 'px-3'}`}>
+              <NavGroup label="Operations" items={mainNav} activeTab={activeTab} setActiveTab={setActiveTab} closeMenu={() => setIsSidebarOpen(false)} collapsed={isSidebarCollapsed} />
+              <NavGroup label="Maps" items={mapNav} activeTab={activeTab} setActiveTab={setActiveTab} closeMenu={() => setIsSidebarOpen(false)} collapsed={isSidebarCollapsed} />
+              <NavGroup label="Workspace" items={secondaryNav} activeTab={activeTab} setActiveTab={setActiveTab} closeMenu={() => setIsSidebarOpen(false)} collapsed={isSidebarCollapsed} />
             </nav>
 
-            <div className="border-t border-white/10 p-3">
-              <button onClick={logOut} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-black text-white/75 hover:bg-white/10 hover:text-white">
-                <LogOut className="h-4 w-4" /> Sign Out
+            <div className={`border-t border-white/10 p-3 ${isSidebarCollapsed ? 'lg:px-2' : ''}`}>
+              <button onClick={logOut} title="Sign Out" className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-black text-white/75 hover:bg-white/10 hover:text-white ${isSidebarCollapsed ? 'lg:justify-center lg:px-0' : ''}`}>
+                <LogOut className="h-4 w-4" /> <span className={isSidebarCollapsed ? 'lg:hidden' : ''}>Sign Out</span>
               </button>
             </div>
           </div>
@@ -1686,7 +1713,7 @@ export default function App() {
 
         {isSidebarOpen && <button type="button" aria-label="Close menu" onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 z-40 bg-black/30 lg:hidden" />}
 
-        <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
+        <main className={`min-w-0 flex-1 ${isMapActive ? 'p-3 sm:p-4 lg:p-5' : 'p-4 sm:p-6 lg:p-8'}`}>
           <header className="mb-6 flex flex-col gap-4 border-b border-jdt-border pb-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Live Workspace</p>
@@ -1756,10 +1783,10 @@ export default function App() {
   );
 }
 
-function NavGroup({ label, items, activeTab, setActiveTab, closeMenu }: any) {
+function NavGroup({ label, items, activeTab, setActiveTab, closeMenu, collapsed }: any) {
   return (
     <div>
-      <p className="px-3 text-[10px] font-black uppercase tracking-[0.18em] text-white/40 mb-2">{label}</p>
+      <p className={`px-3 text-[10px] font-black uppercase tracking-[0.18em] text-white/40 mb-2 ${collapsed ? 'lg:sr-only' : ''}`}>{label}</p>
       <div className="space-y-1">
         {items.map((item: any) => {
           const Icon = item.icon;
@@ -1768,11 +1795,12 @@ function NavGroup({ label, items, activeTab, setActiveTab, closeMenu }: any) {
             <button
               key={item.id}
               onClick={() => { setActiveTab(item.id); closeMenu(); }}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-black transition-colors ${active ? 'bg-white text-jdt-primary shadow-sm' : 'text-white/75 hover:bg-white/10 hover:text-white'}`}
+              title={item.label}
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-black transition-colors ${collapsed ? 'lg:justify-center lg:px-0' : ''} ${active ? 'bg-white text-jdt-primary shadow-sm' : 'text-white/75 hover:bg-white/10 hover:text-white'}`}
             >
               <Icon className="h-4 w-4" />
-              <span className="min-w-0 flex-1 truncate">{item.label}</span>
-              {active && <ChevronRight className="h-4 w-4" />}
+              <span className={`min-w-0 flex-1 truncate ${collapsed ? 'lg:hidden' : ''}`}>{item.label}</span>
+              {active && !collapsed && <ChevronRight className="h-4 w-4" />}
             </button>
           );
         })}

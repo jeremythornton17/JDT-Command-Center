@@ -519,6 +519,52 @@ describe("MapsBoard relocation pin editing", () => {
     assert.doesNotMatch(html, /Online GIS Import \/ KML Backup/);
   });
 
+  it("renders Fleet GPS as a Reveal-style live map workspace", () => {
+    const html = renderToString(
+      <MapsBoard
+        pagePurpose="fleetGps"
+        jobs={[]}
+        loads={[{
+          id: "load-boca-equipment",
+          title: "Christian Crespo - Semi #1 - Boca West equipment moves",
+          truckId: "equipment-semi-1",
+          truck: "Semi #1",
+          driver: "Christian Crespo",
+          status: "In Transit",
+        }]}
+        equipment={[
+          { id: "equipment-semi-1", name: "Semi #1", category: "Truck", revealVehicleId: "veh-1" },
+          { id: "equipment-komatsu-500-1", name: "Komatsu 500 - 1", category: "Machine", revealVehicleId: "asset-komatsu-1" },
+        ]}
+        fleetTelematicsEvents={[
+          { id: "evt-semi", providerVehicleId: "veh-1", vehicleName: "Semi #1", latitude: 26.38, longitude: -80.17, speedMph: 18, driverName: "Christian Crespo", eventAt: "2026-06-13T14:00:00.000Z" },
+          { id: "evt-komatsu", providerVehicleId: "asset-komatsu-1", vehicleName: "Komatsu 500 - 1", latitude: 26.75, longitude: -80.98, speedMph: 0, eventAt: "2026-06-13T14:00:00.000Z" },
+        ]}
+        canSyncRevealLiveLocations
+        onSyncRevealLiveLocations={() => undefined}
+        ranchOaks={[]}
+        treeRelocationRecords={[]}
+        onUpdateTreeLocation={() => undefined}
+        openDrawer={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Reveal-style Live Map/);
+    assert.match(html, /Select All Vehicles/);
+    assert.match(html, /Asset List/);
+    assert.match(html, /Fit To Map/);
+    assert.match(html, /Text View/);
+    assert.match(html, /Map Options/);
+    assert.match(html, /Icon Legend/);
+    assert.match(html, /Show All Labels/);
+    assert.match(html, /Icon Clustering/);
+    assert.match(html, /Full Screen/);
+    assert.match(html, /title="Fit all visible GPS assets"/);
+    assert.match(html, /title="Open GPS text view"/);
+    assert.match(html, /title="Open map options"/);
+    assert.match(html, /title="Expand map workspace"/);
+  });
+
   it("can isolate a single live GPS asset from the map entry point", () => {
     const html = renderToString(
       <MapsBoard

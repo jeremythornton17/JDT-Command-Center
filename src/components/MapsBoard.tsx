@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   CheckSquare,
   ClipboardList,
   Compass,
@@ -9,20 +11,25 @@ import {
   Download,
   Eye,
   Layers,
+  List,
   Globe2,
   LocateFixed,
+  Maximize2,
+  Minimize2,
   MapPin,
   Pencil,
   Plus,
   Route,
   Save,
   Search,
+  SlidersHorizontal,
   RefreshCw,
   Target,
   Truck,
   TreePine,
   Upload,
   Wrench,
+  X,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -387,6 +394,13 @@ export default function MapsBoard({
   const [activeGpsStatuses, setActiveGpsStatuses] = useState<string[]>([]);
   const [selectedGpsAssetId, setSelectedGpsAssetId] = useState(initialSelectedGpsAssetId || '');
   const [isolatedGpsAssetId, setIsolatedGpsAssetId] = useState(initialSelectedGpsAssetId || '');
+  const [isGpsPanelCollapsed, setIsGpsPanelCollapsed] = useState(false);
+  const [isGpsMapOptionsOpen, setIsGpsMapOptionsOpen] = useState(false);
+  const [isGpsTextViewOpen, setIsGpsTextViewOpen] = useState(false);
+  const [isGpsMapFullscreen, setIsGpsMapFullscreen] = useState(false);
+  const [showGpsLabels, setShowGpsLabels] = useState(true);
+  const [isIconClusteringEnabled, setIsIconClusteringEnabled] = useState(true);
+  const [showGpsTraffic, setShowGpsTraffic] = useState(true);
   const filteredGpsAssets = useMemo(
     () => filterLiveGpsAssets(liveGpsAssets, {
       categories: activeGpsCategories,
@@ -421,6 +435,39 @@ export default function MapsBoard({
     : selectedPin
       ? `Selected ${selectedPin.pointType} pin. Click Move Selected Pin, drag the marker, or use phone GPS to update it.`
     : 'Choose Source or Destination before marking a tree pin.';
+
+  const setMapZoom = (nextZoom: number) => {
+    const boundedZoom = Math.min(21, Math.max(4, nextZoom));
+    setZoomLevel(boundedZoom);
+    googleMapInstanceRef.current?.setZoom?.(boundedZoom);
+  };
+
+  const zoomMapBy = (delta: number) => {
+    const currentZoom = Number(googleMapInstanceRef.current?.getZoom?.() || zoomLevel || 17);
+    setMapZoom(currentZoom + delta);
+  };
+
+  const fitVisibleGpsAssets = () => {
+    const positionedAssets = visibleGpsAssets.filter((asset) => asset.lat !== undefined && asset.lng !== undefined);
+    if (!positionedAssets.length) {
+      setFieldStatus('No visible GPS assets have coordinates to fit on the map.');
+      return;
+    }
+
+    const map = googleMapInstanceRef.current;
+    const maps = window.google?.maps;
+    if (map && maps?.LatLngBounds) {
+      const bounds = new maps.LatLngBounds();
+      positionedAssets.forEach((asset) => bounds.extend({ lat: asset.lat, lng: asset.lng }));
+      map.fitBounds(bounds);
+      const nextZoom = positionedAssets.length === 1 ? Math.max(Number(map.getZoom?.() || 0), 16) : Number(map.getZoom?.() || zoomLevel);
+      if (Number.isFinite(nextZoom)) setZoomLevel(nextZoom);
+      setFieldStatus(`Fit ${positionedAssets.length} GPS asset${positionedAssets.length === 1 ? '' : 's'} on the live map.`);
+      return;
+    }
+
+    setFieldStatus(`Fit ${positionedAssets.length} GPS asset${positionedAssets.length === 1 ? '' : 's'} on the fallback map. Live Google Maps fit is available when the API is active.`);
+  };
 
   const focusMapOnSelectedJob = (maps?: any) => {
     if (selectedJobId === 'all') {
@@ -524,6 +571,12 @@ export default function MapsBoard({
               west: Number(southWest.lng()),
             };
             setVisibleMapBounds((current) => (mapBoundsEqual(current, nextBounds) ? current : nextBounds));
+          });
+
+          googleMapInstanceRef.current.addListener('zoom_changed', () => {
+            const nextZoom = Number(googleMapInstanceRef.current?.getZoom?.());
+            if (!Number.isFinite(nextZoom)) return;
+            setZoomLevel((currentZoom) => (currentZoom === nextZoom ? currentZoom : nextZoom));
           });
         }
 
@@ -821,7 +874,7 @@ export default function MapsBoard({
     if (point && googleMapInstanceRef.current) {
       setMapViewMode('earth');
       googleMapInstanceRef.current.setCenter({ lat: point.lat, lng: point.lng });
-      googleMapInstanceRef.current.setZoom(Math.max(zoomLevel, 18));
+      setMapZoom(Math.max(Number(googleMapInstanceRef.current.getZoom?.() || zoomLevel), 18));
       setFieldStatus(`${location.name || location.title || 'Saved location'} focused at ${formatTreeCoordinate(point)}.`);
       return;
     }
@@ -841,7 +894,7 @@ export default function MapsBoard({
     if (point && map) {
       setMapViewMode('earth');
       map.setCenter({ lat: point.lat, lng: point.lng });
-      map.setZoom(Math.max(zoomLevel, 19));
+      setMapZoom(Math.max(Number(map.getZoom?.() || zoomLevel), 19));
       setFieldStatus(`Opened ${label} in the in-app map at ${formatTreeCoordinate(point)}.`);
       return;
     }
@@ -861,7 +914,7 @@ export default function MapsBoard({
 
         setMapViewMode('earth');
         map.setCenter(resultLocation);
-        map.setZoom(Math.max(zoomLevel, 19));
+        setMapZoom(Math.max(Number(map.getZoom?.() || zoomLevel), 19));
         const marker = new maps.Marker({
           position: resultLocation,
           map,
@@ -903,7 +956,7 @@ export default function MapsBoard({
     setMapViewMode('earth');
     if (map) {
       map.setCenter({ lat: vehicle.lat, lng: vehicle.lng });
-      map.setZoom(Math.max(zoomLevel, 17));
+      setMapZoom(Math.max(Number(map.getZoom?.() || zoomLevel), 17));
     }
     setFieldStatus(`${vehicle.label} focused at ${formatTreeCoordinate({ lat: vehicle.lat, lng: vehicle.lng })}.`);
   };
@@ -915,7 +968,7 @@ export default function MapsBoard({
     const map = googleMapInstanceRef.current;
     if (map && asset.lat !== undefined && asset.lng !== undefined) {
       map.setCenter({ lat: asset.lat, lng: asset.lng });
-      map.setZoom(Math.max(zoomLevel, 17));
+      setMapZoom(Math.max(Number(map.getZoom?.() || zoomLevel), 17));
       setFieldStatus(`${asset.name} focused at ${formatTreeCoordinate({ lat: asset.lat, lng: asset.lng })}.`);
       return;
     }
@@ -1581,6 +1634,373 @@ export default function MapsBoard({
     );
   }
 
+  if (isDedicatedFleetGpsPage) {
+    const positionedGpsAssets = visibleGpsAssets.filter((asset) => asset.lat !== undefined && asset.lng !== undefined);
+    const vehicleCategoryActive = activeGpsCategories.includes('vehicle');
+
+    return (
+      <div className={`space-y-4 ${isGpsMapFullscreen ? 'fixed inset-0 z-[140] overflow-hidden bg-jdt-bg p-3' : ''}`}>
+        <div className="flex flex-col gap-3 border-b border-jdt-border pb-4 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <h2 className="text-2xl font-black text-jdt-primary">Fleet GPS</h2>
+            <p className="mt-1 text-sm font-bold text-zinc-500">
+              Reveal-style Live Map for vehicles, equipment trackers, freight moves, and unmatched GPS assets
+            </p>
+            <p className="mt-1 text-xs font-black uppercase tracking-wide text-zinc-400">
+              Verizon Reveal vehicle, equipment, freight, and unmatched GPS tracking
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {(canSyncRevealLiveLocations && onSyncRevealLiveLocations) && (
+              <button
+                type="button"
+                onClick={() => void onSyncRevealLiveLocations()}
+                disabled={isSyncingRevealLiveLocations}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-700 px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
+                title="Sync Verizon Reveal live locations"
+              >
+                <RefreshCw className={`h-4 w-4 ${isSyncingRevealLiveLocations ? 'animate-spin' : ''}`} />
+                {isSyncingRevealLiveLocations ? 'Syncing' : 'Sync GPS'}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => window.open('https://reveal.us.vzconnect.com/en-US/live-map/', '_blank', 'noopener,noreferrer')}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[10px] font-black uppercase text-sky-900 hover:border-sky-500"
+              title="Open Verizon Reveal Live Map"
+            >
+              <Truck className="h-4 w-4" /> Open in Verizon Reveal
+            </button>
+          </div>
+        </div>
+
+        <section className={`relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl ${isGpsMapFullscreen ? 'h-[calc(100vh-6rem)]' : 'min-h-[calc(100vh-190px)]'}`}>
+          {mapsConfig.isReady ? (
+            <div ref={googleMapRef} className="absolute inset-0" />
+          ) : (
+            <div className="absolute inset-0">
+              <img
+                src="https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=1800&auto=format&fit=crop"
+                alt="Satellite style live GPS map"
+                className="absolute inset-0 h-full w-full object-cover opacity-70 mix-blend-luminosity"
+              />
+              <div className="absolute inset-0 bg-slate-950/20" />
+              {renderFallbackLiveGpsPins()}
+            </div>
+          )}
+
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/18 via-transparent to-black/5" />
+
+          <div className={`absolute left-0 top-0 z-30 h-full border-r border-zinc-200 bg-white shadow-2xl transition-transform duration-200 ${isGpsPanelCollapsed ? '-translate-x-[calc(100%-3.5rem)]' : 'translate-x-0'} w-[22rem] max-w-[82vw]`}>
+            <div className="flex h-full flex-col">
+              <div className="flex items-center border-b border-zinc-200 bg-white">
+                <button
+                  type="button"
+                  title="Vehicles"
+                  className="flex h-14 flex-1 items-center justify-center border-b-4 border-red-600 text-zinc-900"
+                >
+                  <Truck className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  title="Equipment"
+                  className="flex h-14 flex-1 items-center justify-center border-b-4 border-transparent text-zinc-500 hover:text-zinc-900"
+                >
+                  <Wrench className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={isGpsPanelCollapsed ? 'Expand asset list' : 'Collapse asset list'}
+                  title={isGpsPanelCollapsed ? 'Expand asset list' : 'Collapse asset list'}
+                  onClick={() => setIsGpsPanelCollapsed((value) => !value)}
+                  className="flex h-14 w-14 items-center justify-center border-l border-zinc-200 text-zinc-700 hover:bg-zinc-100"
+                >
+                  {isGpsPanelCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+                </button>
+              </div>
+
+              <div className="border-b border-zinc-200 p-4">
+                <p className="text-xs font-black uppercase tracking-wide text-zinc-500">Live GPS Assets</p>
+                <p className="mt-1 text-[10px] font-black uppercase tracking-wide text-zinc-400">Asset List</p>
+                <label className="mt-2 block">
+                  <span className="sr-only">View</span>
+                  <select
+                    value={
+                      activeGpsCategories.length === liveGpsCategoryOptions.length
+                        ? 'All GPS Assets'
+                        : activeGpsCategories.length === 1 && activeGpsCategories[0] === 'equipment'
+                          ? 'Equipment'
+                          : activeGpsCategories.length === 1 && activeGpsCategories[0] === 'freight'
+                            ? 'Freight'
+                            : 'Vehicles'
+                    }
+                    onChange={(event) => {
+                      if (event.target.value === 'Equipment') {
+                        setActiveGpsCategories(['equipment']);
+                      } else if (event.target.value === 'Freight') {
+                        setActiveGpsCategories(['freight']);
+                      } else if (event.target.value === 'All GPS Assets') {
+                        setActiveGpsCategories(['vehicle', 'equipment', 'freight', 'unmatched']);
+                      } else {
+                        setActiveGpsCategories(['vehicle']);
+                      }
+                    }}
+                    className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-bold text-zinc-800 outline-none focus:border-sky-600"
+                  >
+                    <option>Vehicles</option>
+                    <option>Equipment</option>
+                    <option>Freight</option>
+                    <option>All GPS Assets</option>
+                  </select>
+                </label>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <label className="flex items-center gap-2 text-sm font-bold text-zinc-700">
+                    <input
+                      type="checkbox"
+                      checked={vehicleCategoryActive}
+                      onChange={() => toggleLiveGpsCategory('vehicle')}
+                      className="h-4 w-4 accent-red-600"
+                    />
+                    Select All Vehicles
+                  </label>
+                  <button type="button" onClick={() => setActiveGpsCategories(['vehicle', 'equipment', 'freight', 'unmatched'])} className="text-[10px] font-black uppercase text-sky-700 hover:text-sky-900">
+                    Select All
+                  </button>
+                </div>
+              </div>
+
+              <div className="border-b border-zinc-200 p-4">
+                <div className="flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-2">
+                  <Search className="h-4 w-4 text-zinc-400" />
+                  <input
+                    value={gpsSearch}
+                    onChange={(event) => setGpsSearch(event.target.value)}
+                    placeholder="Vehicle, asset, driver, address, or place"
+                    className="min-w-0 flex-1 bg-transparent text-sm font-bold text-zinc-800 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {filteredGpsAssets.length > 0 ? filteredGpsAssets.map((asset) => {
+                  const selected = selectedGpsAsset?.id === asset.id;
+                  const Icon = liveGpsIcon(asset.category);
+                  return (
+                    <div key={asset.id} className={`border-b border-zinc-200 bg-white p-4 ${selected ? 'ring-2 ring-inset ring-sky-500' : ''}`}>
+                      <button type="button" onClick={() => focusLiveGpsAsset(asset)} className="w-full text-left">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-black text-zinc-900">{asset.name}</p>
+                            <p className="mt-1 text-xs font-bold leading-snug text-zinc-600">
+                              {asset.lastUpdatedAt ? `Last Movement ${asset.lastUpdatedAt}` : 'No latest movement time'}
+                            </p>
+                            <p className="mt-1 text-xs font-bold leading-snug text-zinc-600">
+                              {asset.address || asset.currentAddress || (asset.lat !== undefined && asset.lng !== undefined ? formatTreeCoordinate({ lat: asset.lat, lng: asset.lng }) : 'No GPS coordinate')}
+                            </p>
+                          </div>
+                          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white ${liveGpsPinClass(asset.category)}`}>
+                            <Icon className="h-4 w-4 text-white" />
+                          </span>
+                        </div>
+                      </button>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <button type="button" onClick={() => focusLiveGpsAsset(asset)} className="rounded-md border border-zinc-200 px-2 py-1.5 text-[9px] font-black uppercase text-zinc-700 hover:border-sky-500">Zoom To</button>
+                        <button type="button" onClick={() => isolateLiveGpsAssetOnMap(asset)} className="rounded-md border border-zinc-200 px-2 py-1.5 text-[9px] font-black uppercase text-zinc-700 hover:border-sky-500">Isolate</button>
+                      </div>
+                    </div>
+                  );
+                }) : (
+                  <div className="p-5 text-center">
+                    <p className="text-xs font-black uppercase text-zinc-900">No GPS assets visible</p>
+                    <p className="mt-1 text-xs font-bold text-zinc-500">Adjust filters or sync live locations from Reveal.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="absolute left-[23.5rem] top-4 z-20 flex max-w-[calc(100%-28rem)] items-center gap-2 rounded-full bg-white px-4 py-2 shadow-xl max-lg:left-4 max-lg:max-w-[calc(100%-8rem)]">
+            <Search className="h-5 w-5 text-zinc-500" />
+            <input
+              value={gpsSearch}
+              onChange={(event) => setGpsSearch(event.target.value)}
+              placeholder="Vehicle, asset, driver, address, or place"
+              className="w-[24rem] max-w-full bg-transparent text-sm font-bold text-zinc-800 outline-none"
+            />
+          </div>
+
+          <div className="absolute right-4 top-4 z-30 flex items-center gap-3">
+            <button type="button" onClick={() => setIsGpsPanelCollapsed((value) => !value)} title="Asset List" className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-zinc-900 shadow-xl hover:bg-zinc-100">
+              <List className="h-5 w-5" />
+            </button>
+            <button type="button" onClick={fitVisibleGpsAssets} title="Fit all visible GPS assets" className="flex h-12 items-center justify-center gap-2 rounded-full bg-white px-4 text-sm font-black text-zinc-900 shadow-xl hover:bg-zinc-100">
+              <Maximize2 className="h-5 w-5" /> Fit To Map
+            </button>
+            <button type="button" onClick={() => setIsGpsTextViewOpen(true)} title="Open GPS text view" className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-zinc-900 shadow-xl hover:bg-zinc-100">
+              <List className="h-5 w-5" />
+              <span className="sr-only">Text View</span>
+            </button>
+            <button type="button" onClick={() => setIsGpsMapOptionsOpen((value) => !value)} title="Open map options" className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-zinc-900 shadow-xl hover:bg-zinc-100">
+              <SlidersHorizontal className="h-5 w-5" />
+            </button>
+            <button type="button" onClick={() => setIsGpsMapFullscreen((value) => !value)} title="Expand map workspace" className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-zinc-900 shadow-xl hover:bg-zinc-100">
+              {isGpsMapFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+            </button>
+          </div>
+
+          <div className="absolute bottom-5 right-5 z-30 flex flex-col overflow-hidden rounded-lg bg-white shadow-xl">
+            <button type="button" onClick={() => zoomMapBy(1)} title="Zoom In" className="flex h-12 w-12 items-center justify-center border-b border-zinc-200 text-zinc-900 hover:bg-zinc-100">
+              <ZoomIn className="h-5 w-5" />
+            </button>
+            <button type="button" onClick={() => zoomMapBy(-1)} title="Zoom Out" className="flex h-12 w-12 items-center justify-center text-zinc-900 hover:bg-zinc-100">
+              <ZoomOut className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="absolute bottom-5 left-1/2 z-30 -translate-x-1/2 rounded-lg bg-zinc-900/80 px-4 py-3 text-sm font-bold text-white shadow-xl">
+            {positionedGpsAssets.length > 0
+              ? `${positionedGpsAssets.length} GPS asset${positionedGpsAssets.length === 1 ? '' : 's'} visible. Zoom: ${zoomLevel}`
+              : 'There is too much detail to show on the map at this level. Try zooming in.'}
+          </div>
+
+          <div className="absolute bottom-5 right-24 z-30 flex overflow-hidden rounded-lg bg-white text-xs font-black uppercase shadow-xl">
+            <button type="button" onClick={() => setMapViewMode('map')} className={`px-5 py-3 ${mapViewMode === 'map' ? 'border-b-4 border-red-600 text-zinc-900' : 'text-zinc-500'}`}>Map</button>
+            <button type="button" onClick={() => setMapViewMode('earth')} className={`px-5 py-3 ${mapViewMode === 'earth' ? 'border-b-4 border-red-600 text-zinc-900' : 'text-zinc-500'}`}>Satellite</button>
+          </div>
+
+          <div className="absolute left-[23.5rem] top-20 z-20 flex flex-wrap gap-2 max-lg:left-4">
+            {showGpsLabels && visibleGpsAssets.slice(0, 3).map((asset) => (
+              <button
+                key={asset.id}
+                type="button"
+                onClick={() => focusLiveGpsAsset(asset)}
+                className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-zinc-700 shadow-lg hover:bg-zinc-100"
+                title={`Zoom to ${asset.name}`}
+              >
+                {asset.name}
+              </button>
+            ))}
+          </div>
+
+          {selectedGpsAsset && (
+            <div className="absolute left-1/2 top-1/2 z-40 w-[24rem] max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-zinc-200 bg-white shadow-2xl">
+              <div className="flex items-start justify-between gap-3 border-b border-zinc-200 p-4">
+                <div>
+                  <p className="text-lg font-black text-zinc-900">{selectedGpsAsset.name}</p>
+                  <p className="mt-1 text-xs font-bold text-zinc-500">{selectedGpsAsset.lat !== undefined && selectedGpsAsset.lng !== undefined ? formatTreeCoordinate({ lat: selectedGpsAsset.lat, lng: selectedGpsAsset.lng }) : 'No GPS coordinate'}</p>
+                </div>
+                <button type="button" onClick={() => setSelectedGpsAssetId('')} title="Close selected asset" className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="grid gap-2 p-4 text-sm font-bold text-zinc-700">
+                <span><strong className="font-black uppercase text-zinc-500">Status:</strong> {selectedGpsAsset.status}</span>
+                <span><strong className="font-black uppercase text-zinc-500">Driver/operator:</strong> {selectedGpsAsset.assignedDriver || 'Unassigned'}</span>
+                <span><strong className="font-black uppercase text-zinc-500">Assigned project:</strong> {selectedGpsAsset.assignedProjectName || 'Unassigned'}</span>
+                <span><strong className="font-black uppercase text-zinc-500">Address:</strong> {selectedGpsAsset.address || selectedGpsAsset.currentAddress || 'No address'}</span>
+                <span className={liveGpsConflictLabel(selectedGpsAsset).tone}><strong className="font-black uppercase">Conflict:</strong> {liveGpsConflictLabel(selectedGpsAsset).label}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 border-t border-zinc-200 p-4">
+                <button type="button" onClick={() => focusLiveGpsAsset(selectedGpsAsset)} className="rounded-lg border border-zinc-200 px-3 py-2 text-[10px] font-black uppercase text-zinc-700 hover:border-sky-500">Zoom To</button>
+                <button type="button" onClick={() => isolateLiveGpsAssetOnMap(selectedGpsAsset)} className="rounded-lg border border-zinc-200 px-3 py-2 text-[10px] font-black uppercase text-zinc-700 hover:border-sky-500">Isolate</button>
+                <button type="button" onClick={() => openLiveGpsAssetInMaps(selectedGpsAsset)} className="rounded-lg border border-zinc-200 px-3 py-2 text-[10px] font-black uppercase text-zinc-700 hover:border-sky-500">Open Maps</button>
+                <button type="button" onClick={() => void copyLiveGpsCoordinates(selectedGpsAsset)} className="rounded-lg border border-zinc-200 px-3 py-2 text-[10px] font-black uppercase text-zinc-700 hover:border-sky-500">Copy GPS</button>
+                {selectedGpsAsset.equipmentId && openDrawer && (
+                  <button type="button" onClick={() => openDrawer('equipment', selectedGpsAsset.equipmentId || '')} className="col-span-2 rounded-lg border border-zinc-200 px-3 py-2 text-[10px] font-black uppercase text-zinc-700 hover:border-sky-500">View Equipment</button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {isGpsTextViewOpen && (
+            <div className="absolute left-1/2 top-1/2 z-50 w-[62rem] max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-zinc-200 p-4">
+                <h3 className="text-xl font-black text-zinc-900">Vehicle Status (Text View)</h3>
+                <button type="button" onClick={() => setIsGpsTextViewOpen(false)} title="Close text view" className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="max-h-[60vh] overflow-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="sticky top-0 bg-zinc-50 text-xs font-black uppercase text-zinc-500">
+                    <tr>
+                      <th className="px-4 py-3">Vehicle</th>
+                      <th className="px-4 py-3">Driver</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Speed</th>
+                      <th className="px-4 py-3">Location</th>
+                      <th className="px-4 py-3">Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleGpsAssets.map((asset) => (
+                      <tr key={asset.id} className="border-t border-zinc-100">
+                        <td className="px-4 py-3 font-black text-zinc-900">{asset.name}</td>
+                        <td className="px-4 py-3 font-bold text-zinc-600">{asset.assignedDriver || '-'}</td>
+                        <td className="px-4 py-3"><span className={`rounded border px-2 py-1 text-[10px] font-black uppercase ${liveGpsStatusClass(asset.status)}`}>{asset.status}</span></td>
+                        <td className="px-4 py-3 font-bold text-zinc-600">{asset.speedMph ?? 0}</td>
+                        <td className="px-4 py-3 font-bold text-zinc-600">{asset.address || asset.currentAddress || '-'}</td>
+                        <td className="px-4 py-3 font-bold text-zinc-600">{asset.lastUpdatedAt || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <div className={`absolute right-4 top-20 z-40 w-80 rounded-xl bg-white shadow-2xl transition ${isGpsMapOptionsOpen ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-3 opacity-0'}`}>
+            <div className="flex items-center justify-between border-b border-zinc-200 p-4">
+              <h3 className="text-lg font-black text-zinc-900">Map Options</h3>
+              <button type="button" onClick={() => setIsGpsMapOptionsOpen(false)} title="Close map options" className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-5 p-4">
+              <div>
+                <p className="mb-2 text-xs font-black uppercase text-zinc-600">Map Type</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setMapViewMode('map')} className={`rounded-lg border p-3 text-xs font-black ${mapViewMode === 'map' ? 'border-sky-500 bg-sky-50 text-sky-900' : 'border-zinc-200 text-zinc-600'}`}>Default</button>
+                  <button type="button" onClick={() => setMapViewMode('earth')} className={`rounded-lg border p-3 text-xs font-black ${mapViewMode === 'earth' ? 'border-sky-500 bg-sky-50 text-sky-900' : 'border-zinc-200 text-zinc-600'}`}>Satellite</button>
+                </div>
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-black uppercase text-zinc-600">Show on Map</p>
+                <div className="space-y-2 text-sm font-bold text-zinc-700">
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={showGpsTraffic} onChange={() => setShowGpsTraffic((value) => !value)} className="h-4 w-4 accent-red-600" /> Traffic</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={showGpsLabels} onChange={() => setShowGpsLabels((value) => !value)} className="h-4 w-4 accent-red-600" /> Show All Labels</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={isIconClusteringEnabled} onChange={() => setIsIconClusteringEnabled((value) => !value)} className="h-4 w-4 accent-red-600" /> Icon Clustering</label>
+                </div>
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-black uppercase text-zinc-600">Icon Legend</p>
+                <div className="grid gap-2 text-xs font-bold text-zinc-700">
+                  {liveGpsCategoryOptions.map((category) => {
+                    const Icon = liveGpsIcon(category.id);
+                    return (
+                      <span key={category.id} className="flex items-center gap-2">
+                        <span className={`flex h-7 w-7 items-center justify-center rounded-full border border-white ${liveGpsPinClass(category.id)}`}>
+                          <Icon className="h-3.5 w-3.5 text-white" />
+                        </span>
+                        {category.label}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+          <span className="sr-only">Full Screen</span>
+          <span className="sr-only">Icon Legend</span>
+        </section>
+
+        <p className="rounded-xl border border-jdt-border bg-jdt-panel px-4 py-3 text-xs font-bold text-zinc-500">
+          {revealLiveLocationSyncStatus || fieldStatus || 'Reveal is the driver/vehicle dispatch execution layer. JDT remains the source of truth. ArcGIS remains the tree/location map layer.'}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-jdt-border pb-5">
@@ -1589,9 +2009,9 @@ export default function MapsBoard({
           <p className="text-sm font-bold text-zinc-500 mt-1">{pageDescription}</p>
         </div>
         <div className="flex items-center gap-2 bg-jdt-panel border border-jdt-border rounded-lg p-1 shadow-sm">
-          <button onClick={() => setZoomLevel(z => Math.max(9, z - 1))} className="p-1.5 hover:bg-jdt-sand rounded text-zinc-600" title="Zoom Out"><ZoomOut className="h-4 w-4" /></button>
+          <button onClick={() => zoomMapBy(-1)} className="p-1.5 hover:bg-jdt-sand rounded text-zinc-600" title="Zoom Out"><ZoomOut className="h-4 w-4" /></button>
           <span className="text-xs font-black uppercase text-zinc-700 px-3">ZOOM: {zoomLevel}</span>
-          <button onClick={() => setZoomLevel(z => Math.min(21, z + 1))} className="p-1.5 hover:bg-jdt-sand rounded text-zinc-600" title="Zoom In"><ZoomIn className="h-4 w-4" /></button>
+          <button onClick={() => zoomMapBy(1)} className="p-1.5 hover:bg-jdt-sand rounded text-zinc-600" title="Zoom In"><ZoomIn className="h-4 w-4" /></button>
         </div>
       </div>
 

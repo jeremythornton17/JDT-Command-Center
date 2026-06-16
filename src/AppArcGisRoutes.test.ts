@@ -24,3 +24,15 @@ test('App shell exposes dedicated online map routes and navigation entries', () 
   assert.match(appSource, /case\s+'mapImports'/);
   assert.doesNotMatch(appSource, /label:\s*'GIS Map'/);
 });
+
+test('App shell supports a collapsible desktop sidebar across every board', () => {
+  assert.match(appSource, /isSidebarCollapsed/);
+  assert.match(appSource, /setIsSidebarCollapsed/);
+  assert.match(appSource, /aria-label="Collapse sidebar"/);
+  assert.match(appSource, /aria-label="Expand sidebar"/);
+  assert.match(appSource, /lg:w-20/);
+  assert.match(appSource, /lg:w-72/);
+  assert.match(appSource, /NavGroup[\s\S]*collapsed={isSidebarCollapsed}/);
+  assert.match(appSource, /title={item\.label}/);
+  assert.match(appSource, /activeNav\.label/);
+});
