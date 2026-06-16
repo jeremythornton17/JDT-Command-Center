@@ -61,6 +61,8 @@ The Maps board supports tree relocation pinning with source and destination loca
 
 The GIS board is available at `/map` and project-specific routes like `/projects/<projectId>/map`. It uses the ArcGIS Maps SDK for JavaScript hosted loader and reads `VITE_ARCGIS_API_KEY` from Vite env or the Cloud Run `/runtime-config.js` response. Do not hardcode the key in source.
 
+JDT's GIS workflow is ArcGIS Online-first. Do not make the production app depend on ArcGIS Pro desktop projects, local geodatabases, or workstation files. ArcGIS Pro can still be used outside the app for one-off cleanup if needed, but the app should read and write only through ArcGIS Online hosted feature layers and JDT Command Center records.
+
 Keep JDT Command Center and ArcGIS Online connected but separate:
 
 - JDT Command Center is the operational system of record for projects, tree assets, work orders, costs, notes, crews, and workflow status.
@@ -100,3 +102,7 @@ node --import tsx scripts/create-arcgis-hosted-layer-seeds.mjs
 ```
 
 The command writes one file per hosted layer in `arcgis-seeds/`. Upload each GeoJSON file to ArcGIS Online as a hosted feature layer, keep the service name matching the file name, then copy each hosted layer URL back into the matching `VITE_ARCGIS_LAYER_JDT_*_URL` environment variable.
+
+KML/KMZ files are bridge formats only. Use them for client imports, ArcGIS Online exports, legacy Google Earth files, backups, and field sharing. After import, save clean project/tree/location records into JDT Command Center and sync geometry to ArcGIS Online hosted layers. Do not treat raw KML/KMZ files as the long-term database.
+
+See `docs/ARCGIS_ONLINE_OPERATING_STANDARD.md` for the JDT account, group, layer-sharing, and KML/KMZ operating standard.

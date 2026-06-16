@@ -285,7 +285,7 @@ describe("tree relocation map helpers", () => {
     assert.equal(searchTextForSavedSiteLocation(addressOnlyLocation), "20583 Boca West Dr, Boca Raton, FL 33434");
   });
 
-  it("builds a Google Earth KML package from project tree source and destination pins", () => {
+  it("builds a KML bridge package from project tree source and destination pins", () => {
     const earthPackage = buildProjectGoogleEarthMapPackage({
       job: {
         id: "job-boca-course-1",

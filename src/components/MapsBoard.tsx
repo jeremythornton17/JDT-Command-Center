@@ -189,6 +189,7 @@ function sourceTextForSiteLocation(location: any) {
 }
 
 type MapsBoardProps = {
+  pagePurpose?: 'combined' | 'locations' | 'fleetGps' | 'imports';
   jobs?: any[];
   loads?: LoadRecord[];
   equipment?: EquipmentRecord[];
@@ -218,6 +219,7 @@ type SelectedPin = {
 };
 
 export default function MapsBoard({
+  pagePurpose = 'combined',
   jobs = [],
   loads = [],
   ranchOaks,
@@ -253,20 +255,29 @@ export default function MapsBoard({
   );
   const relocationJobOptions = useMemo(() => buildRelocationJobOptions(jobs), [jobs]);
   const [selectedJobId, setSelectedJobId] = useState(initialSelectedJobId);
-  const [mapMode, setMapMode] = useState<MapWorkspaceMode>(() => initialMapMode || (initialSelectedJobId === 'all' ? 'locations' : 'project'));
+  const [mapMode, setMapMode] = useState<MapWorkspaceMode>(() => {
+    if (pagePurpose === 'locations') return 'locations';
+    if (pagePurpose === 'fleetGps') return 'liveGps';
+    if (pagePurpose === 'imports') return 'project';
+    return initialMapMode || (initialSelectedJobId === 'all' ? 'locations' : 'project');
+  });
   const filteredTreeRecords = useMemo(
     () => filterTreesForRelocationJob(treeRecords, selectedJobId, jobs),
     [treeRecords, selectedJobId, jobs],
   );
   const selectedJob = jobs.find(job => String(job.id || job.jobId || job.projectId) === selectedJobId);
-  const isLiveGpsView = mapMode === 'liveGps';
+  const isDedicatedLocationsPage = pagePurpose === 'locations';
+  const isDedicatedFleetGpsPage = pagePurpose === 'fleetGps';
+  const isDedicatedImportsPage = pagePurpose === 'imports';
+  const isLiveGpsView = mapMode === 'liveGps' || isDedicatedFleetGpsPage;
   const isArcGisView = mapMode === 'arcgis';
-  const isAllLocationsView = mapMode === 'locations' || (selectedJobId === 'all' && mapMode !== 'liveGps' && mapMode !== 'arcgis');
-  const isRelocationJobView = (mapMode === 'project' || mapMode === 'arcgis') && Boolean(selectedJob);
+  const isAllLocationsView = isDedicatedLocationsPage || mapMode === 'locations' || (selectedJobId === 'all' && mapMode !== 'liveGps' && mapMode !== 'arcgis');
+  const isRelocationJobView = !isDedicatedLocationsPage && !isDedicatedFleetGpsPage && !isDedicatedImportsPage && (mapMode === 'project' || mapMode === 'arcgis') && Boolean(selectedJob);
   const showTreeMapPanels = isRelocationJobView;
-  const showSavedLocationsPanel = !isLiveGpsView && (isAllLocationsView || isRelocationJobView);
-  const savedLocationsTitle = isAllLocationsView ? 'All Saved Locations' : 'Saved Site Locations';
-  const savedLocationsListLabel = isAllLocationsView ? 'All Saved Pins' : 'Project Pins';
+  const showSavedLocationsPanel = !isDedicatedImportsPage && !isLiveGpsView && (isAllLocationsView || isRelocationJobView);
+  const showPassiveVehicleLayer = pagePurpose === 'combined' && !isLiveGpsView;
+  const savedLocationsTitle = isDedicatedLocationsPage ? 'Saved Site Locations' : isAllLocationsView ? 'All Saved Locations' : 'Saved Site Locations';
+  const savedLocationsListLabel = isDedicatedLocationsPage ? 'Saved Site Pins' : isAllLocationsView ? 'All Saved Pins' : 'Project Pins';
   const mapsConfig = useMemo(() => getGoogleMapsConfig(), []);
   const [zoomLevel, setZoomLevel] = useState(17);
   const [mapViewMode, setMapViewMode] = useState<MapViewMode>('earth');
@@ -281,7 +292,7 @@ export default function MapsBoard({
   const [multiSelectTrees, setMultiSelectTrees] = useState(false);
   const [selectedMapTreeIds, setSelectedMapTreeIds] = useState<string[]>([]);
   const [visibleMapBounds, setVisibleMapBounds] = useState<MapBounds | null>(null);
-  const [kmlImportOpen, setKmlImportOpen] = useState(Boolean(initialKmlImportOpen));
+  const [kmlImportOpen, setKmlImportOpen] = useState(Boolean(initialKmlImportOpen || pagePurpose === 'imports'));
   const [kmlImportText, setKmlImportText] = useState('');
   const [kmlImportFileName, setKmlImportFileName] = useState('');
   const [kmlImportStatus, setKmlImportStatus] = useState('');
@@ -529,7 +540,7 @@ export default function MapsBoard({
     return () => {
       cancelled = true;
     };
-  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, workbenchTreeRecords, scopedSavedLocations, liveVehicleMarkers, visibleGpsAssets, zoomLevel, mapViewMode, selectedJobId, selectedJobMapTarget, isLiveGpsView, showTreeMapPanels]);
+  }, [mapsConfig.isReady, mapsConfig.apiKey, mapsConfig.mapId, workbenchTreeRecords, scopedSavedLocations, liveVehicleMarkers, visibleGpsAssets, zoomLevel, mapViewMode, selectedJobId, selectedJobMapTarget, isLiveGpsView, showTreeMapPanels, showSavedLocationsPanel, showPassiveVehicleLayer]);
 
   useEffect(() => {
     focusMapOnSelectedJob();
@@ -579,7 +590,7 @@ export default function MapsBoard({
       });
     }
 
-    if (!isLiveGpsView || scopedSavedLocations.length > 0) scopedSavedLocations.forEach((location) => {
+    if (showSavedLocationsPanel) scopedSavedLocations.forEach((location) => {
       const point = pointFromSavedSiteLocation(location);
       if (!point) return;
 
@@ -611,7 +622,7 @@ export default function MapsBoard({
         });
         googleMarkerRefs.current.push(marker);
       });
-    } else {
+    } else if (showPassiveVehicleLayer) {
       liveVehicleMarkers.forEach((vehicle) => {
         const marker = new maps.Marker({
           position: { lat: vehicle.lat, lng: vehicle.lng },
@@ -1040,7 +1051,7 @@ export default function MapsBoard({
 
   const downloadProjectKml = () => {
     if (!earthMapPackage.pinnedTreeCount) {
-      setFieldStatus('Add at least one source or destination pin before exporting this project to Google Earth.');
+      setFieldStatus('Add at least one source or destination pin before exporting this project as a KML backup.');
       return;
     }
 
@@ -1063,7 +1074,7 @@ export default function MapsBoard({
       map.setCenter({ lat: earthMapPackage.center.lat, lng: earthMapPackage.center.lng });
       map.setZoom(Math.max(zoomLevel, 18));
     }
-    setFieldStatus('Switched to in-app Earth View. Tree and project pins stay inside JDT Command Center.');
+    setFieldStatus('Switched to in-app satellite view. Tree and project pins stay inside JDT Command Center and ArcGIS Online.');
   };
 
   const showClientKmlImportPath = () => {
@@ -1077,7 +1088,7 @@ export default function MapsBoard({
     if (!file) return;
     setKmlImportFileName(file.name);
     if (/\.kmz$/i.test(file.name)) {
-      setKmlImportStatus('KMZ files need to be exported as KML for this first import path. Upload the .kml export from Google Earth.');
+      setKmlImportStatus('KMZ files need to be exported as KML for this first import path. Upload the .kml export from ArcGIS Online or the client map source.');
       return;
     }
 
@@ -1087,7 +1098,7 @@ export default function MapsBoard({
       setKmlImportText(text);
       setKmlImportStatus(`Loaded ${file.name}. Preview found ${points.length} named tree point${points.length === 1 ? '' : 's'}.`);
     } catch {
-      setKmlImportStatus('Unable to read that KML file. Try exporting the Google Earth project again as KML.');
+      setKmlImportStatus('Unable to read that KML file. Try exporting the map again as KML from ArcGIS Online or the client source.');
     }
   };
 
@@ -1326,7 +1337,7 @@ export default function MapsBoard({
     </div>
   ) : null;
 
-  const googleEarthCard = (
+  const kmlBridgeCard = (
     <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-start gap-3">
@@ -1334,10 +1345,10 @@ export default function MapsBoard({
             <Globe2 className="h-5 w-5 text-jdt-primary" />
           </div>
           <div>
-            <p className="text-[10px] font-black uppercase text-zinc-400">Map Backup / Earth Export</p>
+            <p className="text-[10px] font-black uppercase text-zinc-400">Online GIS Import / KML Backup</p>
             <h3 className="text-sm font-black text-jdt-text">{earthMapPackage.documentName}</h3>
             <p className="mt-1 text-[11px] font-bold text-zinc-500">
-              Manual pins are the active project record. {earthMapPackage.pinnedTreeCount} trees, {earthMapPackage.placemarkCount} pins, and {earthMapPackage.pathCount} move paths are available for backup export.
+              Manual pins are the active project record. ArcGIS Online remains the GIS record. {earthMapPackage.pinnedTreeCount} trees, {earthMapPackage.placemarkCount} pins, and {earthMapPackage.pathCount} move paths are available for backup export.
             </p>
           </div>
         </div>
@@ -1354,19 +1365,19 @@ export default function MapsBoard({
             onClick={showClientKmlImportPath}
             className="rounded-lg border border-dashed border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-zinc-600 hover:border-jdt-olive flex items-center gap-2"
           >
-            <Upload className="h-4 w-4" /> Client KML/KMZ Import
+            <Upload className="h-4 w-4" /> KML/KMZ Bridge Import
           </button>
           <button
             type="button"
             onClick={openGoogleEarthProjectView}
             className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive flex items-center gap-2"
           >
-            <Globe2 className="h-4 w-4" /> Earth View
+            <Globe2 className="h-4 w-4" /> Satellite View
           </button>
         </div>
       </div>
       <p className="mt-3 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[11px] font-bold text-zinc-500">
-        Use map click, pasted coordinates, or phone GPS to build project pins. KML is for backup, sharing, or importing client files that already have tree positions marked.
+        Use map click, pasted coordinates, or phone GPS to build project pins. KML/KMZ is a bridge format for online import, export, and backup, not the system of record.
       </p>
     </div>
   );
@@ -1375,10 +1386,10 @@ export default function MapsBoard({
     <div id="kml-import-panel" className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase text-zinc-400">Client KML/KMZ Import</p>
+          <p className="text-[10px] font-black uppercase text-zinc-400">KML/KMZ Bridge Import</p>
           <h3 className="text-lg font-black text-jdt-text">Import Marked Tree Positions</h3>
           <p className="mt-1 text-xs font-bold text-zinc-500">
-            Use this for Google Earth files that already have tree placemarks labeled. KML is read directly; for KMZ, export the project as KML first.
+            Use this for client, ArcGIS Online, or legacy map files that already have tree placemarks labeled. Preview first, then save clean records into JDT and sync geometry to ArcGIS Online.
           </p>
         </div>
         <button
@@ -1418,7 +1429,7 @@ export default function MapsBoard({
               const points = parseKmlTreePlacemarks(event.target.value);
               setKmlImportStatus(points.length ? `Preview found ${points.length} named tree point${points.length === 1 ? '' : 's'}.` : 'Paste KML with named placemarks to preview tree pins.');
             }}
-            placeholder="Paste exported Google Earth KML here"
+            placeholder="Paste exported KML here"
             rows={5}
             className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-mono text-jdt-text outline-none focus:border-jdt-olive"
           />
@@ -1471,18 +1482,111 @@ export default function MapsBoard({
     </div>
   ) : null;
 
+  const pageTitle = isDedicatedLocationsPage
+    ? 'JDT Locations'
+    : isDedicatedFleetGpsPage
+      ? 'Fleet GPS'
+      : isArcGisView
+        ? 'ArcGIS Tree Relocation Layers'
+        : isLiveGpsView
+          ? 'Live GPS Map'
+          : 'Field Maps & Tree Relocation';
+  const pageDescription = isDedicatedLocationsPage
+    ? 'Google Maps-style client, project, jobsite, farm, and saved access pins'
+    : isDedicatedFleetGpsPage
+      ? 'Verizon Reveal vehicle, equipment, freight, and unmatched GPS tracking'
+      : isArcGisView
+        ? 'Review ArcGIS hosted layers while JDT keeps project workflow and tree operations as the source of truth'
+        : isLiveGpsView
+          ? 'Track live GPS vehicles, equipment, freight moves, and unmatched GPS assets'
+          : 'Pin source trees, destination locations, GPS field marks, and relocation tasks';
+
+  if (isDedicatedImportsPage) {
+    return (
+      <div className="space-y-5">
+        <div className="flex flex-col gap-4 border-b border-jdt-border pb-5 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <h2 className="text-2xl font-black text-jdt-primary">Map Imports</h2>
+            <p className="mt-1 text-sm font-bold text-zinc-500">
+              KML, KMZ, DWG, CAD, survey, and imported pin staging for clean JDT and ArcGIS Online records
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={showClientKmlImportPath} className="inline-flex items-center justify-center gap-2 rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark">
+              <Upload className="h-4 w-4" /> Import KML/KMZ
+            </button>
+            <button type="button" onClick={downloadProjectKml} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
+              <Download className="h-4 w-4" /> Export KML
+            </button>
+            <button type="button" onClick={() => setFieldStatus('Survey and CAD upload staging is ready for the ArcGIS Online import workflow.')} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
+              <Upload className="h-4 w-4" /> Upload Survey / CAD File
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)]">
+          <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4 shadow-sm">
+            <p className="text-[10px] font-black uppercase text-zinc-400">Target Project</p>
+            <select
+              value={selectedJobId}
+              onChange={(event) => {
+                setSelectedJobId(event.target.value);
+                setFieldStatus(event.target.value === 'all' ? 'Choose a project before matching imported pins to JDT records.' : 'Import staging is scoped to the selected project.');
+              }}
+              className="mt-2 w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-black text-jdt-text outline-none focus:border-jdt-olive"
+            >
+              <option value="all">Select Project</option>
+              {relocationJobOptions.map((job) => (
+                <option key={job.id} value={job.id}>{job.label}</option>
+              ))}
+            </select>
+            <div className="mt-4 grid gap-2">
+              {['Preview Import', 'Match Tree IDs', 'Create Draft Tree Assets', 'Sync to ArcGIS'].map((action) => (
+                <button
+                  key={action}
+                  type="button"
+                  onClick={() => setFieldStatus(`${action} is staged for ${selectedJob ? profileJobTitle(selectedJob) : 'the selected project'}.`)}
+                  className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-left text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+                >
+                  {action}
+                </button>
+              ))}
+            </div>
+            <div className="mt-4 rounded-lg border border-jdt-border bg-white p-3">
+              <p className="text-[10px] font-black uppercase text-zinc-400">Import Rules</p>
+              <p className="mt-1 text-xs font-bold text-zinc-500">
+                KML/KMZ files are bridge files. Preview, match to Tree_Asset_ID where possible, create draft tree assets for unmatched pins, then sync clean geometry to ArcGIS Online.
+              </p>
+            </div>
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-[10px] font-black uppercase text-amber-900">DWG / CAD Survey Staging</p>
+              <p className="mt-1 text-xs font-bold text-amber-800">
+                Upload survey/CAD references here for admin review. ArcGIS Pro can still be used outside the app for one-off cleanup, but production app sync stays online through ArcGIS Online.
+              </p>
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            {kmlImportPanel}
+            <div className="rounded-xl border border-jdt-border bg-jdt-panel p-4 shadow-sm">
+              <p className="text-[10px] font-black uppercase text-zinc-400">Import Status</p>
+              <h3 className="mt-1 text-sm font-black text-jdt-text">{selectedJob ? profileJobTitle(selectedJob) : 'No project selected'}</h3>
+              <p className="mt-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-bold text-zinc-500">
+                {fieldStatus || 'Choose a target project, preview incoming map files, and save clean records before publishing geometry to ArcGIS Online.'}
+              </p>
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-jdt-border pb-5">
         <div>
-          <h2 className="text-2xl font-black text-jdt-primary">{isLiveGpsView ? 'Live GPS Map' : isArcGisView ? 'ArcGIS Tree Relocation Layers' : 'Field Maps & Tree Relocation'}</h2>
-          <p className="text-sm font-bold text-zinc-500 mt-1">
-            {isLiveGpsView
-              ? 'Track live GPS vehicles, equipment, freight moves, and unmatched GPS assets'
-              : isArcGisView
-                ? 'Review ArcGIS hosted layers while JDT keeps project workflow and tree operations as the source of truth'
-                : 'Pin source trees, destination locations, GPS field marks, and relocation tasks'}
-          </p>
+          <h2 className="text-2xl font-black text-jdt-primary">{pageTitle}</h2>
+          <p className="text-sm font-bold text-zinc-500 mt-1">{pageDescription}</p>
         </div>
         <div className="flex items-center gap-2 bg-jdt-panel border border-jdt-border rounded-lg p-1 shadow-sm">
           <button onClick={() => setZoomLevel(z => Math.max(9, z - 1))} className="p-1.5 hover:bg-jdt-sand rounded text-zinc-600" title="Zoom Out"><ZoomOut className="h-4 w-4" /></button>
@@ -1496,59 +1600,63 @@ export default function MapsBoard({
           <div className="bg-jdt-panel border border-jdt-border rounded-xl p-4 shadow-sm">
             <div className="grid gap-3 xl:grid-cols-[1fr_auto]">
               <div className="space-y-3">
-                <div>
-                  <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5">Map Mode</span>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { id: 'locations' as MapWorkspaceMode, label: 'Locations', tone: 'jdt' },
-                      { id: 'project' as MapWorkspaceMode, label: 'Project Trees', tone: 'jdt' },
-                      { id: 'liveGps' as MapWorkspaceMode, label: 'Live GPS', tone: 'sky' },
-                      { id: 'arcgis' as MapWorkspaceMode, label: 'ArcGIS Layers', tone: 'violet' },
-                    ].map((mode) => (
-                      <button
-                        key={mode.id}
-                        type="button"
-                        onClick={() => {
-                          setMapMode(mode.id);
-                          if (mode.id === 'locations') setSelectedJobId('all');
-                          if (mode.id === 'locations') setFieldStatus('Showing all saved JDT map locations.');
-                          if (mode.id === 'project') setFieldStatus(selectedJob ? 'Map focused to the selected relocation job.' : 'Select a relocation job to see project tree and site pins.');
-                          if (mode.id === 'liveGps') setFieldStatus('Showing live GPS assets from GPS tracking and JDT dispatch records.');
-                          if (mode.id === 'arcgis') setFieldStatus('Showing ArcGIS layer controls for JDT tree relocation geometry.');
-                        }}
-                        className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${mapMode === mode.id
-                          ? mode.tone === 'sky'
-                            ? 'border-sky-700 bg-sky-700 text-white'
-                            : mode.tone === 'violet'
-                              ? 'border-violet-700 bg-violet-700 text-white'
-                              : 'border-jdt-primary bg-jdt-primary text-white'
-                          : 'border-jdt-border bg-white text-zinc-600 hover:border-jdt-olive'}`}
-                      >
-                        {mode.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,0.8fr)]">
-                  <label className="block">
-                    <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5">Current Map View</span>
-                    <select
-                      value={selectedJobId}
-                      onChange={(event) => {
-                        setSelectedJobId(event.target.value);
-                        setMapMode(event.target.value === 'all' ? 'locations' : mapMode === 'arcgis' ? 'arcgis' : 'project');
-                        setSelectedPin(null);
-                        setPinMode(null);
-                        setFieldStatus(event.target.value === 'all' ? 'Showing all saved JDT map locations.' : 'Map focused to the selected relocation job.');
-                      }}
-                      className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-black text-jdt-text outline-none focus:border-jdt-olive"
-                    >
-                      <option value="all">All JD Thornton Locations</option>
-                      {relocationJobOptions.map((job) => (
-                        <option key={job.id} value={job.id}>{job.label}</option>
+                {pagePurpose === 'combined' && (
+                  <div>
+                    <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5">Map Mode</span>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { id: 'locations' as MapWorkspaceMode, label: 'Locations', tone: 'jdt' },
+                        { id: 'project' as MapWorkspaceMode, label: 'Project Trees', tone: 'jdt' },
+                        { id: 'liveGps' as MapWorkspaceMode, label: 'Live GPS', tone: 'sky' },
+                        { id: 'arcgis' as MapWorkspaceMode, label: 'ArcGIS Layers', tone: 'violet' },
+                      ].map((mode) => (
+                        <button
+                          key={mode.id}
+                          type="button"
+                          onClick={() => {
+                            setMapMode(mode.id);
+                            if (mode.id === 'locations') setSelectedJobId('all');
+                            if (mode.id === 'locations') setFieldStatus('Showing all saved JDT map locations.');
+                            if (mode.id === 'project') setFieldStatus(selectedJob ? 'Map focused to the selected relocation job.' : 'Select a relocation job to see project tree and site pins.');
+                            if (mode.id === 'liveGps') setFieldStatus('Showing live GPS assets from GPS tracking and JDT dispatch records.');
+                            if (mode.id === 'arcgis') setFieldStatus('Showing ArcGIS layer controls for JDT tree relocation geometry.');
+                          }}
+                          className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${mapMode === mode.id
+                            ? mode.tone === 'sky'
+                              ? 'border-sky-700 bg-sky-700 text-white'
+                              : mode.tone === 'violet'
+                                ? 'border-violet-700 bg-violet-700 text-white'
+                                : 'border-jdt-primary bg-jdt-primary text-white'
+                            : 'border-jdt-border bg-white text-zinc-600 hover:border-jdt-olive'}`}
+                        >
+                          {mode.label}
+                        </button>
                       ))}
-                    </select>
-                  </label>
+                    </div>
+                  </div>
+                )}
+                <div className={`grid gap-3 ${isDedicatedFleetGpsPage ? 'lg:grid-cols-1' : 'lg:grid-cols-[minmax(220px,1fr)_minmax(220px,0.8fr)]'}`}>
+                  {!isDedicatedFleetGpsPage && (
+                    <label className="block">
+                      <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5">Current Map View</span>
+                      <select
+                        value={selectedJobId}
+                        onChange={(event) => {
+                          setSelectedJobId(event.target.value);
+                          if (pagePurpose === 'combined') setMapMode(event.target.value === 'all' ? 'locations' : mapMode === 'arcgis' ? 'arcgis' : 'project');
+                          setSelectedPin(null);
+                          setPinMode(null);
+                          setFieldStatus(event.target.value === 'all' ? 'Showing all saved JDT map locations.' : 'Map focused to the selected relocation job.');
+                        }}
+                        className="w-full rounded-lg border border-jdt-border bg-white px-3 py-2 text-sm font-black text-jdt-text outline-none focus:border-jdt-olive"
+                      >
+                        <option value="all">All JD Thornton Locations</option>
+                        {relocationJobOptions.map((job) => (
+                          <option key={job.id} value={job.id}>{job.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <label className="block">
                     <span className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5">Search</span>
                     <div className="flex items-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2">
@@ -1556,7 +1664,7 @@ export default function MapsBoard({
                       <input
                         value={isLiveGpsView ? gpsSearch : treeSearch}
                         onChange={(event) => isLiveGpsView ? setGpsSearch(event.target.value) : setTreeSearch(event.target.value)}
-                        placeholder={isLiveGpsView ? 'Vehicle, equipment, driver...' : 'Tree type, tag, status, crew...'}
+                        placeholder={isLiveGpsView ? 'Vehicle, equipment, driver...' : isDedicatedLocationsPage ? 'Project, access point, farm, client...' : 'Tree type, tag, status, crew...'}
                         className="min-w-0 flex-1 bg-transparent text-sm font-bold text-jdt-text outline-none"
                       />
                     </div>
@@ -1564,24 +1672,45 @@ export default function MapsBoard({
                 </div>
               </div>
               <div className="flex flex-wrap items-end gap-2 xl:max-w-[360px] xl:justify-end">
-                <button type="button" onClick={openAddPinForm} className="inline-flex items-center justify-center gap-2 rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark">
-                  <Plus className="h-4 w-4" /> Add Pin
-                </button>
-                <button type="button" onClick={() => handleArcGisSync()} className="inline-flex items-center justify-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[10px] font-black uppercase text-violet-900 hover:border-violet-500">
-                  <RefreshCw className="h-4 w-4" /> Sync ArcGIS
-                </button>
-                <button type="button" onClick={downloadProjectKml} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
-                  <Download className="h-4 w-4" /> Export KML
-                </button>
-                <button type="button" onClick={showClientKmlImportPath} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
-                  <Upload className="h-4 w-4" /> Import KML/KMZ
-                </button>
-                <button type="button" onClick={printFieldMap} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
-                  <ClipboardList className="h-4 w-4" /> Print Field Map
-                </button>
-                <button type="button" onClick={() => setFieldStatus('Fullscreen map mode requested. Use the browser fullscreen control while the dedicated map shell is finalized.')} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
-                  <Eye className="h-4 w-4" /> Fullscreen Map
-                </button>
+                {isDedicatedLocationsPage && (
+                  <button type="button" onClick={openAddPinForm} className="inline-flex items-center justify-center gap-2 rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark">
+                    <Plus className="h-4 w-4" /> Add Location
+                  </button>
+                )}
+                {isDedicatedFleetGpsPage && (
+                  <>
+                    {(canSyncRevealLiveLocations && onSyncRevealLiveLocations) && (
+                      <button type="button" onClick={() => void onSyncRevealLiveLocations()} className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-700 px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-sky-800">
+                        <RefreshCw className="h-4 w-4" /> Sync GPS
+                      </button>
+                    )}
+                    <button type="button" onClick={() => window.open('https://reveal.us.vzconnect.com/en-US/live-map/', '_blank', 'noopener,noreferrer')} className="inline-flex items-center justify-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[10px] font-black uppercase text-sky-900 hover:border-sky-500">
+                      <Truck className="h-4 w-4" /> Open in Verizon Reveal
+                    </button>
+                  </>
+                )}
+                {pagePurpose === 'combined' && (
+                  <>
+                    <button type="button" onClick={openAddPinForm} className="inline-flex items-center justify-center gap-2 rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark">
+                      <Plus className="h-4 w-4" /> Add Pin
+                    </button>
+                    <button type="button" onClick={() => handleArcGisSync()} className="inline-flex items-center justify-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[10px] font-black uppercase text-violet-900 hover:border-violet-500">
+                      <RefreshCw className="h-4 w-4" /> Sync ArcGIS
+                    </button>
+                    <button type="button" onClick={downloadProjectKml} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
+                      <Download className="h-4 w-4" /> Export KML
+                    </button>
+                    <button type="button" onClick={showClientKmlImportPath} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
+                      <Upload className="h-4 w-4" /> Import KML/KMZ
+                    </button>
+                    <button type="button" onClick={printFieldMap} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
+                      <ClipboardList className="h-4 w-4" /> Print Field Map
+                    </button>
+                    <button type="button" onClick={() => setFieldStatus('Fullscreen map mode requested. Use the browser fullscreen control while the dedicated map shell is finalized.')} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
+                      <Eye className="h-4 w-4" /> Fullscreen Map
+                    </button>
+                  </>
+                )}
                 {selectedJob && openDrawer && (
                   <button type="button" onClick={() => openDrawer('job', selectedJob.id || selectedJob.jobId || selectedJob.projectId)} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">
                     Open Job
@@ -1608,8 +1737,8 @@ export default function MapsBoard({
                 <div className="absolute inset-0 bg-jdt-dark/20" />
                 {showTreeMapPanels && renderSelectedTreeLine()}
                 {showTreeMapPanels && renderFallbackTreePins()}
-                {renderFallbackSiteLocationPins()}
-                {isLiveGpsView ? renderFallbackLiveGpsPins() : renderFallbackVehiclePins()}
+                {showSavedLocationsPanel && renderFallbackSiteLocationPins()}
+                {isLiveGpsView ? renderFallbackLiveGpsPins() : showPassiveVehicleLayer ? renderFallbackVehiclePins() : null}
               </div>
             )}
 
@@ -1628,7 +1757,7 @@ export default function MapsBoard({
                   onClick={() => setMapViewMode('earth')}
                   className={`rounded-md border px-2 py-1 ${mapViewMode === 'earth' ? 'border-emerald-700 bg-emerald-50 text-emerald-800' : 'border-jdt-border bg-white text-zinc-600'}`}
                 >
-                  Earth View
+                  Satellite View
                 </button>
               </div>
             </div>
@@ -1643,7 +1772,7 @@ export default function MapsBoard({
 
           {showTreeMapPanels && selectedTreeCard}
 
-          {showTreeMapPanels && googleEarthCard}
+          {showTreeMapPanels && kmlBridgeCard}
 
           {kmlImportPanel}
 

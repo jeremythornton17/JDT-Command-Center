@@ -50,7 +50,7 @@ describe("MapsBoard relocation pin editing", () => {
     assert.match(html, /All JD Thornton Locations/);
     assert.match(html, /Boca West Course 1 Renovation/);
     assert.match(html, /Map View/);
-    assert.match(html, /Earth View/);
+    assert.match(html, /Satellite View/);
     assert.match(html, /All Saved Locations/);
     assert.match(html, /Add Pin/);
     assert.match(html, /Main Office/);
@@ -64,7 +64,47 @@ describe("MapsBoard relocation pin editing", () => {
     assert.doesNotMatch(html, /Active Tree/);
     assert.doesNotMatch(html, /Pin Editor/);
     assert.doesNotMatch(html, /Selected Tree Tasks/);
-    assert.doesNotMatch(html, /Map Backup \/ Earth Export/);
+    assert.doesNotMatch(html, /Online GIS Import \/ KML Backup/);
+  });
+
+  it("renders the dedicated JDT Locations page without tree, GPS, or import controls", () => {
+    const html = renderToString(
+      <MapsBoard
+        pagePurpose="locations"
+        jobs={[
+          {
+            id: "job-boca-course-1",
+            title: "Boca West Course 1 Renovation",
+            division: "Relocation & Installation",
+            clientName: "Boca West Country Club",
+            crewAccessAddress: "Boca West crew gate",
+            truckAccessAddress: "Boca West truck gate",
+          },
+        ]}
+        ranchOaks={[]}
+        treeRelocationRecords={[]}
+        onUpdateTreeLocation={() => undefined}
+        openDrawer={() => undefined}
+      />,
+    );
+
+    assert.match(html, /JDT Locations/);
+    assert.match(html, /Google Maps-style client, project, jobsite, farm, and saved access pins/);
+    assert.match(html, /Add Location/);
+    assert.match(html, /All JD Thornton Locations/);
+    assert.match(html, /Boca West Course 1 Renovation/);
+    assert.match(html, /Saved Site Locations/);
+    assert.match(html, /Crew Access/);
+    assert.match(html, /Truck \/ Equipment Access/);
+    assert.match(html, /Open Maps/);
+    assert.match(html, /Copy GPS/);
+    assert.match(html, /Assign to Project/);
+    assert.doesNotMatch(html, /Map Mode/);
+    assert.doesNotMatch(html, /Tree Map Workbench/);
+    assert.doesNotMatch(html, /ArcGIS Layers/);
+    assert.doesNotMatch(html, /Live GPS Assets/);
+    assert.doesNotMatch(html, /Online GIS Import \/ KML Backup/);
+    assert.doesNotMatch(html, /Tree_Relocation_Status/);
   });
 
   it("shows tree and project pin panels inside a selected relocation job map", () => {
@@ -134,9 +174,10 @@ describe("MapsBoard relocation pin editing", () => {
     assert.match(html, /Select a source or destination pin on the map/);
     assert.match(html, /Use Phone GPS/);
     assert.match(html, /GPS accuracy/);
-    assert.match(html, /Map Backup \/ Earth Export/);
+    assert.match(html, /Online GIS Import \/ KML Backup/);
     assert.match(html, /Export KML Backup/);
-    assert.match(html, /Client KML\/KMZ Import/);
+    assert.match(html, /KML\/KMZ Bridge Import/);
+    assert.match(html, /ArcGIS Online remains the GIS record/);
     assert.match(html, /Manual pins are the active project record/);
     assert.match(html, /Saved Site Locations/);
     assert.match(html, /Project Pins/);
@@ -145,7 +186,7 @@ describe("MapsBoard relocation pin editing", () => {
     assert.doesNotMatch(html, /Download KML/);
     assert.doesNotMatch(html, /Open Google Earth/);
     assert.equal(html.indexOf("Fallback Field Map") < html.indexOf("Selected Tree Command"), true);
-    assert.equal(html.indexOf("Selected Tree Command") < html.indexOf("Map Backup / Earth Export"), true);
+    assert.equal(html.indexOf("Selected Tree Command") < html.indexOf("Online GIS Import / KML Backup"), true);
   });
 
   it("shows imported relocation tree records as job-scoped map pins", () => {
@@ -264,7 +305,7 @@ describe("MapsBoard relocation pin editing", () => {
       />,
     );
 
-    assert.match(html, /Client KML\/KMZ Import/);
+    assert.match(html, /KML\/KMZ Bridge Import/);
     assert.match(html, /Upload KML File/);
     assert.match(html, /Paste KML Text/);
     assert.match(html, /Preview Imported Tree Pins/);
@@ -434,6 +475,50 @@ describe("MapsBoard relocation pin editing", () => {
     assert.match(html, /Unknown Reveal tracker/);
   });
 
+  it("renders the dedicated Fleet GPS page without tree relocation or import editing", () => {
+    const html = renderToString(
+      <MapsBoard
+        pagePurpose="fleetGps"
+        jobs={[]}
+        loads={[{
+          id: "load-boca-equipment",
+          title: "Christian Crespo - Semi #1 - Boca West equipment moves",
+          truckId: "equipment-semi-1",
+          truck: "Semi #1",
+          driver: "Christian Crespo",
+          status: "In Transit",
+        }]}
+        equipment={[
+          { id: "equipment-semi-1", name: "Semi #1", category: "Truck", revealVehicleId: "veh-1" },
+          { id: "equipment-komatsu-500-1", name: "Komatsu 500 - 1", category: "Machine", revealVehicleId: "asset-komatsu-1" },
+        ]}
+        fleetTelematicsEvents={[
+          { id: "evt-semi", providerVehicleId: "veh-1", vehicleName: "Semi #1", latitude: 26.38, longitude: -80.17, speedMph: 18, driverName: "Christian Crespo", eventAt: "2026-06-13T14:00:00.000Z" },
+          { id: "evt-komatsu", providerVehicleId: "asset-komatsu-1", vehicleName: "Komatsu 500 - 1", latitude: 26.75, longitude: -80.98, speedMph: 0, eventAt: "2026-06-13T14:00:00.000Z" },
+        ]}
+        canSyncRevealLiveLocations
+        onSyncRevealLiveLocations={() => undefined}
+        ranchOaks={[]}
+        treeRelocationRecords={[]}
+        onUpdateTreeLocation={() => undefined}
+        openDrawer={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Fleet GPS/);
+    assert.match(html, /Verizon Reveal vehicle, equipment, freight, and unmatched GPS tracking/);
+    assert.match(html, /Sync GPS/);
+    assert.match(html, /Open in Verizon Reveal/);
+    assert.match(html, /Live GPS Assets/);
+    assert.match(html, /Semi #1/);
+    assert.match(html, /Komatsu 500 - 1/);
+    assert.match(html, /Christian Crespo - Semi #1 - Boca West equipment moves/);
+    assert.doesNotMatch(html, /Map Mode/);
+    assert.doesNotMatch(html, /Add Pin/);
+    assert.doesNotMatch(html, /Tree Map Workbench/);
+    assert.doesNotMatch(html, /Online GIS Import \/ KML Backup/);
+  });
+
   it("can isolate a single live GPS asset from the map entry point", () => {
     const html = renderToString(
       <MapsBoard
@@ -458,5 +543,45 @@ describe("MapsBoard relocation pin editing", () => {
 
     assert.match(html, /Isolating Komatsu 500 - 1/);
     assert.match(html, /Show All GPS Assets/);
+  });
+
+  it("renders the dedicated Map Imports page as an admin file-processing workspace", () => {
+    const html = renderToString(
+      <MapsBoard
+        pagePurpose="imports"
+        initialSelectedJobId="job-waterford"
+        initialKmlImportOpen
+        jobs={[
+          {
+            id: "job-waterford",
+            title: "The Waterford",
+            division: "Relocation & Installation",
+            projectId: "project-waterford",
+            projectName: "The Waterford",
+            clientName: "Waterford",
+          },
+        ]}
+        ranchOaks={[]}
+        treeRelocationRecords={[]}
+        onUpdateTreeLocation={() => undefined}
+        onImportTreePins={() => true}
+      />,
+    );
+
+    assert.match(html, /Map Imports/);
+    assert.match(html, /KML, KMZ, DWG, CAD, survey, and imported pin staging/);
+    assert.match(html, /Import KML\/KMZ/);
+    assert.match(html, /Export KML/);
+    assert.match(html, /Upload Survey \/ CAD File/);
+    assert.match(html, /Preview Import/);
+    assert.match(html, /Match Tree IDs/);
+    assert.match(html, /Create Draft Tree Assets/);
+    assert.match(html, /Sync to ArcGIS/);
+    assert.match(html, /KML\/KMZ Bridge Import/);
+    assert.match(html, /The Waterford/);
+    assert.doesNotMatch(html, /Map Mode/);
+    assert.doesNotMatch(html, /Live GPS Assets/);
+    assert.doesNotMatch(html, /Tree Map Workbench/);
+    assert.doesNotMatch(html, /Saved Site Locations/);
   });
 });

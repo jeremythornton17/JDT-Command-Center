@@ -134,18 +134,23 @@ const mainNav = [
   { id: 'clients', label: 'Clients', icon: User },
 ];
 
+const mapNav = [
+  { id: 'jdtLocations', label: 'JDT Locations', icon: MapPin },
+  { id: 'treeGisMap', label: 'Tree GIS Map', icon: TreePine },
+  { id: 'fleetGps', label: 'Fleet GPS', icon: Truck },
+  { id: 'mapImports', label: 'Map Imports', icon: Database },
+];
+
 const secondaryNav = [
   { id: 'alerts', label: 'Alerts', icon: AlertTriangle },
   { id: 'calendar', label: 'Calendar', icon: Calendar },
-  { id: 'maps', label: 'Maps', icon: MapPin },
-  { id: 'arcgisMap', label: 'GIS Map', icon: MapPin },
   { id: 'reports', label: 'Reports', icon: BarChart2 },
   { id: 'documents', label: 'Documents', icon: Folder },
   { id: 'sheets', label: 'Import / Backup', icon: Database },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
-const navItems = [...mainNav, ...secondaryNav];
+const navItems = [...mainNav, ...mapNav, ...secondaryNav];
 
 type DrawerConfig = {
   isOpen: boolean;
@@ -192,10 +197,22 @@ type AppRouteIntent = {
 function appRouteFromPathname(pathname = typeof window !== 'undefined' ? window.location.pathname : ''): AppRouteIntent | null {
   const projectMapMatch = pathname.match(/^\/projects\/([^/]+)\/map\/?$/);
   if (projectMapMatch?.[1]) {
-    return { activeTab: 'arcgisMap', projectId: decodeURIComponent(projectMapMatch[1]) };
+    return { activeTab: 'treeGisMap', projectId: decodeURIComponent(projectMapMatch[1]) };
+  }
+  if (/^\/maps\/locations\/?$/.test(pathname)) {
+    return { activeTab: 'jdtLocations' };
+  }
+  if (/^\/maps\/tree-gis\/?$/.test(pathname)) {
+    return { activeTab: 'treeGisMap' };
+  }
+  if (/^\/maps\/fleet-gps\/?$/.test(pathname)) {
+    return { activeTab: 'fleetGps' };
+  }
+  if (/^\/maps\/imports\/?$/.test(pathname)) {
+    return { activeTab: 'mapImports' };
   }
   if (/^\/map\/?$/.test(pathname)) {
-    return { activeTab: 'arcgisMap' };
+    return { activeTab: 'treeGisMap' };
   }
   return null;
 }
@@ -671,7 +688,7 @@ export default function App() {
 
   const openLiveGpsMap = (selectedGpsAssetId?: string) => {
     setMapsIntent({ mode: 'liveGps', selectedGpsAssetId });
-    setActiveTab('maps');
+    setActiveTab('fleetGps');
     setIsSidebarOpen(false);
   };
 
@@ -1544,10 +1561,11 @@ export default function App() {
         return <AlertsBoard alerts={alertsWithTelematics} setAlerts={setAlerts} openModal={openModal} />;
       case 'calendar':
         return <CalendarBoard jobs={jobs} loads={loadsWithTelematics} workOrders={workOrders} scheduleTasks={scheduleTasks} treeRelocationRecords={treeRelocationRecords} equipment={equipmentWithDefaults} openDrawer={openDrawer} />;
-      case 'maps':
+      case 'jdtLocations':
         return (
           <MapsBoard
-            key={`maps-${mapsIntent?.mode || 'default'}-${mapsIntent?.selectedGpsAssetId || 'all'}`}
+            key="maps-jdt-locations"
+            pagePurpose="locations"
             jobs={jobs}
             loads={loadsWithTelematics}
             scheduleTasks={scheduleTasks}
@@ -1560,14 +1578,12 @@ export default function App() {
             isSyncingRevealLiveLocations={isSyncingRevealLiveLocations}
             revealLiveLocationSyncStatus={revealLiveLocationSyncStatus}
             onSyncRevealLiveLocations={handleSyncRevealLiveLocations}
-            initialMapMode={mapsIntent?.mode}
-            initialSelectedGpsAssetId={mapsIntent?.selectedGpsAssetId}
             onUpdateTreeLocation={handleUpdateTreeLocation}
             onImportTreePins={handleImportTreePinsFromMap}
             openDrawer={openDrawer}
           />
         );
-      case 'arcgisMap':
+      case 'treeGisMap':
         return (
           <ArcGisMapBoard
             initialProjectId={arcGisInitialProjectId}
@@ -1580,6 +1596,46 @@ export default function App() {
             workOrders={workOrders}
             onSaveTreePoint={handleSaveArcGisTreePoint}
             getAuthToken={getArcGisAuthToken}
+          />
+        );
+      case 'fleetGps':
+        return (
+          <MapsBoard
+            key={`maps-fleet-gps-${mapsIntent?.selectedGpsAssetId || 'all'}`}
+            pagePurpose="fleetGps"
+            jobs={jobs}
+            loads={loadsWithTelematics}
+            scheduleTasks={scheduleTasks}
+            ranchOaks={nurseryInventory}
+            treeRelocationRecords={treeRelocationRecords}
+            locationsList={locationsWithDefaults}
+            equipment={equipmentWithDefaults}
+            fleetTelematicsEvents={fleetTelematicsEvents}
+            canSyncRevealLiveLocations={permissions.canManageSources}
+            isSyncingRevealLiveLocations={isSyncingRevealLiveLocations}
+            revealLiveLocationSyncStatus={revealLiveLocationSyncStatus}
+            onSyncRevealLiveLocations={handleSyncRevealLiveLocations}
+            initialSelectedGpsAssetId={mapsIntent?.selectedGpsAssetId}
+            onUpdateTreeLocation={handleUpdateTreeLocation}
+            openDrawer={openDrawer}
+          />
+        );
+      case 'mapImports':
+        return (
+          <MapsBoard
+            key="maps-imports"
+            pagePurpose="imports"
+            jobs={jobs}
+            loads={loadsWithTelematics}
+            scheduleTasks={scheduleTasks}
+            ranchOaks={nurseryInventory}
+            treeRelocationRecords={treeRelocationRecords}
+            locationsList={locationsWithDefaults}
+            equipment={equipmentWithDefaults}
+            fleetTelematicsEvents={fleetTelematicsEvents}
+            onUpdateTreeLocation={handleUpdateTreeLocation}
+            onImportTreePins={handleImportTreePinsFromMap}
+            openDrawer={openDrawer}
           />
         );
       case 'reports':
@@ -1616,6 +1672,7 @@ export default function App() {
 
             <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
               <NavGroup label="Operations" items={mainNav} activeTab={activeTab} setActiveTab={setActiveTab} closeMenu={() => setIsSidebarOpen(false)} />
+              <NavGroup label="Maps" items={mapNav} activeTab={activeTab} setActiveTab={setActiveTab} closeMenu={() => setIsSidebarOpen(false)} />
               <NavGroup label="Workspace" items={secondaryNav} activeTab={activeTab} setActiveTab={setActiveTab} closeMenu={() => setIsSidebarOpen(false)} />
             </nav>
 
@@ -1891,7 +1948,7 @@ export function Dashboard({ recentRecords, dashboardSummary, openModal, openDraw
                       <DashboardActionButton label="Add Note" onClick={() => openModal('task', { relatedRecordId: item.recordId, relatedTitle: item.title, projectName: item.projectName })} />
                       <DashboardActionButton label="Add Photo" onClick={() => openModal('document', { relatedRecordId: item.recordId, relatedTitle: item.title, projectName: item.projectName })} />
                       <DashboardActionButton label="Blocker" onClick={() => openModal('delay', { relatedRecordId: item.recordId, relatedTitle: item.title, projectName: item.projectName })} />
-                      <DashboardActionButton label="View Map" onClick={() => setActiveTab('maps')} />
+                      <DashboardActionButton label="View Map" onClick={() => setActiveTab(item.treeCount ? 'treeGisMap' : 'jdtLocations')} />
                     </div>
                   </article>
                 );
@@ -2020,17 +2077,17 @@ export function Dashboard({ recentRecords, dashboardSummary, openModal, openDraw
             <MapPin className="h-5 w-5 text-jdt-olive" />
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
-            <button onClick={() => setActiveTab('maps')} className="rounded-lg border border-jdt-border bg-white p-4 text-left hover:border-jdt-olive">
-              <p className="text-xs font-black uppercase text-jdt-text">Project Maps</p>
-              <p className="mt-1 text-[10px] font-bold text-zinc-500">Tree pins, access points, farm views</p>
+            <button onClick={() => setActiveTab('jdtLocations')} className="rounded-lg border border-jdt-border bg-white p-4 text-left hover:border-jdt-olive">
+              <p className="text-xs font-black uppercase text-jdt-text">JDT Locations</p>
+              <p className="mt-1 text-[10px] font-bold text-zinc-500">Jobsite, access, client, and farm pins</p>
             </button>
-            <button onClick={() => setActiveTab('maps')} className="rounded-lg border border-jdt-border bg-white p-4 text-left hover:border-jdt-olive">
-              <p className="text-xs font-black uppercase text-jdt-text">Live GPS</p>
+            <button onClick={() => setActiveTab('fleetGps')} className="rounded-lg border border-jdt-border bg-white p-4 text-left hover:border-jdt-olive">
+              <p className="text-xs font-black uppercase text-jdt-text">Fleet GPS</p>
               <p className="mt-1 text-[10px] font-bold text-zinc-500">Vehicles, equipment, freight</p>
             </button>
-            <button onClick={() => setActiveTab('arcgisMap')} className="rounded-lg border border-jdt-border bg-white p-4 text-left hover:border-jdt-olive">
-              <p className="text-xs font-black uppercase text-jdt-text">ArcGIS</p>
-              <p className="mt-1 text-[10px] font-bold text-zinc-500">Hosted layers and geometry sync</p>
+            <button onClick={() => setActiveTab('treeGisMap')} className="rounded-lg border border-jdt-border bg-white p-4 text-left hover:border-jdt-olive">
+              <p className="text-xs font-black uppercase text-jdt-text">Tree GIS Map</p>
+              <p className="mt-1 text-[10px] font-bold text-zinc-500">ArcGIS hosted layers and geometry sync</p>
             </button>
           </div>
         </div>

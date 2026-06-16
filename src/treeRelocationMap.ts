@@ -545,7 +545,7 @@ export function buildProjectGoogleEarthMapPackage<T extends RelocationTree = Rel
   const placemarkCount = sourcePlacemarks.length + destinationPlacemarks.length;
   const pathCount = pathPlacemarks.length;
   const description = options.description
-    || `Generated from JDT Command Center on ${generatedAt}. Import this KML into Google Earth to view project tree source and destination locations.`;
+    || `Generated from JDT Command Center on ${generatedAt}. Use this KML as an online GIS bridge or backup. JDT remains the operations record and ArcGIS Online remains the GIS geometry record.`;
 
   const folders = [
     kmlFolder("Source Pins", sourcePlacemarks),

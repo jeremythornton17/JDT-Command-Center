@@ -51,14 +51,16 @@ describe("AI Studio deployment source guard", () => {
     assert.match(serverSource, /handleRevealAlertWebhook/);
   });
 
-  it("keeps the maps board on tree relocation instead of removed fleet providers", () => {
+  it("keeps maps split between tree relocation and approved Fleet GPS integration", () => {
     const mapsBoard = readProjectFile("src/components/MapsBoard.tsx");
 
     assert.match(mapsBoard, /Field Maps & Tree Relocation/);
-    assert.doesNotMatch(mapsBoard, /Verizon|Michelin/i);
+    assert.match(mapsBoard, /Fleet GPS/);
+    assert.match(mapsBoard, /Verizon Reveal/);
+    assert.doesNotMatch(mapsBoard, /Michelin/i);
   });
 
-  it("does not request removed fleet provider credentials", () => {
+  it("does not request removed fleet provider credentials or expose Reveal secrets to the browser", () => {
     const filesToCheck = [
       ".env.example",
       "README.md",
@@ -67,8 +69,13 @@ describe("AI Studio deployment source guard", () => {
     ];
 
     for (const filePath of filesToCheck) {
-      assert.doesNotMatch(readProjectFile(filePath), /Verizon|Michelin/i, `${filePath} contains removed fleet provider copy`);
+      assert.doesNotMatch(readProjectFile(filePath), /Michelin/i, `${filePath} contains removed fleet provider copy`);
     }
+
+    const envExample = readProjectFile(".env.example");
+    assert.match(envExample, /REVEAL_API_USERNAME/);
+    assert.doesNotMatch(envExample, /VITE_REVEAL|VITE_VERIZON/i);
+    assert.doesNotMatch(readProjectFile("src/components/MapsBoard.tsx"), /REVEAL_API_PASSWORD|REVEAL_API_USERNAME|REVEAL_API_APP_ID/);
   });
 
   it("does not seed blank workspaces with mock operational records", () => {
