@@ -1,3 +1,5 @@
+import { fieldMapsTreeRelocationStatusValues } from './fieldMapsRelocationStandard';
+
 export type ArcGisGeometryType = 'point' | 'polygon' | 'polyline';
 
 export type ArcGisHostedLayerId =
@@ -56,16 +58,7 @@ export const arcGisLayerUrlEnvKeys: Record<ArcGisHostedLayerId, ArcGisLayerUrlEn
 
 const objectIdField: ArcGisHostedField = { name: 'OBJECTID', alias: 'Object ID', type: 'oid' };
 
-export const treeRelocationStatusValues = [
-  'Not Started',
-  '25% Cut',
-  '50% Cut',
-  '75% Cut',
-  '100% Cut',
-  'Ready for Relocation',
-  'Moved to Holding',
-  'Relocated',
-] as const;
+export const treeRelocationStatusValues = fieldMapsTreeRelocationStatusValues;
 
 export const jdtArcGisHostedLayerConfigs: ArcGisHostedLayerConfig[] = [
   hostedLayer('JDT_Project_Boundaries', 'JDT Project Boundaries', 'polygon', ['Project_ID'], [
@@ -100,11 +93,26 @@ export const jdtArcGisHostedLayerConfigs: ArcGisHostedLayerConfig[] = [
     textField('Holding_Area_Name', 'Holding Area Name'),
     textField('Existing_Location_Description', 'Existing Location Description'),
     textField('Proposed_Final_Location_Description', 'Proposed Final Location Description'),
+    textField('Loaders_Needed', 'Loader(s) Needed'),
+    textField('Additional_Equipment_Required', 'Additional Equipment Required'),
+    textField('Equipment_Access', 'Equipment Access'),
+    textField('Equipment_Access_Notes', 'Equipment Access Notes'),
+    textField('Issue_Alert', 'Issue Alert'),
+    textField('Crew_Notes', 'Crew Notes'),
+    doubleField('Relocation_Cost', 'Relocation Cost'),
+    textField('Billing_Status', 'Billing Status'),
     doubleField('Estimated_Relocation_Cost', 'Estimated Relocation Cost'),
     doubleField('Contract_Relocation_Cost', 'Contract Relocation Cost'),
     textField('Risk_Level', 'Risk Level'),
     textField('Map_Geometry_Status', 'Map Geometry Status'),
     dateField('Last_Map_Sync_At', 'Last Map Sync At'),
+    textField('Last_Updated_Source', 'Last Updated Source'),
+    textField('Last_Updated_By', 'Last Updated By'),
+    dateField('Last_Updated_At', 'Last Updated At'),
+    textField('Last_Sync_Direction', 'Last Sync Direction'),
+    textField('Sync_Transaction_ID', 'Sync Transaction ID'),
+    dateField('ArcGIS_Last_Sync_At', 'ArcGIS Last Sync At'),
+    dateField('JDT_Last_Sync_At', 'JDT Last Sync At'),
     textField('Notes', 'Notes'),
   ], 'Tree_Relocation_Status'),
   hostedLayer('JDT_Final_Tree_Locations', 'JDT Final Tree Locations', 'point', ['Final_Location_ID', 'Tree_Asset_ID'], [

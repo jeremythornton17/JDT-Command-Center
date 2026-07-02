@@ -81,6 +81,39 @@ export type BuildImportPreviewOptions = {
 
 type RowObject = Record<string, string>;
 
+export type SurveyCoordinateProjectionInput = {
+  treeNumber: string;
+  northing: number;
+  easting: number;
+  sourceCrsWkid?: string | number;
+  row: RowObject;
+  rowNumber: number;
+};
+
+export type SurveyCoordinateMatchOptions = {
+  coordinateRows: string | string[][] | Array<Record<string, unknown>>;
+  existingTrees: TreeRelocationRecord[];
+  projectId?: string;
+  projectName?: string;
+  sourceCrsWkid?: string | number;
+  sourceCrsLabel?: string;
+  townshipRange?: string;
+  sourceLabelPrefix?: string;
+  projectCoordinate?: (input: SurveyCoordinateProjectionInput) => { lat?: number; lng?: number } | undefined;
+};
+
+export type SurveyCoordinateUnmatchedRow = {
+  rowNumber: number;
+  treeNumber: string;
+  reason: string;
+};
+
+export type SurveyCoordinateMatchResult = {
+  updatedTrees: TreeRelocationRecord[];
+  unmatchedRows: SurveyCoordinateUnmatchedRow[];
+  warnings: string[];
+};
+
 export const sheetImportTemplates: SheetImportTemplate[] = [
   {
     id: 'inventory',
@@ -345,6 +378,91 @@ export function buildImportPreview(templateId: SheetImportTemplateId, input: str
   };
 }
 
+export function matchSurveySourceCoordinatesToTreeAssets(options: SurveyCoordinateMatchOptions): SurveyCoordinateMatchResult {
+  const { records, warnings: parseWarnings } = surveyCoordinateRowObjects(options.coordinateRows);
+  const treeIndex = buildSurveyTreeNumberIndex(options.existingTrees, options.projectId);
+  const updatedTrees: TreeRelocationRecord[] = [];
+  const unmatchedRows: SurveyCoordinateUnmatchedRow[] = [];
+  const warnings = [...parseWarnings];
+  const sourceCrsLabel = cleanText(options.sourceCrsLabel || '');
+  const townshipRange = cleanText(options.townshipRange || '');
+  const labelPrefix = cleanText(options.sourceLabelPrefix || 'Survey source pin');
+
+  records.forEach(({ row, index }) => {
+    const treeNumber = firstValue(row, 'TREE#', 'Tree #', 'Tree_Number', 'Tree Number', 'Tree_Tag', 'Tag');
+    const northing = numberFrom(firstValue(row, 'NORTHING', 'Northing', 'Source_Northing', 'Y'));
+    const easting = numberFrom(firstValue(row, 'EASTING', 'Easting', 'Source_Easting', 'X'));
+
+    if (!treeNumber && northing === undefined && easting === undefined) return;
+
+    if (!treeNumber) {
+      const reason = 'missing TREE#';
+      unmatchedRows.push({ rowNumber: index, treeNumber: '', reason });
+      warnings.push(`Row ${index} skipped: ${reason}`);
+      return;
+    }
+
+    if (northing === undefined || easting === undefined) {
+      const reason = 'missing northing or easting';
+      unmatchedRows.push({ rowNumber: index, treeNumber, reason });
+      warnings.push(`TREE# ${treeNumber} skipped: ${reason}`);
+      return;
+    }
+
+    const matchedTree = matchTreeBySurveyNumber(treeIndex, treeNumber);
+    if (!matchedTree) {
+      const scope = cleanText(options.projectName || options.projectId || 'selected project');
+      const reason = `no existing tree asset match in ${scope}`;
+      unmatchedRows.push({ rowNumber: index, treeNumber, reason });
+      warnings.push(`TREE# ${treeNumber} did not match an existing tree asset in ${scope}.`);
+      return;
+    }
+
+    const projected = options.projectCoordinate?.({
+      treeNumber,
+      northing,
+      easting,
+      sourceCrsWkid: options.sourceCrsWkid,
+      row,
+      rowNumber: index,
+    });
+    const sourcePoint = projectedPoint(projected, `${labelPrefix} #${treeNumber}`);
+    const existingRelocationMap = matchedTree.relocationMap || {};
+
+    if (!sourcePoint) {
+      warnings.push(`TREE# ${treeNumber} matched, but no projected latitude/longitude was returned; raw survey coordinates were stored only.`);
+    }
+
+    updatedTrees.push({
+      ...matchedTree,
+      projectId: matchedTree.projectId || options.projectId,
+      projectsId: matchedTree.projectsId || options.projectId,
+      projectName: matchedTree.projectName || options.projectName,
+      tag: matchedTree.tag || treeNumber,
+      treeTag: matchedTree.treeTag || matchedTree.tag || treeNumber,
+      existingSourcePin: sourcePoint ? `${sourcePoint.lat},${sourcePoint.lng}` : matchedTree.existingSourcePin,
+      existingLatitude: sourcePoint?.lat ?? matchedTree.existingLatitude,
+      existingLongitude: sourcePoint?.lng ?? matchedTree.existingLongitude,
+      existingLocationDescription: matchedTree.existingLocationDescription || `Survey source TREE# ${treeNumber}`,
+      sourceNorthing: northing,
+      sourceEasting: easting,
+      sourceCrsWkid: options.sourceCrsWkid ?? matchedTree.sourceCrsWkid,
+      sourceCrsLabel: sourceCrsLabel || matchedTree.sourceCrsLabel,
+      surveyTownshipRange: townshipRange || matchedTree.surveyTownshipRange,
+      currentFieldLocation: matchedTree.currentFieldLocation || 'Existing Location',
+      mapGeometryStatus: sourcePoint ? 'Source Pin Projected' : 'Survey Coordinates Stored',
+      relocationMap: sourcePoint
+        ? {
+            ...existingRelocationMap,
+            source: sourcePoint,
+          }
+        : existingRelocationMap,
+    });
+  });
+
+  return { updatedTrees, unmatchedRows, warnings };
+}
+
 export function previewSummary(preview: ImportPreview): string {
   const recordCount = preview.targets.reduce((sum, target) => sum + target.records.length, 0);
   const warningCount = new Set([
@@ -357,6 +475,103 @@ export function previewSummary(preview: ImportPreview): string {
 
 export function pasteHeadersForTemplate(template: SheetImportTemplate): string[] {
   return template.pasteHeaders || template.requiredHeaders;
+}
+
+function surveyCoordinateRowObjects(input: SurveyCoordinateMatchOptions['coordinateRows']) {
+  if (typeof input === 'string') {
+    return objectRows(parseDelimitedRows(input), ['TREE#', 'NORTHING', 'EASTING'], surveyCoordinateHeaderAliases());
+  }
+
+  if (Array.isArray(input) && Array.isArray(input[0])) {
+    return objectRows(input as string[][], ['TREE#', 'NORTHING', 'EASTING'], surveyCoordinateHeaderAliases());
+  }
+
+  const records = (input as Array<Record<string, unknown>>).map((row, index) => {
+    const normalized: RowObject = {};
+    Object.entries(row).forEach(([key, value]) => {
+      normalized[normalizedHeader(key)] = cleanText(value);
+    });
+    return { row: normalized, index: index + 2 };
+  });
+
+  return { headers: [], records, warnings: [] as string[] };
+}
+
+function surveyCoordinateHeaderAliases(): Record<string, string[]> {
+  return {
+    'TREE#': ['Tree #', 'Tree_Number', 'Tree Number', 'Tree_Tag', 'Tree Tag', 'Tag'],
+    NORTHING: ['Northing', 'Source_Northing', 'Source Northing', 'Y'],
+    EASTING: ['Easting', 'Source_Easting', 'Source Easting', 'X'],
+  };
+}
+
+function buildSurveyTreeNumberIndex(trees: TreeRelocationRecord[], projectId?: string): Map<string, TreeRelocationRecord> {
+  const index = new Map<string, TreeRelocationRecord>();
+  const projectKey = normalizedTreeNumber(projectId || '');
+
+  trees.forEach((tree) => {
+    if (projectKey) {
+      const treeProjectKeys = [
+        tree.projectId,
+        tree.projectsId,
+      ].flatMap(surveyTreeNumberKeys);
+      if (!treeProjectKeys.includes(projectKey)) return;
+    }
+
+    [
+      tree.tag,
+      tree.treeTag,
+      tree.treeId,
+      tree.treeAssetId,
+      tree.id,
+      tree.name,
+      tree.title,
+    ].flatMap(surveyTreeNumberKeys).forEach((key) => {
+      if (!key || index.has(key)) return;
+      index.set(key, tree);
+    });
+  });
+
+  return index;
+}
+
+function matchTreeBySurveyNumber(index: Map<string, TreeRelocationRecord>, treeNumber: string): TreeRelocationRecord | undefined {
+  for (const key of surveyTreeNumberKeys(treeNumber)) {
+    const match = index.get(key);
+    if (match) return match;
+  }
+  return undefined;
+}
+
+function surveyTreeNumberKeys(input: unknown): string[] {
+  const text = cleanText(input);
+  if (!text) return [];
+
+  const segments = text.split(/[^a-zA-Z0-9]+/).filter(Boolean);
+  return Array.from(new Set([
+    normalizedTreeNumber(text),
+    normalizedTreeNumber(segments[segments.length - 1] || ''),
+    ...segments.map(normalizedTreeNumber),
+  ].filter(Boolean)));
+}
+
+function normalizedTreeNumber(input: unknown): string {
+  const normalized = cleanText(input).replace(/^#+/, '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  if (/^\d+$/.test(normalized)) return normalized.replace(/^0+(?=\d)/, '');
+  return normalized;
+}
+
+function projectedPoint(input: { lat?: number; lng?: number } | undefined, label: string) {
+  const lat = typeof input?.lat === 'number' ? input.lat : undefined;
+  const lng = typeof input?.lng === 'number' ? input.lng : undefined;
+  if (lat === undefined || lng === undefined) return undefined;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return undefined;
+  return {
+    lat: Number(lat.toFixed(5)),
+    lng: Number(lng.toFixed(5)),
+    label,
+  };
 }
 
 function normalizeIncludedHeaders(template: SheetImportTemplate, includedHeaders?: string[]): string[] {
@@ -389,6 +604,23 @@ function rowLooksLikeHeader(row: string[] | undefined, includedHeaders: string[]
   if (startsWithSelected) return true;
   const matchCount = selected.filter((header) => normalizedRow.includes(header)).length;
   return matchCount >= Math.min(2, selected.length);
+}
+
+function treeAssetCoordinateUpdateHeadersPresent(row: string[] | undefined): boolean {
+  if (!row?.length) return false;
+  const headers = new Set(row.map(normalizedHeader));
+  const hasTag = ['tag', 'treetag', 'treeid', 'treeassetid'].some((header) => headers.has(header));
+  const hasSourceOrDestinationCoordinates = [
+    'existingsourcepin',
+    'existinglatitude',
+    'existinglongitude',
+    'sourcenorthing',
+    'sourceeasting',
+    'destinationpin',
+    'destinationlatitude',
+    'destinationlongitude',
+  ].some((header) => headers.has(header));
+  return hasTag && hasSourceOrDestinationCoordinates;
 }
 
 export function previewDetailsForRecord(template: SheetImportTemplate, record: CommandRecord): Array<{ label: string; value: string }> {
@@ -873,7 +1105,9 @@ function mapRelocation(template: SheetImportTemplate, rows: string[][]): ImportT
 function mapJdtProjectFlowTreeAssets(template: SheetImportTemplate, rows: string[][], projectContext?: ProjectImportContext | null): ImportTarget {
   const normalizedContext = normalizeProjectImportContext(projectContext);
   const contextProjectId = normalizedContext?.projectId || normalizedContext?.projectsId || '';
-  const requiredHeaders = template.requiredHeaders.filter((header) => {
+  const coordinateUpdateImport = treeAssetCoordinateUpdateHeadersPresent(rows[0]);
+  const anchorHeaders = coordinateUpdateImport ? ['Tree_Tag'] : template.requiredHeaders;
+  const requiredHeaders = anchorHeaders.filter((header) => {
     if (header === 'Tree_Asset_ID') return false;
     if (header === 'Project_ID' && contextProjectId) return false;
     return true;
@@ -891,21 +1125,25 @@ function mapJdtProjectFlowTreeAssets(template: SheetImportTemplate, rows: string
       const proposedFinalLocationDescription = firstValue(row, 'Proposed_Final_Location_Description', 'Proposed Final Location Description');
       const explicitSourcePin = firstValue(row, 'Existing_Source_Pin', 'Source Pin');
       const explicitDestinationPin = firstValue(row, 'Destination_Pin', 'Destination Pin');
+      const sourceNorthing = numberFrom(firstValue(row, 'Source_Northing', 'NORTHING', 'Northing'));
+      const sourceEasting = numberFrom(firstValue(row, 'Source_Easting', 'EASTING', 'Easting'));
       const sourcePin = coordinatePointFromLatLng(firstValue(row, 'Existing_Latitude'), firstValue(row, 'Existing_Longitude'), 'Imported source pin')
         || coordinatePointFromText(explicitSourcePin || existingLocationDescription, 'Imported source pin');
       const destinationPin = coordinatePointFromLatLng(firstValue(row, 'Destination_Latitude'), firstValue(row, 'Destination_Longitude'), 'Imported destination pin')
         || coordinatePointFromText(explicitDestinationPin || proposedFinalLocationDescription, 'Imported destination pin');
       const legacyRelocationStatus = firstValue(row, 'Relocation_Status', 'Relocation Status');
       const treeRelocationStatus = normalizeTreeRelocationStatus(firstValue(row, 'Tree_Relocation_Status', 'Current_Status', 'Current Status', 'Relocation_Status', 'Relocation Status'));
-      const mapGeometryStatus = firstValue(row, 'Map_Geometry_Status') || (sourcePin || destinationPin ? 'Parsed' : 'Missing');
+      const mapGeometryStatus = firstValue(row, 'Map_Geometry_Status') || (sourcePin || destinationPin ? 'Parsed' : sourceNorthing !== undefined && sourceEasting !== undefined ? 'Needs Projection' : 'Missing');
+      const hasGeometryUpdate = Boolean(sourcePin || destinationPin || explicitSourcePin || explicitDestinationPin || sourceNorthing !== undefined || sourceEasting !== undefined);
+      const updatesExistingProjectTree = Boolean(projectsId && tag && hasGeometryUpdate);
 
       if (!treeAssetId && !projectsId && !type && !tag) {
         warnings.push(`Row ${index} skipped: blank tree asset row`);
         return null;
       }
 
-      if (!projectsId || !type) {
-        warnings.push(`Row ${index} skipped: tree asset rows need Project_ID or selected project context, and Tree_Type`);
+      if (!projectsId || (!type && !updatesExistingProjectTree)) {
+        warnings.push(`Row ${index} skipped: tree asset rows need Project_ID or selected project context, plus Tree_Type for new trees or Tag with coordinate data for source/destination updates`);
         return null;
       }
 
@@ -943,9 +1181,14 @@ function mapJdtProjectFlowTreeAssets(template: SheetImportTemplate, rows: string
         difficulty: firstValue(row, 'Difficulty', 'Difficulty '),
         condition: value(row, 'Condition'),
         existingLocationDescription,
-        existingSourcePin: explicitSourcePin,
+        existingSourcePin: explicitSourcePin || (sourcePin ? `${sourcePin.lat},${sourcePin.lng}` : ''),
         existingLatitude: sourcePin?.lat,
         existingLongitude: sourcePin?.lng,
+        sourceNorthing,
+        sourceEasting,
+        sourceCrsWkid: firstValue(row, 'Source_CRS_WKID', 'Source CRS WKID'),
+        sourceCrsLabel: firstValue(row, 'Source_CRS_Label', 'Source CRS Label'),
+        surveyTownshipRange: firstValue(row, 'Survey_Township_Range', 'Township_Range', 'Township Range'),
         proposedFinalLocationDescription,
         destinationPin: explicitDestinationPin,
         destinationLatitude: destinationPin?.lat,

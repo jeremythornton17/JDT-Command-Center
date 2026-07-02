@@ -95,6 +95,14 @@ test("exports project records into canonical JDT Command Center workbook rows", 
       assetCategory: "Relocation",
       treeFinalOutcome: "Active in Scope",
       currentFieldLocation: "Existing Location",
+      existingSourcePin: "26.37289,-80.16132",
+      existingLatitude: 26.37289,
+      existingLongitude: -80.16132,
+      sourceNorthing: 742114.38,
+      sourceEasting: 930763.398,
+      sourceCrsWkid: 2236,
+      sourceCrsLabel: "NAD83 / Florida East (ftUS)",
+      surveyTownshipRange: "Township 47 S, Range 42 E",
       priority: "High",
       updatedAtIso: "2026-06-04T12:00:00.000Z",
     }],
@@ -149,6 +157,11 @@ test("exports project records into canonical JDT Command Center workbook rows", 
   assert.equal(treeRow?.Tree_Relocation_Status, "Ready for Relocation");
   assert.equal(treeRow?.Tree_Final_Outcome, "Active in Scope");
   assert.equal(treeRow?.Current_Field_Location, "Existing Location");
+  assert.equal(treeRow?.Existing_Source_Pin, "26.37289,-80.16132");
+  assert.equal(treeRow?.Source_Northing, 742114.38);
+  assert.equal(treeRow?.Source_Easting, 930763.398);
+  assert.equal(treeRow?.Source_CRS_WKID, 2236);
+  assert.equal(treeRow?.Survey_Township_Range, "Township 47 S, Range 42 E");
 
   const pruneRow = tables.find((table) => table.sheetName === "Project_Root_Pruning")?.rows[0];
   assert.equal(pruneRow?.Root_Pruning_ID, "WO-BWCC-ROOT-1003");

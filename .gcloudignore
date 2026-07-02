@@ -7,5 +7,8 @@ node_modules
 dist
 coverage
 .superpowers
+.codex-temp
+pnpm-lock.yaml
+pnpm-workspace.yaml
 *.log
 *.zip

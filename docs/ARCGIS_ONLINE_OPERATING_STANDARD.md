@@ -54,6 +54,152 @@ Do not give field users broad admin maps. Publish focused maps such as:
 
 Each field map should only show the layers and records that crew needs for the assigned work.
 
+## Standard Tree Relocation Field Form
+
+Field Maps is the field language. JDT Command Center is the operational, financial, and reporting layer. ArcGIS Online is the spatial system of record.
+
+Every relocation project should use the same crew-facing tree form:
+
+- Tree Tag: read-only.
+- Tree Type: read-only choice/text.
+- DBH: read-only number.
+- Relocation Status: editable choice list for physical work progress only.
+- Loader(s) Needed: editable JDT-controlled equipment selection.
+- Additional Equipment Required: editable text, default `None`.
+- Equipment Access: editable choice list.
+- Equipment Access Notes: conditional notes, required when access is `Blocked` or `Requires Review`.
+- Crew Notes: editable long text.
+- Issue Alert: editable choice list, default `None`.
+- Add Photo: editable attachment.
+
+Crew-editable `Tree_Relocation_Status` values:
+
+- `Not Started`
+- `25% Cut`
+- `50% Cut`
+- `75% Cut`
+- `100% Cut`
+- `Ready for Relocation`
+- `Moved to Holding Area`
+- `Relocated`
+- `Removed`
+- `Remaining in Place`
+
+Office-only `Billing_Status` values:
+
+- `Not Invoiced`
+- `Invoiced`
+- `Paid`
+- `Hold / Dispute`
+- `Not Billable`
+
+Do not use relocation status as an accounting field. A crew leader should never have to choose `Invoiced` or `Paid` in Field Maps. Jeremy, Jennifer, Regina, and approved JDT roles manage cost and billing in JDT Command Center or an admin-only ArcGIS view.
+
+Standard `Equipment_Access` values:
+
+- `Good`
+- `Blocked`
+- `Requires Review`
+
+Standard `Issue_Alert` values:
+
+- `None`
+- `Stressed`
+- `Damaged`
+- `Dead`
+- `Irrigation`
+- `Blocked Access`
+- `Needs Replanting`
+- `Leaning`
+- `Needs Jeremy Review`
+
+Photos should be required by workflow when the issue alert is not `None`, when equipment access is `Blocked` or `Requires Review`, and when relocation status is `Relocated`, `Moved to Holding Area`, or `Removed`.
+
+## Field Visibility And Views
+
+Keep operational and integration fields in the master hosted layer, but hide them from crew forms. For stronger access control, publish crew-facing hosted feature layer views that exclude protected fields entirely.
+
+Hide these from crew:
+
+- `Project_ID`
+- `Client_ID`
+- `Tree_Asset_ID`
+- Raw latitude/longitude fields
+- Source northing/easting
+- CRS/WKID and projection fields
+- Source file and import batch fields
+- `App_Record_ID`
+- ArcGIS sync IDs
+- Sync timestamps
+- `ObjectID` / `GlobalID` display fields
+- Cost fields
+- Billing fields
+- Internal QA/QC fields
+
+Expose cost and billing only in manager/admin views shared with Jeremy, Jennifer, Regina, JDT admins, and approved cost viewers/editors. JDT Command Center should enforce matching permissions such as `relocation.cost.view`, `relocation.cost.edit`, `relocation.billing.view`, and `relocation.billing.edit`.
+
+## Equipment Selection Sync
+
+JDT Command Center owns the equipment master list. ArcGIS should not become a separate hand-maintained equipment list.
+
+The first implementation exposes loader choices from active, field-selectable JDT equipment records. The long-term structure should store equipment selections as related records instead of a single comma-separated field:
+
+- `tree_equipment_need_id`
+- `tree_asset_id`
+- `project_id`
+- `equipment_id`
+- `equipment_name_snapshot`
+- `equipment_type`
+- `requested_by`
+- `requested_at`
+- `status`
+- `notes`
+
+The user can still experience this as a clean multi-select in JDT Command Center. Underneath, one tree can have many equipment need records, which keeps equipment planning, dispatch, reporting, and costing clean.
+
+## Webhook-First Sync
+
+Use webhooks as the default synchronization model.
+
+Field Maps to JDT:
+
+1. Crew edits a tree, task, note, issue, or attachment in Field Maps.
+2. Field Maps syncs to the ArcGIS hosted feature layer.
+3. ArcGIS webhook posts to a JDT webhook receiver.
+4. JDT queues the event, responds quickly, pulls changed feature data, and updates Firestore/JDT records.
+5. JDT updates dashboards, alerts, project history, issue history, and reporting.
+
+JDT to Field Maps:
+
+1. JDT Command Center saves an approved operational edit.
+2. A JDT internal event or Firestore trigger runs.
+3. The sync service calls ArcGIS Feature Service `applyEdits`.
+4. ArcGIS hosted layers update.
+5. Field Maps receives the updated record on sync.
+
+The receiver must be idempotent and loop-safe. Add and preserve these fields for sync protection and audit history:
+
+- `Last_Updated_Source`
+- `Last_Updated_By`
+- `Last_Updated_At`
+- `Last_Sync_Direction`
+- `Sync_Transaction_ID`
+- `ArcGIS_Last_Sync_At`
+- `JDT_Last_Sync_At`
+
+If an ArcGIS webhook arrives with a `Sync_Transaction_ID` that JDT already created, log it as confirmation and do not process it as a new field edit.
+
+The webhook receiver should:
+
+- Verify the ArcGIS webhook signature/secret.
+- Save the payload to a queue.
+- Return `200 OK` quickly.
+- Process feature changes asynchronously.
+- Handle offline Field Maps sync delays.
+- Record `Last Field Maps Sync`, `Last JDT Sync`, and `Last Known Field Update` in JDT.
+
+Cost and billing fields may sync to admin/manager views, but they must never be exposed through crew forms or crew feature layer views.
+
 ## KML/KMZ Bridge Workflow
 
 Use KML/KMZ for:

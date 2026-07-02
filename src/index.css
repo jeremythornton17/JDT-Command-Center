@@ -50,32 +50,3 @@ div[class*="lg:hidden"][class*="sticky"][class*="bg-jdt-primary"] > span::before
   content: "";
   background: var(--jdt-logo-url) center / contain no-repeat;
 }
-
-aside [class*="border-white/10"][class*="px-5"][class*="py-5"] > div::before {
-  display: block;
-  width: 12.5rem;
-  height: 5.4rem;
-  margin-bottom: 0.65rem;
-  content: "";
-  background: var(--jdt-logo-url) left center / contain no-repeat;
-}
-
-aside [class*="border-white/10"][class*="px-5"][class*="py-5"] p {
-  display: none;
-}
-
-aside [class*="border-white/10"][class*="px-5"][class*="py-5"] h1 {
-  font-size: 0.78rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: rgb(255 255 255 / 0.82);
-}
-
-aside [class*="border-white/10"][class*="px-5"][class*="py-5"] h1::after {
-  display: block;
-  margin-top: 0.22rem;
-  font-size: 0.62rem;
-  letter-spacing: 0.22em;
-  color: rgb(255 255 255 / 0.5);
-  content: "Big Trees, Big Moves";
-}

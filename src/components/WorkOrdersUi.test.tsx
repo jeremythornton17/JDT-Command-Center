@@ -107,7 +107,32 @@ describe("work order UI wiring", () => {
     assert.match(html, /Do not send crews through the clubhouse entrance/);
   });
 
-  it("shows data quality issues on the command board", () => {
+  it("shows an expand control for project profile drawers", () => {
+    const carmaxJob = {
+      id: "job-carmax",
+      title: "Carmax",
+      clientName: "A Cut Above",
+      location: "15920 Corporate Rd N, Jupiter, FL 33478",
+      status: "Active",
+    };
+
+    const html = renderToString(
+      <CommandDrawer
+        isOpen
+        onClose={() => undefined}
+        type="job"
+        itemId={carmaxJob.id}
+        defaultTab="overview"
+        openModal={() => undefined}
+        jobsList={[carmaxJob]}
+      />,
+    );
+
+    assert.match(html, /Expand project profile/);
+    assert.match(html, /Close profile/);
+  });
+
+  it("shows the executive command center overview without field action clutter", () => {
     const dashboardSummary = buildDashboardSummary({
       clients: [{ id: "cli-2275", name: "Boca West Country Club" }],
       jobs: [{
@@ -177,28 +202,27 @@ describe("work order UI wiring", () => {
       />,
     );
 
-    assert.match(html, /Data Quality Queue/);
+    assert.match(html, /Command Center Overview/);
+    assert.match(html, /Fleet GPS Quick Glance/);
+    assert.match(html, /Project Snapshots/);
+    assert.match(html, /Relocated Trees/);
+    assert.match(html, /Across active projects/);
     assert.match(html, /Boca West Course 1 Renovation/);
-    assert.match(html, /Fix the saved client\/project\/job link/);
-    assert.match(html, /Create Project/);
-    assert.match(html, /Dispatch Freight Move/);
-    assert.match(html, /Workflow Readiness/);
+    assert.match(html, /Freight Today/);
+    assert.match(html, /Crew at a Glance/);
+    assert.match(html, /Nursery Snapshot/);
+    assert.match(html, /Equipment Status/);
+    assert.match(html, /Alerts \/ Needs Attention/);
+    assert.match(html, /Open Fleet Map/);
+    assert.match(html, /View all projects/);
     assert.match(html, /Boca West lowboy move/);
     assert.match(html, /Driver/);
-    assert.match(html, /Complete freight dispatch details before sending this move to a driver/);
-    assert.match(html, /Field Closeout Review/);
-    assert.match(html, /Boca West root prune closeout/);
-    assert.match(html, /0 proof/);
-    assert.match(html, /Ask the crew to attach photo, BOL, POD, or job proof before filing this closeout/);
-    assert.match(html, /Compliance Review/);
-    assert.match(html, /Christian Crespo/);
-    assert.match(html, /Driver License/);
-    assert.match(html, /Semi #1/);
-    assert.match(html, /Vehicle Registration/);
-    assert.match(html, /Update or upload the Driver License for Christian Crespo before assigning driving work/);
-    assert.match(html, /Resource Conflicts/);
-    assert.match(html, /Christian Crespo/);
-    assert.match(html, /Boca West equipment move \/ Waterford tree delivery/);
+    assert.doesNotMatch(html, />Assign Work</);
+    assert.doesNotMatch(html, />Dispatch Freight Move</);
+    assert.doesNotMatch(html, />Start</);
+    assert.doesNotMatch(html, />Complete</);
+    assert.doesNotMatch(html, />Add Photo</);
+    assert.doesNotMatch(html, />Blocker</);
   });
 
   it("shows Reveal telematics exceptions on the command board", () => {
@@ -384,7 +408,7 @@ describe("work order UI wiring", () => {
     assert.match(html, /query=26.387315%2C%20-80.1712583/);
   });
 
-  it("shows a client relationship profile with contacts and linked operating records", () => {
+  it("shows a client account profile focused on contacts, projects, jobs, documents, and history", () => {
     const html = renderToString(
       <CommandDrawer
         isOpen
@@ -428,6 +452,7 @@ describe("work order UI wiring", () => {
     );
 
     assert.match(html, /Client Operating Profile/);
+  assert.match(html, /Client \/ Project \/ Job/);
     assert.match(html, /Primary Contact/);
     assert.match(html, /Additional Contacts/);
     assert.match(html, /Travis Wehrs/);
@@ -438,10 +463,95 @@ describe("work order UI wiring", () => {
     assert.match(html, /Boca West Course 1 Renovation/);
     assert.match(html, /North Course Install/);
     assert.match(html, /Completed Root Prune/);
-    assert.match(html, /Root prune Hole 7/);
-    assert.match(html, /Lowboy to Boca West/);
     assert.match(html, /Boca West permit/);
-    assert.match(html, /Crew delay/);
+    assert.doesNotMatch(html, /Client Work Orders/);
+    assert.doesNotMatch(html, /Client Freight Moves/);
+    assert.doesNotMatch(html, /Client Field Updates/);
+    assert.doesNotMatch(html, /Root prune Hole 7/);
+    assert.doesNotMatch(html, /Lowboy to Boca West/);
+    assert.doesNotMatch(html, /Crew delay/);
+  });
+
+  it("groups client documents into account folders with contract context", () => {
+    const html = renderToString(
+      <CommandDrawer
+        isOpen
+        onClose={() => undefined}
+        type="client"
+        itemId="cli-2275"
+        defaultTab="documents"
+        openModal={() => undefined}
+        clientsList={[{
+          id: "cli-2275",
+          name: "Boca West Country Club",
+          contactName: "Travis Wehrs",
+        }]}
+        projectsList={[{
+          id: "project-boca-course-1",
+          title: "Boca West Course 1 Renovation",
+          clientId: "cli-2275",
+          clientName: "Boca West Country Club",
+        }]}
+        jobsList={[{
+          id: "job-boca-root-prune",
+          title: "Course 1 Root Pruning",
+          clientId: "cli-2275",
+          projectId: "project-boca-course-1",
+          projectName: "Boca West Course 1 Renovation",
+        }]}
+        documentsList={[
+          {
+            id: "doc-boca-contract",
+            name: "Boca West Course 1 signed contract",
+            category: "Signed Contract",
+            clientId: "cli-2275",
+            projectId: "project-boca-course-1",
+            projectName: "Boca West Course 1 Renovation",
+            status: "Approved",
+            reviewStatus: "Filed",
+            signedDate: "2026-06-01",
+            scopeOfWork: "Root prune, relocate, and provide nutrient care for scoped trees.",
+            scopeTreeCount: 42,
+          } as DocumentRecord,
+          {
+            id: "doc-boca-proposal",
+            name: "Course 1 proposal",
+            category: "Proposal",
+            clientId: "cli-2275",
+            projectId: "project-boca-course-1",
+          },
+          {
+            id: "doc-boca-coi",
+            name: "Boca West COI",
+            category: "COI",
+            clientId: "cli-2275",
+          },
+          {
+            id: "doc-boca-map",
+            name: "Truck access map",
+            category: "Site Map",
+            clientId: "cli-2275",
+            jobId: "job-boca-root-prune",
+          },
+        ]}
+      />,
+    );
+
+    assert.match(html, /Client Document Library/);
+    assert.match(html, /Signed Contracts/);
+    assert.match(html, /Proposals \/ Estimates/);
+    assert.match(html, /Insurance \/ COI \/ W-9/);
+    assert.match(html, /Site Maps \/ Access Docs/);
+    assert.match(html, /Contract Status/);
+    assert.match(html, /Contract Date/);
+    assert.match(html, /Linked Project/);
+    assert.match(html, /Scope Summary/);
+    assert.match(html, /Tree Assets Covered/);
+    assert.match(html, /42 trees/);
+    assert.match(html, /Boca West Course 1 Renovation/);
+    assert.match(html, /Client-level docs/);
+    assert.match(html, /Project-level docs/);
+    assert.match(html, /Job-level docs/);
   });
 
   it("shows related work orders inside a job drawer", () => {
@@ -595,9 +705,9 @@ describe("work order UI wiring", () => {
       />,
     );
 
-    assert.match(html, /Create Crew Work/);
-    assert.match(html, /Request Equipment/);
-    assert.match(html, /Request Freight/);
+    assert.match(html, /Root Pruning/);
+    assert.match(html, /Equipment/);
+    assert.match(html, /Freight/);
     assert.match(html, /CAT 299D/);
     assert.match(html, /Lowboy move/);
   });
@@ -690,7 +800,9 @@ describe("work order UI wiring", () => {
     assert.match(html, /Boca West Course 2 Renovation/);
     assert.match(html, /BWCC-060426/);
     assert.match(html, /Root prune Course 1/);
-    assert.match(html, /Create Job \/ Work Order/);
+    assert.match(html, /Root Pruning/);
+    assert.match(html, /Relocation Move/);
+    assert.match(html, /Nutrient Care/);
     assert.match(html, /Frenchman&#x27;s Creek Country Club/);
     assert.match(html, /Frenchman&#x27;s Driving Range/);
   });
@@ -786,6 +898,71 @@ describe("work order UI wiring", () => {
     assert.match(html, /Actions/);
     assert.doesNotMatch(html, /Aftercare tree-boca-109/);
     assert.doesNotMatch(html, /Before relocation/);
+  });
+
+  it("shows signed contracts and scope-to-tree comparison inside a job profile", () => {
+    const contract = {
+      id: "contract-boca-west-course-1",
+      name: "Boca West Course 1 signed relocation contract",
+      category: "Contract",
+      status: "Approved",
+      reviewStatus: "Filed",
+      url: "https://drive.google.com/file/d/contract",
+      projectId: bocaJob.projectId,
+      projectName: bocaJob.projectName,
+      jobId: bocaJob.id,
+      jobName: bocaJob.title,
+      signedDate: "2026-06-01",
+      contractValue: 95000,
+      scopeOfWork: "Root prune, relocate, and provide nutrient care for scoped Boca West trees.",
+      scopeTreeCount: 4,
+      scopeTreeDetails: "Live Oak: 3\nSabal Palm: 1",
+    } as DocumentRecord & {
+      signedDate: string;
+      contractValue: number;
+      scopeOfWork: string;
+      scopeTreeCount: number;
+      scopeTreeDetails: string;
+    };
+    const permit: DocumentRecord = {
+      id: "permit-boca-west",
+      name: "Boca West tree permit",
+      category: "Permit",
+      projectId: bocaJob.projectId,
+      projectName: bocaJob.projectName,
+    };
+    const treeAssets: TreeRelocationRecord[] = ["1001", "1002", "1003"].map((treeId) => ({
+      id: `tree-boca-${treeId}`,
+      treeId,
+      projectId: bocaJob.projectId,
+      projectName: bocaJob.projectName,
+      type: "Live Oak",
+    }));
+
+    const html = renderToString(
+      <CommandDrawer
+        isOpen
+        onClose={() => undefined}
+        type="job"
+        itemId={bocaJob.id}
+        defaultTab="contracts"
+        openModal={() => undefined}
+        jobsList={[bocaJob]}
+        treeRelocationRecordsList={treeAssets}
+        documentsList={[contract, permit]}
+      />,
+    );
+
+    assert.match(html, /Contracts/);
+    assert.match(html, /Add Contract/);
+    assert.match(html, /Boca West Course 1 signed relocation contract/);
+    assert.match(html, /Scope of Work \/ Tree Details/);
+    assert.match(html, /Root prune, relocate, and provide nutrient care/);
+    assert.match(html, /Live Oak: 3/);
+    assert.match(html, /Sabal Palm: 1/);
+    assert.match(html, /3 of 4 contract trees linked/);
+    assert.match(html, /1 tree still needs to be reconciled/);
+    assert.doesNotMatch(html, /Boca West tree permit/);
   });
 
   it("keeps project tree assets compact by default and expands tree work only after a row is selected", () => {
@@ -1052,6 +1229,7 @@ describe("work order UI wiring", () => {
         workOrders={[]}
         openModal={() => undefined}
         openDrawer={() => undefined}
+        todayIso="2026-06-01"
       />,
     );
 

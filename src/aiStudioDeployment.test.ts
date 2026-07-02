@@ -98,9 +98,10 @@ describe("AI Studio deployment source guard", () => {
     assert.match(firestoreRules, /isAuthorizedUser\(\)/);
   });
 
-  it("keeps both Firebase email/password and Google sign-in options with narrow Sheets authorization", () => {
+  it("keeps both Firebase email/password and Google sign-in options with narrow workspace authorizations", () => {
     const authProvider = readProjectFile("src/AuthProvider.tsx");
     const googleSheetsSync = readProjectFile("src/commandCenter/googleSheetsSync.ts");
+    const googleCalendarSync = readProjectFile("src/commandCenter/googleCalendarSync.ts");
 
     assert.match(authProvider, /signInWithEmailAndPassword/);
     assert.match(authProvider, /GoogleAuthProvider/);
@@ -108,10 +109,15 @@ describe("AI Studio deployment source guard", () => {
     assert.match(authProvider, /Sign In With Google/);
     assert.match(authProvider, /Reset Password/);
     assert.match(authProvider, /\/jd-thornton-logo\.png/);
-    assert.doesNotMatch(authProvider, /mail\.google\.com|auth\/contacts|auth\/calendar/);
+    assert.doesNotMatch(authProvider, /mail\.google\.com|auth\/contacts/);
+    assert.match(authProvider, /authorizeGoogleCalendarAccess/);
+    assert.doesNotMatch(authProvider.match(/const signInWithGoogle[\s\S]*?const authorizeGoogleSheetsAccess/)?.[0] || "", /addScope/);
     assert.match(authProvider, /provider\.addScope\(googleSheetsScope\)/);
+    assert.match(authProvider, /provider\.addScope\(googleCalendarReadonlyScope\)/);
     assert.match(googleSheetsSync, /https:\/\/www\.googleapis\.com\/auth\/spreadsheets/);
     assert.doesNotMatch(googleSheetsSync, /mail\.google\.com|auth\/contacts|auth\/calendar/);
+    assert.match(googleCalendarSync, /https:\/\/www\.googleapis\.com\/auth\/calendar\.readonly/);
+    assert.doesNotMatch(googleCalendarSync, /mail\.google\.com|auth\/contacts/);
   });
 
   it("uses the production named Firestore database instead of the missing default database", () => {

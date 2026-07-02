@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { buildDashboardSummary } from "./dashboard";
-import type { ClientRecord, CrewRecord, EquipmentRecord, FieldUpdateRecord, InventoryItemRecord, JobRecord, LoadRecord, ScheduleTaskRecord, TreeRelocationRecord, WorkOrderRecord } from "./records";
+import type { ClientRecord, CrewRecord, EquipmentRecord, FieldUpdateRecord, FleetTelematicsEventRecord, InventoryItemRecord, JobRecord, LoadRecord, ScheduleTaskRecord, TreeRelocationRecord, WorkOrderRecord } from "./records";
 
 describe("command board dashboard summary", () => {
   it("builds actionable command strip counts for the hybrid board", () => {
@@ -385,6 +385,85 @@ describe("command board dashboard summary", () => {
     assert.equal(summary.todaySchedule[0].treeCount, 2);
     assert.deepEqual(summary.todaySchedule[0].treeTags, ["1001", "1002"]);
     assert.deepEqual(summary.todaySchedule[0].equipmentAssigned, ["544 Loader", "Mini Excavator"]);
+  });
+
+  it("builds the overview dashboard with exact relocated tree counts", () => {
+    const jobs: JobRecord[] = [
+      {
+        id: "job-boca-course-1",
+        title: "Boca West Course 1 Renovation",
+        projectId: "project-boca-course-1",
+        projectName: "Boca West Course 1 Renovation",
+        status: "Active",
+        location: "Boca Raton, FL",
+        crew: "Christian",
+      },
+    ];
+    const treeRelocationRecords: TreeRelocationRecord[] = [
+      { id: "tree-1", treeId: "1001", type: "Live Oak", projectId: "project-boca-course-1", relocationStatus: "Relocated" },
+      { id: "tree-2", treeId: "1002", type: "Live Oak", projectId: "project-boca-course-1", relocationStatus: "Ready for Relocation" },
+      { id: "tree-3", treeId: "1003", type: "Live Oak", projectId: "project-boca-course-1", relocationStatus: "Moved to Holding Area" },
+      { id: "tree-4", treeId: "1004", type: "Live Oak", projectId: "project-boca-course-1", relocationStatus: "Invoiced" },
+    ];
+
+    const summary = buildDashboardSummary({ jobs, treeRelocationRecords, todayIso: "2026-06-17" });
+    const relocatedKpi = summary.overview.kpis.find((kpi) => kpi.id === "relocatedTrees");
+    const snapshot = summary.overview.projectSnapshots[0];
+
+    assert.equal(relocatedKpi?.label, "Relocated Trees");
+    assert.equal(relocatedKpi?.value, "1 of 4");
+    assert.equal(relocatedKpi?.detail, "Across active projects");
+    assert.equal(snapshot.name, "Boca West Course 1 Renovation");
+    assert.equal(snapshot.treesRelocatedCount, 1);
+    assert.equal(snapshot.treesTotalCount, 4);
+    assert.equal(snapshot.progressPercent, 25);
+  });
+
+  it("builds fleet GPS quick-glance metrics for the overview dashboard", () => {
+    const loads: LoadRecord[] = [
+      { id: "load-mcarthur", title: "McArthur delivery", driver: "Alex", truck: "2024 Silverado 3500", status: "En Route", delivery: "McArthur Golf Club" },
+    ];
+    const equipment: EquipmentRecord[] = [
+      {
+        id: "truck-2024",
+        name: "2024 Silverado 3500",
+        category: "Truck",
+        telematicsProvider: "Reveal",
+        lastTelematicsLatitude: 26.75,
+        lastTelematicsLongitude: -81.04,
+        lastTelematicsStatus: "Moving",
+        lastTelematicsSpeedMph: 48,
+        lastTelematicsAt: "2026-06-17T21:47:00.000Z",
+      },
+      {
+        id: "water-truck",
+        name: "Water Truck",
+        category: "Truck",
+        status: "Down",
+        currentLocationName: "Boca West",
+      },
+    ];
+    const fleetTelematicsEvents: FleetTelematicsEventRecord[] = [
+      {
+        id: "event-2024",
+        providerVehicleId: "truck-2024",
+        vehicleName: "2024 Silverado 3500",
+        status: "Moving",
+        speedMph: 48,
+        latitude: 26.75,
+        longitude: -81.04,
+        address: "US 27",
+        eventAt: "2026-06-17T21:47:00.000Z",
+      },
+    ];
+
+    const summary = buildDashboardSummary({ loads, equipment, fleetTelematicsEvents, todayIso: "2026-06-17" });
+
+    assert.equal(summary.overview.fleetGps.visibleAssets, 1);
+    assert.equal(summary.overview.fleetGps.vehiclesOnRoad, 2);
+    assert.equal(summary.overview.fleetGps.equipmentOffsite, 1);
+    assert.equal(summary.overview.fleetGps.lastSyncAt, "2026-06-17T21:47:00.000Z");
+    assert.equal(summary.overview.fleetGps.movements.some((item) => item.label === "Alex"), true);
   });
 
   it("groups owner review items by operational decision bucket", () => {

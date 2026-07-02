@@ -97,7 +97,7 @@ const treeRelocationStatusOrder = [
   '75% Cut',
   '100% Cut',
   'Ready for Relocation',
-  'Moved to Holding',
+  'Moved to Holding Area',
   'Relocated',
 ] as const;
 
@@ -419,7 +419,7 @@ export default function ArcGisMapBoard({
       return;
     }
     if (actionId === 'mark-holding') {
-      setTreeForm((current) => ({ ...current, status: 'Moved to Holding' }));
+      setTreeForm((current) => ({ ...current, status: 'Moved to Holding Area' }));
       setSaveStatus(`Marked ${feature.treeTag || feature.treeId} moved to holding. Save to apply.`);
       return;
     }
@@ -1071,7 +1071,7 @@ function treeActionLabel(actionId: string) {
     'nutrient-care': 'Create Nutrient Care Task',
     'move-task': 'Create Move Task',
     'mark-ready': 'Mark Ready for Relocation',
-    'mark-holding': 'Mark Moved to Holding',
+    'mark-holding': 'Mark Moved to Holding Area',
     'mark-relocated': 'Mark Relocated',
   };
   return labels[actionId] || 'Tree action';
@@ -1085,7 +1085,7 @@ function statusLegendColor(status: string) {
     '75% Cut': '#8BB043',
     '100% Cut': '#469146',
     'Ready for Relocation': '#2D8054',
-    'Moved to Holding': '#3074B7',
+    'Moved to Holding Area': '#3074B7',
     Relocated: '#197046',
   };
   return colors[status] || '#485734';
@@ -1398,7 +1398,7 @@ function treeStatusRenderer() {
       symbol('75% Cut', [139, 176, 67, 0.95]),
       symbol('100% Cut', [70, 145, 70, 0.95]),
       symbol('Ready for Relocation', [45, 128, 84, 0.95]),
-      symbol('Moved to Holding', [48, 116, 183, 0.95]),
+      symbol('Moved to Holding Area', [48, 116, 183, 0.95]),
       symbol('Relocated', [25, 112, 70, 0.95]),
     ],
   };
@@ -1435,7 +1435,7 @@ function jdtTreePopupTemplate() {
       { title: 'Create Nutrient Care Task', id: 'nutrient-care', className: 'esri-icon-notice-round' },
       { title: 'Create Move Task', id: 'move-task', className: 'esri-icon-directions' },
       { title: 'Mark Ready for Relocation', id: 'mark-ready', className: 'esri-icon-check-mark' },
-      { title: 'Mark Moved to Holding', id: 'mark-holding', className: 'esri-icon-collection' },
+      { title: 'Mark Moved to Holding Area', id: 'mark-holding', className: 'esri-icon-collection' },
       { title: 'Mark Relocated', id: 'mark-relocated', className: 'esri-icon-home' },
     ],
     overwriteActions: true,

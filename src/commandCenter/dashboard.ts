@@ -118,7 +118,139 @@ export type DashboardDataQualityGroup = {
   items: DataQualityActionItem[];
 };
 
+export type DashboardOverviewKpi = {
+  id:
+    | "activeProjects"
+    | "inProgress"
+    | "upcoming"
+    | "onHold"
+    | "openIssues"
+    | "relocatedTrees"
+    | "activeAlerts"
+    | "reportsToday";
+  label: string;
+  value: string;
+  detail: string;
+  tone: "green" | "blue" | "amber" | "red" | "purple" | "teal";
+  targetTab: string;
+};
+
+export type DashboardFleetMovement = {
+  id: string;
+  label: string;
+  status: string;
+  detail: string;
+  tone: "active" | "moving" | "scheduled" | "issue" | "stale";
+};
+
+export type DashboardFleetMapMarker = {
+  id: string;
+  label: string;
+  status: string;
+  lat?: number;
+  lng?: number;
+  tone: DashboardFleetMovement["tone"];
+};
+
+export type DashboardFleetGpsQuickGlance = {
+  visibleAssets: number;
+  vehiclesOnRoad: number;
+  equipmentOffsite: number;
+  unmatchedAssets: number;
+  lastSyncAt: string;
+  movements: DashboardFleetMovement[];
+  mapMarkers: DashboardFleetMapMarker[];
+};
+
+export type DashboardProjectSnapshot = {
+  id: string;
+  name: string;
+  location: string;
+  status: string;
+  phase: string;
+  crewLead: string;
+  equipment: string[];
+  treesTotalCount: number;
+  treesRelocatedCount: number;
+  issuesCount: number;
+  nextAction: string;
+  progressPercent: number;
+  targetTab: string;
+  drawerType: string;
+  recordId?: string;
+};
+
+export type DashboardFreightAssignment = {
+  id: string;
+  driverName: string;
+  assignmentSummary: string;
+  destination: string;
+  vehicle?: string;
+  trailer?: string;
+  status: string;
+  eta?: string;
+};
+
+export type DashboardCrewAssignment = {
+  id: string;
+  crewLead: string;
+  currentJob: string;
+  phase: string;
+  status: string;
+};
+
+export type DashboardNurseryPickup = {
+  id: string;
+  customer: string;
+  time: string;
+};
+
+export type DashboardNurseryOverview = {
+  ordersToday: number;
+  treesPrepped: number;
+  needsPrepped: number;
+  stagedForDelivery: number;
+  irrigationStatus: string;
+  customerPickups: DashboardNurseryPickup[];
+};
+
+export type DashboardEquipmentStatusOverview = {
+  inUse: number;
+  available: number;
+  maintenance: number;
+  down: number;
+  utilizationPercent: number;
+  availablePercent: number;
+  maintenancePercent: number;
+  downPercent: number;
+  keyIssue: string;
+};
+
+export type DashboardAttentionItem = {
+  id: string;
+  severity: "High" | "Medium" | "Low" | "Info";
+  count: number;
+  title: string;
+  detail: string;
+  targetTab: string;
+  drawerType?: string;
+  recordId?: string;
+};
+
+export type CommandCenterOverview = {
+  date: string;
+  kpis: DashboardOverviewKpi[];
+  fleetGps: DashboardFleetGpsQuickGlance;
+  projectSnapshots: DashboardProjectSnapshot[];
+  freightToday: DashboardFreightAssignment[];
+  crewAtGlance: DashboardCrewAssignment[];
+  nurserySnapshot: DashboardNurseryOverview;
+  equipmentStatus: DashboardEquipmentStatusOverview;
+  alerts: DashboardAttentionItem[];
+};
+
 export type DashboardSummary = {
+  overview: CommandCenterOverview;
   commandAlerts: DashboardCommandAlert[];
   dailyBrief: DailyCommandBrief;
   dataQualityQueue: DataQualityActionItem[];
@@ -673,6 +805,500 @@ function quantityTotal(trees: Array<RanchOakRecord | InventoryItemRecord>) {
   }, 0);
 }
 
+function recordValue(record: CommandRecord | Record<string, unknown>, ...keys: string[]) {
+  const source = record as Record<string, unknown>;
+  for (const key of keys) {
+    const value = source[key];
+    if (value !== null && value !== undefined && value !== "") return value;
+  }
+  return "";
+}
+
+function numberValue(value: unknown, fallback = 0) {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : fallback;
+}
+
+function percentValue(part: number, total: number) {
+  if (!total) return 0;
+  return Math.round((part / total) * 100);
+}
+
+function hasExactRelocatedStatus(tree: TreeRelocationRecord) {
+  const status = firstText(tree.treeRelocationStatus, tree.relocationStatus, tree.status);
+  return status.trim().toLowerCase() === "relocated";
+}
+
+function projectName(record: CommandRecord) {
+  return firstText(record.projectName, record.jobName, record.title, record.name, record.id);
+}
+
+function projectLocation(record: CommandRecord) {
+  const source = record as JobRecord & ProjectRecord & Record<string, unknown>;
+  return firstText(source.location, source.locationName, source.mainAddress, source.currentLocation, source.clientName, source.client, "Location TBD");
+}
+
+function projectStatus(record: CommandRecord) {
+  const status = firstText(record.status, recordValue(record, "phase", "projectStatus", "projectStatusId"));
+  if (/hold|blocked|awaiting action/i.test(status)) return "On Hold";
+  if (/upcoming|scheduled soon|awaiting scheduling/i.test(status)) return "Upcoming";
+  if (/progress|active workflow/i.test(status)) return "In Progress";
+  if (/complete|completed|closed/i.test(status)) return "Complete";
+  return status || "Active";
+}
+
+function projectPhase(record: CommandRecord, treesForProject: TreeRelocationRecord[]) {
+  const explicit = firstText(recordValue(record, "phase", "jobStage", "projectPhase"), record.status);
+  if (explicit && !/^active$/i.test(explicit)) return explicit;
+  const statusCounts = new Map<string, number>();
+  treesForProject.forEach((tree) => {
+    const status = firstText(tree.treeRelocationStatus, tree.relocationStatus, tree.status);
+    if (!status) return;
+    statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+  });
+  const mostCommon = [...statusCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  return mostCommon || explicit || "Active";
+}
+
+function projectIdentityValues(record: CommandRecord) {
+  const source = record as JobRecord & ProjectRecord & Record<string, unknown>;
+  return [
+    source.id,
+    source.projectId,
+    source.projectsId,
+    source.jobId,
+    source.jobName,
+    source.projectName,
+    source.title,
+    source.name,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+}
+
+function treeBelongsToProject(tree: TreeRelocationRecord, project: CommandRecord) {
+  const projectIds = new Set(projectIdentityValues(project));
+  const treeValues = [
+    tree.projectId,
+    tree.projectsId,
+    tree.jobId,
+    tree.sourceJobId,
+    tree.projectName,
+    tree.jobName,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+
+  if (treeValues.some((value) => projectIds.has(value))) return true;
+  const name = projectName(project).toLowerCase();
+  return Boolean(name && treeValues.some((value) => value === name));
+}
+
+function uniqueProjectRecords(jobs: JobRecord[], projects: ProjectRecord[]) {
+  const records = [...jobs, ...projects];
+  const seen = new Set<string>();
+  return records.filter((record) => {
+    const key = firstText(record.projectId, (record as JobRecord).projectsId, record.id, projectName(record)).toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function isOnHoldProject(record: CommandRecord) {
+  return !isInactive(record) && hasAny(record, ["hold", "on hold", "blocked", "awaiting action"]);
+}
+
+function isUpcomingProject(record: CommandRecord) {
+  return !isInactive(record) && hasAny(record, ["upcoming", "scheduled soon", "awaiting scheduling"]);
+}
+
+function isInProgressProject(record: CommandRecord) {
+  return !isInactive(record) && hasAny(record, ["in progress", "active workflow", "progress", "50% cut", "70% cut"]);
+}
+
+function isActiveProject(record: CommandRecord) {
+  if (isInactive(record) || isOnHoldProject(record) || isUpcomingProject(record)) return false;
+  const text = recordText(record);
+  if (!text) return true;
+  return hasAny(record, ["active", "in progress", "scheduled", "on schedule", "relocation", "installation", "tree"]);
+}
+
+function fleetTone(status: unknown): DashboardFleetMovement["tone"] {
+  const text = String(status || "").toLowerCase();
+  if (/down|issue|no signal|stale|lost|error|repair/.test(text)) return text.includes("stale") || text.includes("signal") ? "stale" : "issue";
+  if (/en route|moving|transit|driving/.test(text)) return "moving";
+  if (/scheduled|pending|loading/.test(text)) return "scheduled";
+  return "active";
+}
+
+function newestTimestamp(...records: Array<Record<string, unknown>[]>) {
+  return records
+    .flat()
+    .map((record) => firstText(record.eventAt, record.receivedAt, record.lastTelematicsAt, record.revealLastReceivedAt, record.updatedAtIso))
+    .filter(Boolean)
+    .sort()
+    .at(-1) || "";
+}
+
+function buildOverviewProjectSnapshots(
+  projectRecords: CommandRecord[],
+  treeRelocationRecords: TreeRelocationRecord[],
+  ownerReviewQueue: DashboardWorkItem[],
+  projectRisks: ProjectRiskScore[],
+): DashboardProjectSnapshot[] {
+  const issueTextForProject = (project: CommandRecord) => {
+    const values = projectIdentityValues(project);
+    return values.concat(projectName(project).toLowerCase());
+  };
+
+  return projectRecords
+    .filter((record) => !isInactive(record))
+    .slice(0, 8)
+    .map((record) => {
+      const projectTrees = treeRelocationRecords.filter((tree) => treeBelongsToProject(tree, record));
+      const fallbackTotal = numberValue((record as JobRecord).relocationTreeCount || (record as JobRecord).installItemCount);
+      const total = projectTrees.length || fallbackTotal;
+      const relocated = projectTrees.filter(hasExactRelocatedStatus).length;
+      const projectIssueKeys = issueTextForProject(record);
+      const issuesFromQueue = ownerReviewQueue.filter((item) => {
+        const text = [item.title, item.projectName, item.detail, item.recordId].join(" ").toLowerCase();
+        return projectIssueKeys.some((key) => key && text.includes(key));
+      }).length;
+      const risk = projectRisks.find((item) => {
+        const text = [item.id, item.title, item.recordId].join(" ").toLowerCase();
+        return projectIssueKeys.some((key) => key && text.includes(key));
+      });
+      const issuesCount = issuesFromQueue + (risk ? Math.max(1, risk.reasons?.length || 0) : 0);
+      return {
+        id: firstText(record.id, record.projectId, projectName(record)),
+        name: projectName(record),
+        location: projectLocation(record),
+        status: projectStatus(record),
+        phase: projectPhase(record, projectTrees),
+        crewLead: firstText((record as JobRecord).crew, (record as ProjectRecord).crew, (record as JobRecord).pm, record.createdBy, "Unassigned"),
+        equipment: normalizeStringList(recordValue(record, "equipment", "equipmentNames", "assignedEquipment")).slice(0, 3),
+        treesTotalCount: total,
+        treesRelocatedCount: relocated,
+        issuesCount,
+        nextAction: firstText(recordValue(record, "nextAction", "nextWork", "recommendedAction"), issuesCount ? "Review open issue" : "Continue operations"),
+        progressPercent: percentValue(relocated, total),
+        targetTab: "tracker",
+        drawerType: "job",
+        recordId: firstText(record.id, record.projectId),
+      };
+    });
+}
+
+function buildFleetGpsQuickGlance(
+  equipment: EquipmentRecord[],
+  loads: LoadRecord[],
+  fleetTelematicsEvents: FleetTelematicsEventRecord[],
+): DashboardFleetGpsQuickGlance {
+  const gpsEquipment = equipment.filter((item) => (
+    Boolean(item.lastTelematicsLatitude && item.lastTelematicsLongitude)
+    || Boolean(item.revealVehicleId || item.verizonVehicleId || item.revealAssetId || item.telematicsProvider)
+  ));
+  const uniqueAssetIds = new Set<string>();
+  gpsEquipment.forEach((item) => uniqueAssetIds.add(firstText(item.id, item.revealVehicleId, item.verizonVehicleId, item.name)));
+  fleetTelematicsEvents.forEach((event) => uniqueAssetIds.add(firstText(event.providerVehicleId, event.id, event.vehicleName)));
+
+  const movingEquipment = gpsEquipment.filter((item) => (
+    numberValue(item.lastTelematicsSpeedMph) > 0 || /moving|transit|en route|driving/i.test(firstText(item.lastTelematicsStatus, item.status))
+  ));
+  const movingLoads = loads.filter((load) => !isInactive(load) && /en route|transit|dispatched|moving|pickup|delivery/i.test(firstText(load.status)));
+  const offsiteEquipment = equipment.filter((item) => {
+    if (isInactive(item)) return false;
+    const location = firstText(item.currentLocationName, item.currentLocation, item.location, item.lastTelematicsAddress).toLowerCase();
+    if (!location) return false;
+    return !/home base|main office|1010 e sugarland|jd thornton nurseries/.test(location);
+  });
+  const unmatchedAssets = fleetTelematicsEvents.filter((event) => !firstText(event.matchedEquipmentDocumentName, event.title, event.name)).length;
+
+  const eventMovements: DashboardFleetMovement[] = fleetTelematicsEvents.slice(0, 5).map((event) => ({
+    id: firstText(event.id, event.providerVehicleId, event.vehicleName),
+    label: firstText(event.driverName, event.vehicleName, event.vehicleNumber, "GPS Asset"),
+    status: firstText(event.status, numberValue(event.speedMph) > 0 ? "Moving" : "Stopped"),
+    detail: firstText(event.address, event.coordinateText, event.vehicleName, "Live GPS update"),
+    tone: fleetTone(firstText(event.status, numberValue(event.speedMph) > 0 ? "Moving" : "Stopped")),
+  }));
+
+  const equipmentMovements: DashboardFleetMovement[] = gpsEquipment.slice(0, 5).map((item) => ({
+    id: firstText(item.id, item.revealVehicleId, item.name),
+    label: firstText(item.lastTelematicsDriverName, item.operator, item.name, "GPS Asset"),
+    status: firstText(item.lastTelematicsStatus, item.status, "On Site"),
+    detail: firstText(item.assignedProjectName, item.currentLocationName, item.lastTelematicsAddress, item.currentLocation, "Tracked asset"),
+    tone: fleetTone(firstText(item.lastTelematicsStatus, item.status)),
+  }));
+
+  const loadMovements: DashboardFleetMovement[] = movingLoads.slice(0, 5).map((load) => ({
+    id: firstText(load.id, load.loadNumber, load.title),
+    label: firstText(load.driver, load.truck, load.title, "Freight"),
+    status: firstText(load.status, "Scheduled"),
+    detail: firstText(load.delivery, load.destination, load.projectName, load.clientName, "Freight move"),
+    tone: fleetTone(load.status),
+  }));
+
+  const markers: DashboardFleetMapMarker[] = [
+    ...fleetTelematicsEvents.map((event) => ({
+      id: firstText(event.id, event.providerVehicleId, event.vehicleName),
+      label: firstText(event.vehicleName, event.vehicleNumber, event.driverName, "GPS"),
+      status: firstText(event.status, "GPS"),
+      lat: event.latitude,
+      lng: event.longitude,
+      tone: fleetTone(event.status),
+    })),
+    ...gpsEquipment.map((item) => ({
+      id: firstText(item.id, item.revealVehicleId, item.name),
+      label: firstText(item.name, item.asset, item.vehicleNumber, "Equipment"),
+      status: firstText(item.lastTelematicsStatus, item.status, "GPS"),
+      lat: item.lastTelematicsLatitude,
+      lng: item.lastTelematicsLongitude,
+      tone: fleetTone(firstText(item.lastTelematicsStatus, item.status)),
+    })),
+  ].filter((marker) => marker.id);
+
+  return {
+    visibleAssets: uniqueAssetIds.size,
+    vehiclesOnRoad: movingEquipment.length + movingLoads.length,
+    equipmentOffsite: offsiteEquipment.length,
+    unmatchedAssets,
+    lastSyncAt: newestTimestamp(fleetTelematicsEvents, gpsEquipment) || "No sync yet",
+    movements: [...eventMovements, ...equipmentMovements, ...loadMovements].slice(0, 5),
+    mapMarkers: markers.slice(0, 10),
+  };
+}
+
+function buildFreightToday(loads: LoadRecord[]): DashboardFreightAssignment[] {
+  return loads
+    .filter((load) => !isInactive(load))
+    .slice(0, 5)
+    .map((load) => ({
+      id: firstText(load.id, load.loadNumber, load.title),
+      driverName: firstText(load.driver, "Unassigned Driver"),
+      assignmentSummary: firstText(load.title, load.loadNumber, [load.origin, load.delivery || load.destination].filter(Boolean).join(" to "), "Freight move"),
+      destination: firstText(load.delivery, load.destination, load.projectName, "Destination TBD"),
+      vehicle: firstText(load.truck),
+      trailer: firstText(load.trailer, load.requiredTrailerType),
+      status: firstText(load.status, "Scheduled"),
+      eta: firstText(load.eta, load.deliveryDate, load.pickupDate),
+    }));
+}
+
+function buildCrewAtGlance(crew: CrewRecord[], workOrders: WorkOrderRecord[], scheduleTasks: ScheduleTaskRecord[], jobs: JobRecord[]): DashboardCrewAssignment[] {
+  const workOrderAssignments = workOrders
+    .filter((item) => !isInactive(item))
+    .map((item) => ({
+      id: firstText(item.id, item.title),
+      crewLead: firstText(item.crewLeadName, item.assignedCrewNames?.[0], item.assignee, item.crewName, "Unassigned Crew"),
+      currentJob: firstText(item.projectName, item.jobName, item.clientName, item.title, "Field Work"),
+      phase: workOrderTypeLabel(item.workOrderType || item.taskType),
+      status: firstText(item.status, "Scheduled"),
+    }));
+
+  const scheduledAssignments = scheduleTasks
+    .filter((item) => !isInactive(item) && firstText(item.assignee))
+    .map((item) => ({
+      id: firstText(item.id, item.title, item.task),
+      crewLead: firstText(item.assignee, "Assigned Crew"),
+      currentJob: firstText(item.projectName, item.jobName, item.locationName, item.clientCompany, item.title, "Scheduled Work"),
+      phase: firstText(item.activityType, item.task, "Scheduled"),
+      status: firstText(item.status, item.loadStatus, "Scheduled"),
+    }));
+
+  const activeCrew = crew
+    .filter((person) => !isInactive(person) && firstText(person.activeJob))
+    .map((person) => ({
+      id: firstText(person.id, person.name),
+      crewLead: firstText(person.name, "Crew"),
+      currentJob: firstText(person.activeJob, "Assigned Work"),
+      phase: firstText(person.skill, person.role, "Assigned"),
+      status: firstText(person.availability, person.status, "Active"),
+    }));
+
+  const activeJobs = jobs
+    .filter((job) => !isInactive(job) && firstText(job.crew))
+    .map((job) => ({
+      id: firstText(job.id, job.title),
+      crewLead: firstText(job.crew, "Assigned Crew"),
+      currentJob: projectName(job),
+      phase: firstText(job.jobType, job.status, "Project Work"),
+      status: firstText(job.status, "Active"),
+    }));
+
+  const seen = new Set<string>();
+  return [...workOrderAssignments, ...scheduledAssignments, ...activeCrew, ...activeJobs]
+    .filter((item) => {
+      const key = `${item.crewLead}-${item.currentJob}`.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 5);
+}
+
+function buildNurseryOverview(trees: Array<RanchOakRecord | InventoryItemRecord>, scheduleTasks: ScheduleTaskRecord[]): DashboardNurseryOverview {
+  const nurseryTasks = scheduleTasks.filter((task) => hasAny(task, ["nursery", "pickup", "load", "staged", "prep", "watering", "irrigation"]));
+  const customerPickups = nurseryTasks
+    .filter((task) => hasAny(task, ["pickup", "customer"]))
+    .map((task) => ({
+      id: firstText(task.id, task.title, task.task),
+      customer: firstText(task.clientCompany, task.clientName, task.title, task.task, "Customer Pickup"),
+      time: firstText(task.startDate, task.loadStatus, "Time TBD"),
+    }))
+    .slice(0, 3);
+
+  return {
+    ordersToday: nurseryTasks.filter((task) => hasAny(task, ["order", "pickup", "delivery"])).length,
+    treesPrepped: trees.filter((tree) => hasAny(tree, ["prepped", "ready", "staged"])).length,
+    needsPrepped: trees.filter((tree) => hasAny(tree, ["needs prep", "prep needed", "not prepped"])).length,
+    stagedForDelivery: trees.filter((tree) => hasAny(tree, ["staged", "loaded", "delivery"])).length,
+    irrigationStatus: nurseryTasks.some((task) => hasAny(task, ["irrigation issue", "water issue", "needs water"])) ? "Needs Update" : "Good",
+    customerPickups,
+  };
+}
+
+function buildEquipmentStatusOverview(equipment: EquipmentRecord[]): DashboardEquipmentStatusOverview {
+  const activeEquipment = equipment.filter((item) => !isInactive(item));
+  const inUse = activeEquipment.filter((item) => hasAny(item, ["in use", "assigned", "on site", "offsite", "in transit"])).length;
+  const available = activeEquipment.filter((item) => hasAny(item, ["available", "ready"])).length;
+  const maintenance = activeEquipment.filter((item) => hasAny(item, ["maintenance", "inspection", "service"])).length;
+  const down = activeEquipment.filter((item) => hasAny(item, ["down", "repair", "broken", "blown"])).length;
+  const total = activeEquipment.length || inUse + available + maintenance + down;
+  const issue = activeEquipment.find((item) => hasAny(item, ["down", "repair", "broken", "blown", "maintenance", "service due"]));
+
+  return {
+    inUse,
+    available,
+    maintenance,
+    down,
+    utilizationPercent: percentValue(inUse, total),
+    availablePercent: percentValue(available, total),
+    maintenancePercent: percentValue(maintenance, total),
+    downPercent: percentValue(down, total),
+    keyIssue: issue
+      ? [firstText(issue.name, issue.asset, issue.type, "Equipment"), firstText(issue.currentLocationName, issue.currentLocation, issue.assignedProjectName), firstText(issue.status, issue.serviceStatus)].filter(Boolean).join(" - ")
+      : "No critical equipment issue",
+  };
+}
+
+function buildAttentionItems(
+  ownerReviewQueue: DashboardWorkItem[],
+  alerts: AlertRecord[],
+  dataQualityQueue: DataQualityActionItem[],
+  equipment: EquipmentRecord[],
+): DashboardAttentionItem[] {
+  const alertItems = alerts
+    .filter((alert) => !isInactive(alert))
+    .map((alert) => ({
+      id: firstText(alert.id, alert.title, alert.name),
+      severity: /critical|high|urgent/i.test(firstText(alert.severity, alert.status)) ? "High" as const : /medium|watch|warning/i.test(firstText(alert.severity, alert.status)) ? "Medium" as const : "Low" as const,
+      count: 1,
+      title: firstText(alert.title, alert.name, "Alert"),
+      detail: firstText(alert.body, alert.notes, alert.time, "Needs attention"),
+      targetTab: firstText(alert.targetTab, "alerts"),
+      drawerType: alert.relatedEntityType === "equipment" ? "equipment" : "alert",
+      recordId: firstText(alert.relatedEntityId, alert.id),
+    }));
+
+  const ownerItems = ownerReviewQueue.slice(0, 4).map((item) => ({
+    id: item.id,
+    severity: item.blockerFlag || /block|hold|down|urgent|high/i.test([item.title, item.status, item.detail].join(" ")) ? "High" as const : "Medium" as const,
+    count: 1,
+    title: item.title,
+    detail: item.projectName || item.detail,
+    targetTab: item.targetTab,
+    drawerType: item.drawerType,
+    recordId: item.recordId,
+  }));
+
+  const dataItems = dataQualityQueue.slice(0, 2).map((item) => ({
+    id: item.id,
+    severity: item.severity === "High" ? "High" as const : item.severity === "Medium" ? "Medium" as const : "Low" as const,
+    count: 1,
+    title: item.title,
+    detail: item.recommendedAction || item.detail,
+    targetTab: item.targetTab,
+    drawerType: item.drawerType,
+    recordId: item.recordId,
+  }));
+
+  const equipmentItems = equipment
+    .filter((item) => !isInactive(item) && hasAny(item, ["down", "repair", "broken", "blown", "service due"]))
+    .slice(0, 2)
+    .map((item) => ({
+      id: firstText(item.id, item.name),
+      severity: /down|broken|blown/i.test(recordText(item)) ? "High" as const : "Medium" as const,
+      count: 1,
+      title: firstText(item.name, item.asset, "Equipment issue"),
+      detail: firstText(item.status, item.serviceStatus, item.currentLocationName, "Needs review"),
+      targetTab: "equipment",
+      drawerType: "equipment",
+      recordId: firstText(item.id, item.name),
+    }));
+
+  const seen = new Set<string>();
+  return [...alertItems, ...ownerItems, ...equipmentItems, ...dataItems]
+    .filter((item) => {
+      const key = `${item.title}-${item.detail}`.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 5);
+}
+
+function buildCommandCenterOverview(input: {
+  jobs: JobRecord[];
+  projects: ProjectRecord[];
+  loads: LoadRecord[];
+  trees: Array<RanchOakRecord | InventoryItemRecord>;
+  equipment: EquipmentRecord[];
+  crew: CrewRecord[];
+  workOrders: WorkOrderRecord[];
+  scheduleTasks: ScheduleTaskRecord[];
+  treeRelocationRecords: TreeRelocationRecord[];
+  alerts: AlertRecord[];
+  fleetTelematicsEvents: FleetTelematicsEventRecord[];
+  fieldUpdates: FieldUpdateRecord[];
+  dataQualityQueue: DataQualityActionItem[];
+  ownerReviewQueue: DashboardWorkItem[];
+  projectRisks: ProjectRiskScore[];
+  todayIso: string;
+}): CommandCenterOverview {
+  const projectRecords = uniqueProjectRecords(input.jobs, input.projects);
+  const activeProjects = projectRecords.filter(isActiveProject);
+  const activeTreeSourceProjects = activeProjects.length ? activeProjects : projectRecords.filter((record) => !isInactive(record));
+  const activeProjectTrees = activeTreeSourceProjects.flatMap((project) => input.treeRelocationRecords.filter((tree) => treeBelongsToProject(tree, project)));
+  const relocatedTrees = activeProjectTrees.filter(hasExactRelocatedStatus).length;
+  const totalTrees = activeProjectTrees.length || input.treeRelocationRecords.length;
+  const openIssues = input.ownerReviewQueue.length + input.dataQualityQueue.filter((item) => item.severity !== "Low").length;
+  const reportsToday = input.fieldUpdates.filter((update) => hasAny(update, ["closeout", "report", "submitted", "review"])).length;
+  const inProgress = projectRecords.filter(isInProgressProject).length
+    || input.workOrders.filter((item) => !isInactive(item) && hasAny(item, ["active", "progress", "assigned", "scheduled"])).length;
+  const upcoming = projectRecords.filter(isUpcomingProject).length;
+  const onHold = projectRecords.filter(isOnHoldProject).length;
+
+  const kpis: DashboardOverviewKpi[] = [
+    { id: "activeProjects", label: "Active Projects", value: String(activeProjects.length), detail: "In the field", tone: "green", targetTab: "tracker" },
+    { id: "inProgress", label: "In Progress", value: String(inProgress), detail: "Active workflows", tone: "green", targetTab: "calendar" },
+    { id: "upcoming", label: "Upcoming", value: String(upcoming), detail: "Scheduled soon", tone: "blue", targetTab: "calendar" },
+    { id: "onHold", label: "On Hold", value: String(onHold), detail: "Awaiting action", tone: "amber", targetTab: "alerts" },
+    { id: "openIssues", label: "Open Issues", value: String(openIssues), detail: "Needs attention", tone: "red", targetTab: "alerts" },
+    { id: "relocatedTrees", label: "Relocated Trees", value: `${relocatedTrees} of ${totalTrees}`, detail: "Across active projects", tone: "green", targetTab: "treeGisMap" },
+    { id: "activeAlerts", label: "Active Alerts", value: String(input.alerts.filter((alert) => !isInactive(alert)).length), detail: "Needs attention", tone: "amber", targetTab: "alerts" },
+    { id: "reportsToday", label: "Reports Today", value: String(reportsToday), detail: "View latest reports", tone: "teal", targetTab: "reports" },
+  ];
+
+  return {
+    date: input.todayIso || new Date().toISOString().slice(0, 10),
+    kpis,
+    fleetGps: buildFleetGpsQuickGlance(input.equipment, input.loads, input.fleetTelematicsEvents),
+    projectSnapshots: buildOverviewProjectSnapshots(projectRecords, input.treeRelocationRecords, input.ownerReviewQueue, input.projectRisks),
+    freightToday: buildFreightToday(input.loads),
+    crewAtGlance: buildCrewAtGlance(input.crew, input.workOrders, input.scheduleTasks, input.jobs),
+    nurserySnapshot: buildNurseryOverview(input.trees, input.scheduleTasks),
+    equipmentStatus: buildEquipmentStatusOverview(input.equipment),
+    alerts: buildAttentionItems(input.ownerReviewQueue, input.alerts, input.dataQualityQueue, input.equipment),
+  };
+}
+
 export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSummary {
   const {
     jobs,
@@ -942,7 +1568,27 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
     },
   };
 
+  const overview = buildCommandCenterOverview({
+    jobs,
+    projects,
+    loads,
+    trees,
+    equipment,
+    crew,
+    workOrders,
+    scheduleTasks,
+    treeRelocationRecords,
+    alerts: alertsForDashboard,
+    fleetTelematicsEvents,
+    fieldUpdates,
+    dataQualityQueue,
+    ownerReviewQueue,
+    projectRisks,
+    todayIso,
+  });
+
   return {
+    overview,
     commandAlerts,
     dailyBrief,
     dataQualityQueue,

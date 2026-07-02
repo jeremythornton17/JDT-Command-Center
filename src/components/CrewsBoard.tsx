@@ -31,6 +31,7 @@ type CrewsBoardProps = {
   workOrders?: WorkOrderRecord[];
   openModal: (type: string, data?: any) => void;
   openDrawer: (type: string, id: string) => void;
+  todayIso?: string;
 };
 
 function clean(value: unknown, fallback = '') {
@@ -130,10 +131,10 @@ function personKey(member: CrewRecord) {
   return clean(member.id || member.email || member.name, 'personnel');
 }
 
-function buildRows(personnel: CrewRecord[], workOrders: WorkOrderRecord[]): CrewRow[] {
+function buildRows(personnel: CrewRecord[], workOrders: WorkOrderRecord[], todayIso?: string): CrewRow[] {
   return personnel.map((member) => {
     const activeWorkOrders = workOrdersForMember(member, workOrders);
-    const compliance = driverComplianceSummary(member);
+    const compliance = driverComplianceSummary(member, todayIso);
     const complianceTone = worstComplianceTone([compliance.license, compliance.medicalCard]);
     const equipment = unique(member.assignedEquipment || []);
     return {
@@ -458,7 +459,7 @@ function CompactCardView({
   );
 }
 
-export default function CrewsBoard({ crews, workOrders = [], openModal, openDrawer }: CrewsBoardProps) {
+export default function CrewsBoard({ crews, workOrders = [], openModal, openDrawer, todayIso }: CrewsBoardProps) {
   const [roleFilter, setRoleFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [skillFilter, setSkillFilter] = useState('All');
@@ -471,7 +472,7 @@ export default function CrewsBoard({ crews, workOrders = [], openModal, openDraw
   const [selectedKey, setSelectedKey] = useState('');
 
   const personnel = useMemo(() => mergePersonnelRecords(defaultJdtPersonnelRoster, crews), [crews]);
-  const rows = useMemo(() => buildRows(personnel, workOrders), [personnel, workOrders]);
+  const rows = useMemo(() => buildRows(personnel, workOrders, todayIso), [personnel, workOrders, todayIso]);
 
   const roleOptions = ['All', ...personnelRoleOptions, ...unique(rows.map((row) => row.role)).filter((role) => !personnelRoleOptions.includes(role))];
   const skillOptions = ['All', ...unique(rows.map((row) => row.primarySkill))];

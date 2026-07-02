@@ -10,6 +10,7 @@ import {
 import { auth } from "./firebase";
 import { getAppPermissions, getAppRole, getFirebaseAuthErrorMessage, getUnauthorizedAccountMessage, isAdminEmail, isAuthorizedEmail } from "./authAccess";
 import type { AppPermissions, AppRole } from "./commandCenter/dataModel";
+import { googleCalendarReadonlyScope } from "./commandCenter/googleCalendarSync";
 import { googleSheetsScope } from "./commandCenter/googleSheetsSync";
 
 interface AuthContextType {
@@ -22,6 +23,7 @@ interface AuthContextType {
   signIn: (email?: string, password?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   authorizeGoogleSheetsAccess: () => Promise<string>;
+  authorizeGoogleCalendarAccess: () => Promise<string>;
   resetPassword: (email: string) => Promise<void>;
   logOut: () => Promise<void>;
 }
@@ -30,14 +32,47 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 export const useAuth = () => useContext(AuthContext);
 
+function isLocalPreviewRoute() {
+  const isDev = Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV);
+  return Boolean(
+    isDev
+    && typeof window !== "undefined"
+    && ["/dashboard-preview", "/calendar-preview", "/clients-preview"].includes(window.location.pathname),
+  );
+}
+
+function localPreviewUser() {
+  return {
+    uid: "local-preview",
+    email: "jeremy@jdtnurseries.com",
+    displayName: "Jeremy Thornton",
+    emailVerified: true,
+    isAnonymous: false,
+    metadata: {},
+    providerData: [],
+    providerId: "local",
+    refreshToken: "",
+    tenantId: null,
+    phoneNumber: null,
+    photoURL: null,
+    delete: async () => {},
+    getIdToken: async () => "local-preview",
+    getIdTokenResult: async () => ({ token: "local-preview" }),
+    reload: async () => {},
+    toJSON: () => ({ uid: "local-preview", email: "jeremy@jdtnurseries.com" }),
+  } as unknown as User;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState("");
-  const isAuthorized = isAuthorizedEmail(user?.email);
-  const isAdmin = isAdminEmail(user?.email);
-  const role = getAppRole(user?.email);
-  const permissions = getAppPermissions(user?.email);
+  const isLocalPreview = isLocalPreviewRoute();
+  const effectiveUser = isLocalPreview ? localPreviewUser() : user;
+  const isAuthorized = isLocalPreview || isAuthorizedEmail(effectiveUser?.email);
+  const isAdmin = isLocalPreview || isAdminEmail(effectiveUser?.email);
+  const role = getAppRole(effectiveUser?.email);
+  const permissions = getAppPermissions(effectiveUser?.email);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((currentUser) => {
@@ -121,17 +156,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const authorizeGoogleCalendarAccess = async () => {
+    const provider = new GoogleAuthProvider();
+    provider.addScope(googleCalendarReadonlyScope);
+    provider.setCustomParameters({ prompt: "consent select_account" });
+
+    try {
+      const result = await signInWithPopup(auth, provider);
+      await assertAuthorizedUser(result.user);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (!credential?.accessToken) throw new Error("Google Calendar authorization did not return an access token.");
+      return credential.accessToken;
+    } catch (error) {
+      console.error("Google Calendar authorization failed", error);
+      if (isUnauthorizedError(error)) throw error;
+      throw new Error(getFirebaseAuthErrorMessage(error));
+    }
+  };
+
   const logOut = async () => {
     await signOut(auth);
   };
 
-  const contextValue = { user, loading, isAuthorized, isAdmin, role, permissions, signIn, signInWithGoogle, authorizeGoogleSheetsAccess, resetPassword, logOut };
+  const contextValue = { user: effectiveUser, loading: isLocalPreview ? false : loading, isAuthorized, isAdmin, role, permissions, signIn, signInWithGoogle, authorizeGoogleSheetsAccess, authorizeGoogleCalendarAccess, resetPassword, logOut };
 
-  if (loading) return null;
+  if (loading && !isLocalPreview) return null;
 
   return (
     <AuthContext.Provider value={contextValue}>
-      {user ? children : <FirebaseSignInPanel signIn={signIn} signInWithGoogle={signInWithGoogle} resetPassword={resetPassword} authError={authError} />}
+      {effectiveUser ? children : <FirebaseSignInPanel signIn={signIn} signInWithGoogle={signInWithGoogle} resetPassword={resetPassword} authError={authError} />}
     </AuthContext.Provider>
   );
 }

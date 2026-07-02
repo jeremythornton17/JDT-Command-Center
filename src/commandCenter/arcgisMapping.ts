@@ -10,6 +10,7 @@ import type {
 import { parseGoogleMapsLocationText, pointFromSavedSiteLocation, type TreeRelocationPoint } from '../treeRelocationMap';
 import { defaultRelocationStatus } from './treeLifecycle';
 import { arcGisLayerUrlEnvKeys, type ArcGisHostedLayerId } from './arcgisLayerConfig';
+import { normalizeFieldMapsTreeRelocationStatus } from './fieldMapsRelocationStandard';
 
 type RuntimeEnv = Partial<Record<string, string>>;
 
@@ -53,6 +54,11 @@ export type ArcGisTreeAssetFeature = {
   species: string;
   dbh: string;
   status: string;
+  loadersNeeded: string;
+  additionalEquipmentRequired: string;
+  equipmentAccess: string;
+  equipmentAccessNotes: string;
+  issueAlert: string;
   currentFieldLocation: string;
   existingSourcePin: string;
   destinationPin: string;
@@ -61,12 +67,20 @@ export type ArcGisTreeAssetFeature = {
   rootPruneDate: string;
   finalMoveDate: string;
   crew: string;
+  crewNotes: string;
   notes: string;
   latitude: number;
   longitude: number;
   arcGisFeatureId?: string;
   arcGisLayerUrl?: string;
   lastMapSyncAt?: string;
+  lastUpdatedSource?: string;
+  lastUpdatedBy?: string;
+  lastUpdatedAt?: string;
+  lastSyncDirection?: string;
+  syncTransactionId?: string;
+  arcGisLastSyncAt?: string;
+  jdtLastSyncAt?: string;
 };
 
 export type ArcGisFinalTreeLocationFeature = {
@@ -177,6 +191,11 @@ export const jdtArcGisLayerSchemas: ArcGisFeatureLayerSchema[] = [
       { name: 'species', alias: 'Species', type: 'string' },
       { name: 'dbh', alias: 'DBH', type: 'string' },
       { name: 'status', alias: 'Tree Relocation Status', type: 'string' },
+      { name: 'loadersNeeded', alias: 'Loader(s) Needed', type: 'string' },
+      { name: 'additionalEquipmentRequired', alias: 'Additional Equipment Required', type: 'string' },
+      { name: 'equipmentAccess', alias: 'Equipment Access', type: 'string' },
+      { name: 'equipmentAccessNotes', alias: 'Equipment Access Notes', type: 'string' },
+      { name: 'issueAlert', alias: 'Issue Alert', type: 'string' },
       { name: 'currentFieldLocation', alias: 'Current Field Location', type: 'string' },
       { name: 'existingSourcePin', alias: 'Existing Source Pin', type: 'string' },
       { name: 'destinationPin', alias: 'Destination Pin', type: 'string' },
@@ -185,6 +204,10 @@ export const jdtArcGisLayerSchemas: ArcGisFeatureLayerSchema[] = [
       { name: 'rootPruneDate', alias: 'Root Prune Date', type: 'string' },
       { name: 'finalMoveDate', alias: 'Final Move Date', type: 'string' },
       { name: 'crew', alias: 'Crew', type: 'string' },
+      { name: 'crewNotes', alias: 'Crew Notes', type: 'string' },
+      { name: 'lastUpdatedSource', alias: 'Last Updated Source', type: 'string' },
+      { name: 'lastSyncDirection', alias: 'Last Sync Direction', type: 'string' },
+      { name: 'syncTransactionId', alias: 'Sync Transaction ID', type: 'string' },
       { name: 'notes', alias: 'Notes', type: 'string' },
     ],
   },
@@ -308,6 +331,10 @@ export const treeAssetPopupFields = [
   'species',
   'dbh',
   'status',
+  'loadersNeeded',
+  'additionalEquipmentRequired',
+  'equipmentAccess',
+  'issueAlert',
   'currentFieldLocation',
   'existingSourcePin',
   'destinationPin',
@@ -315,6 +342,7 @@ export const treeAssetPopupFields = [
   'rootPruneDate',
   'finalMoveDate',
   'crew',
+  'crewNotes',
   'notes',
 ];
 
@@ -395,7 +423,12 @@ export function buildArcGisTreeAssetFeatures(input: {
         projectName,
         species: clean(firstText(tree.species, treeType)),
         dbh: clean(firstText(tree.dbh, tree.dbhIn, (tree as Record<string, unknown>).DBH_IN)),
-        status: clean(firstText(tree.treeRelocationStatus, tree.relocationStatus, tree.status, tree.currentStatus, defaultRelocationStatus)),
+        status: normalizeFieldMapsTreeRelocationStatus(firstText(tree.treeRelocationStatus, tree.relocationStatus, tree.status, tree.currentStatus, defaultRelocationStatus)),
+        loadersNeeded: normalizeStringList(firstText(tree.loadersNeeded) || tree.loaderNamesNeeded || tree.loaderIdsNeeded).join('; '),
+        additionalEquipmentRequired: clean(firstText(tree.additionalEquipmentRequired, 'None')),
+        equipmentAccess: clean(firstText(tree.equipmentAccess)),
+        equipmentAccessNotes: clean(firstText(tree.equipmentAccessNotes, tree.accessNotes)),
+        issueAlert: clean(firstText(tree.issueAlert, 'None')),
         currentFieldLocation: clean(firstText(tree.currentFieldLocation, 'Existing Location')),
         existingSourcePin: sourcePointText,
         destinationPin: destinationPointText,
@@ -404,12 +437,20 @@ export function buildArcGisTreeAssetFeatures(input: {
         rootPruneDate: clean(firstText(tree.rootPruneDate, tree.rootPruneDate1, tree.dateOfFirstCut, tree.firstCutDate)),
         finalMoveDate: clean(firstText(tree.finalMoveDate, tree.relocationDate, tree.dateMoved, tree.dateInstalled)),
         crew: clean(firstText(tree.crew, tree.crewLeadName, crewLookup.get(treeId))),
+        crewNotes: clean(firstText(tree.crewNotes)),
         notes: clean(firstText(tree.notes, tree.existingLocationDescription, tree.proposedFinalLocationDescription)),
         latitude: point.lat,
         longitude: point.lng,
         arcGisFeatureId: clean(firstText(tree.arcGisFeatureId)),
         arcGisLayerUrl: clean(firstText(tree.arcGisLayerUrl)),
         lastMapSyncAt: clean(firstText(tree.lastMapSyncAt)),
+        lastUpdatedSource: clean(firstText(tree.lastUpdatedSource)),
+        lastUpdatedBy: clean(firstText(tree.lastUpdatedBy)),
+        lastUpdatedAt: clean(firstText(tree.lastUpdatedAt)),
+        lastSyncDirection: clean(firstText(tree.lastSyncDirection)),
+        syncTransactionId: clean(firstText(tree.syncTransactionId)),
+        arcGisLastSyncAt: clean(firstText(tree.arcGisLastSyncAt)),
+        jdtLastSyncAt: clean(firstText(tree.jdtLastSyncAt)),
       };
     })
     .filter(Boolean) as ArcGisTreeAssetFeature[];
@@ -661,6 +702,11 @@ export function treeFeatureToTreeRecord(feature: Partial<ArcGisTreeAssetFeature>
     status: clean(firstText(feature.status, defaultRelocationStatus)),
     treeRelocationStatus: clean(firstText(feature.status, defaultRelocationStatus)),
     relocationStatus: clean(firstText(feature.status, defaultRelocationStatus)),
+    loaderNamesNeeded: normalizeStringList(feature.loadersNeeded),
+    additionalEquipmentRequired: clean(firstText(feature.additionalEquipmentRequired, 'None')),
+    equipmentAccess: clean(feature.equipmentAccess),
+    equipmentAccessNotes: clean(feature.equipmentAccessNotes),
+    issueAlert: clean(firstText(feature.issueAlert, 'None')),
     currentFieldLocation: clean(firstText(feature.currentFieldLocation, 'Existing Location')),
     existingSourcePin: clean(feature.existingSourcePin),
     destinationPin: clean(feature.destinationPin),
@@ -669,6 +715,7 @@ export function treeFeatureToTreeRecord(feature: Partial<ArcGisTreeAssetFeature>
     rootPruneDate1: clean(feature.rootPruneDate),
     relocationDate: clean(feature.finalMoveDate),
     crew: clean(feature.crew),
+    crewNotes: clean(feature.crewNotes),
     notes: clean(feature.notes),
     relocationMap: feature.latitude !== undefined && feature.longitude !== undefined
       ? { source: { lat: Number(feature.latitude), lng: Number(feature.longitude), label: 'ArcGIS tree point' } }
@@ -676,6 +723,11 @@ export function treeFeatureToTreeRecord(feature: Partial<ArcGisTreeAssetFeature>
     arcGisFeatureId: clean(firstText((feature as Record<string, unknown>).arcGisFeatureId, feature.objectId)),
     arcGisLayerUrl: clean((feature as Record<string, unknown>).arcGisLayerUrl),
     lastMapSyncAt: clean((feature as Record<string, unknown>).lastMapSyncAt),
+    lastUpdatedSource: clean((feature as Record<string, unknown>).lastUpdatedSource),
+    lastSyncDirection: clean((feature as Record<string, unknown>).lastSyncDirection),
+    syncTransactionId: clean((feature as Record<string, unknown>).syncTransactionId),
+    arcGisLastSyncAt: clean((feature as Record<string, unknown>).arcGisLastSyncAt),
+    jdtLastSyncAt: clean((feature as Record<string, unknown>).jdtLastSyncAt),
   } as TreeRelocationRecord;
 }
 
@@ -704,11 +756,26 @@ export function buildArcGisTreeAssetHostedEdit(feature: Partial<ArcGisTreeAssetF
     Holding_Area_Name: (feature as Record<string, unknown>).holdingAreaName,
     Existing_Location_Description: feature.existingSourcePin,
     Proposed_Final_Location_Description: feature.destinationPin,
+    Loaders_Needed: feature.loadersNeeded,
+    Additional_Equipment_Required: firstText(feature.additionalEquipmentRequired, 'None'),
+    Equipment_Access: feature.equipmentAccess,
+    Equipment_Access_Notes: feature.equipmentAccessNotes,
+    Issue_Alert: firstText(feature.issueAlert, 'None'),
+    Crew_Notes: feature.crewNotes,
+    Relocation_Cost: numericValue((feature as Record<string, unknown>).relocationCost),
+    Billing_Status: (feature as Record<string, unknown>).billingStatus,
     Estimated_Relocation_Cost: numericValue((feature as Record<string, unknown>).estimatedRelocationCost),
     Contract_Relocation_Cost: numericValue((feature as Record<string, unknown>).contractRelocationCost),
     Risk_Level: (feature as Record<string, unknown>).riskLevel,
     Map_Geometry_Status: firstText(feature.mapGeometryStatus, feature.arcGisFeatureId ? 'Synced' : 'Ready for ArcGIS Sync'),
     Last_Map_Sync_At: dateValue(feature.lastMapSyncAt),
+    Last_Updated_Source: (feature as Record<string, unknown>).lastUpdatedSource,
+    Last_Updated_By: (feature as Record<string, unknown>).lastUpdatedBy,
+    Last_Updated_At: dateValue((feature as Record<string, unknown>).lastUpdatedAt),
+    Last_Sync_Direction: (feature as Record<string, unknown>).lastSyncDirection,
+    Sync_Transaction_ID: (feature as Record<string, unknown>).syncTransactionId,
+    ArcGIS_Last_Sync_At: dateValue((feature as Record<string, unknown>).arcGisLastSyncAt),
+    JDT_Last_Sync_At: dateValue((feature as Record<string, unknown>).jdtLastSyncAt),
     Notes: feature.notes,
   });
 

@@ -574,6 +574,7 @@ export type ScheduleTaskRecord = CommandRecord & {
   task?: string;
   startDate?: string;
   endDate?: string;
+  time?: string;
   locationId?: string;
   locationName?: string;
   mainAddress?: string;
@@ -592,6 +593,14 @@ export type ScheduleTaskRecord = CommandRecord & {
   quantity?: string | number;
   saveToMaster?: boolean;
   sourceSheet?: string;
+  sourceType?: string;
+  googleCalendarId?: string;
+  googleCalendarName?: string;
+  googleCalendarEventId?: string;
+  googleCalendarHtmlLink?: string;
+  googleCalendarUpdatedAt?: string;
+  googleCalendarSyncedAt?: string;
+  googleCalendarEventStatus?: string;
 };
 
 export type TreeRelocationRecord = CommandRecord & {
@@ -620,6 +629,7 @@ export type TreeRelocationRecord = CommandRecord & {
   relocationCost?: string | number;
   estimatedRelocationCost?: string | number;
   contractRelocationCost?: string | number;
+  billingStatus?: string;
   relocationStatus?: string;
   treeRelocationStatus?: string;
   installationStatus?: string;
@@ -640,12 +650,25 @@ export type TreeRelocationRecord = CommandRecord & {
   existingSourcePin?: string;
   existingLatitude?: number;
   existingLongitude?: number;
+  sourceNorthing?: number;
+  sourceEasting?: number;
+  sourceCrsWkid?: string | number;
+  sourceCrsLabel?: string;
+  surveyTownshipRange?: string;
   proposedFinalLocationDescription?: string;
   destinationPin?: string;
   destinationLatitude?: number;
   destinationLongitude?: number;
   holdingAreaName?: string;
   currentFieldLocation?: string;
+  loaderIdsNeeded?: string[];
+  loaderNamesNeeded?: string[];
+  loadersNeeded?: string[] | string;
+  additionalEquipmentRequired?: string;
+  equipmentAccess?: string;
+  equipmentAccessNotes?: string;
+  issueAlert?: string;
+  crewNotes?: string;
   treeFinalOutcome?: string;
   outcomeDate?: string;
   outcomeReason?: string;
@@ -657,6 +680,13 @@ export type TreeRelocationRecord = CommandRecord & {
   wateringResponsibility?: string;
   mapGeometryStatus?: string;
   arcGisFeatureId?: string;
+  arcGisLayerUrl?: string;
+  lastMapSyncAt?: string;
+  lastUpdatedSource?: string;
+  lastSyncDirection?: string;
+  syncTransactionId?: string;
+  arcGisLastSyncAt?: string;
+  jdtLastSyncAt?: string;
   photosComplete?: string | boolean;
   appUpdatedAt?: string;
   lastSyncBatchId?: string;
@@ -683,7 +713,15 @@ export type AlertRecord = CommandRecord & {
 export type DocumentRecord = CommandRecord & {
   job?: string;
   category?: string;
+  documentFolder?: string;
+  documentLevel?: 'Client' | 'Project' | 'Job' | 'Tree' | string;
   url?: string;
+  contractNumber?: string;
+  signedDate?: string;
+  contractValue?: string | number;
+  scopeOfWork?: string;
+  scopeTreeCount?: string | number;
+  scopeTreeDetails?: string;
   treeId?: string;
   treeIds?: string[];
   photoType?: string;

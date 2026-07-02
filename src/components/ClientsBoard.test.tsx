@@ -74,4 +74,60 @@ describe("ClientsBoard", () => {
     assert.match(html, /1 job/);
     assert.match(html, /View Full Profile/);
   });
+
+  it("uses a compact client account register as the default clients view", () => {
+    const clients: ClientRecord[] = [
+      {
+        id: "cli-2275",
+        name: "Boca West Country Club",
+        contactName: "Travis Wehrs",
+        phone: "(239) 340-9223",
+        email: "TWehrs@bocawestcc.org",
+        billingAddress: "20583 Boca West Dr, Boca Raton, FL 33434",
+        billingDetails: "Net 30",
+      },
+      {
+        id: "client-missing-contact",
+        name: "Missing Contact Client",
+      },
+    ];
+    const projects: ProjectRecord[] = [
+      {
+        id: "project-boca-course-1",
+        title: "Boca West Course 1 Renovation",
+        clientId: "cli-2275",
+        clientName: "Boca West Country Club",
+        status: "Active",
+      },
+    ];
+    const jobs: JobRecord[] = [
+      {
+        id: "job-boca-root-prune",
+        title: "Root prune",
+        clientId: "cli-2275",
+        projectId: "project-boca-course-1",
+        status: "Active",
+      },
+    ];
+
+    const html = renderToString(
+      <ClientsBoard
+        clients={clients}
+        projects={projects}
+        jobs={jobs}
+        openModal={() => undefined}
+        openDrawer={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Client Account Register/);
+    assert.match(html, /Active Projects/);
+    assert.match(html, /Open Jobs/);
+    assert.match(html, /Missing Info/);
+    assert.match(html, /Roster View/);
+    assert.match(html, /Card View/);
+    assert.match(html, /Boca West Course 1 Renovation/);
+    assert.match(html, /Missing contact/);
+    assert.doesNotMatch(html, /grid gap-6 md:grid-cols-2/);
+  });
 });

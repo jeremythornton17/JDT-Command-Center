@@ -3,6 +3,8 @@ import { AlertTriangle, Calendar as CalendarIcon, CalendarDays, ChevronLeft, Che
 import {
   buildCalendarGridDays,
   buildOperatingCalendar,
+  primaryCalendarGridEvents,
+  rescheduledEventDateRange,
   type CalendarGridDay,
   type CalendarGridView,
   type OperatingCalendarEvent,
@@ -30,6 +32,11 @@ type CalendarBoardProps = {
   initialDisplayMode?: CalendarDisplayMode;
   initialRangeView?: CalendarGridView;
   initialFocusDateIso?: string;
+  canSyncGoogleCalendar?: boolean;
+  isSyncingGoogleCalendar?: boolean;
+  googleCalendarSyncStatus?: string;
+  onSyncGoogleCalendar?: (window: { startIso: string; endIso: string; view: CalendarGridView; focusIso: string }) => void | Promise<void>;
+  onRescheduleEvent?: (event: OperatingCalendarEvent, nextDateIso: string) => void | Promise<void>;
   openDrawer: (type: string, id: string) => void;
 };
 
@@ -117,6 +124,14 @@ function eventDrawerType(event: OperatingCalendarEvent): string | null {
   return event.drawerType;
 }
 
+function eventPrimaryMeta(event: OperatingCalendarEvent): { client: string; location: string; assignee: string } {
+  return {
+    client: event.clientName || event.projectName || 'Internal Operations',
+    location: event.location || event.projectName || event.detail || 'Location TBD',
+    assignee: event.assignee || 'Unassigned',
+  };
+}
+
 function readinessMetricTone(value: number): string {
   return value > 0 ? riskSurfaceClass('watch') : riskSurfaceClass('low');
 }
@@ -182,9 +197,16 @@ function VisualLegend() {
   );
 }
 
-function EventCard({ event, openDrawer }: { event: OperatingCalendarEvent; openDrawer: CalendarBoardProps['openDrawer'] }) {
-  const drawerType = eventDrawerType(event);
-  const actionable = Boolean(drawerType && event.recordId);
+function CalendarControlGroup({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-lg border border-jdt-border bg-white p-2.5 shadow-sm ${className}`}>
+      <p className="mb-2 text-[9px] font-black uppercase tracking-wide text-zinc-400">{label}</p>
+      {children}
+    </div>
+  );
+}
+
+function EventCard({ event, onSelectEvent }: { event: OperatingCalendarEvent; onSelectEvent: (event: OperatingCalendarEvent) => void }) {
   const content = (
     <>
       <div className="flex items-start justify-between gap-3">
@@ -226,14 +248,10 @@ function EventCard({ event, openDrawer }: { event: OperatingCalendarEvent; openD
     </>
   );
 
-  if (!actionable) {
-    return <article className={`rounded-lg border border-jdt-border border-l-4 bg-white p-4 shadow-sm ${categoryAccentBorderClass(event.category)}`}>{content}</article>;
-  }
-
   return (
     <button
       type="button"
-      onClick={() => openDrawer(drawerType!, event.recordId!)}
+      onClick={() => onSelectEvent(event)}
       className={`w-full rounded-lg border border-jdt-border border-l-4 bg-white p-4 text-left shadow-sm transition-colors hover:border-jdt-olive ${categoryAccentBorderClass(event.category)}`}
     >
       {content}
@@ -241,45 +259,97 @@ function EventCard({ event, openDrawer }: { event: OperatingCalendarEvent; openD
   );
 }
 
-function CalendarGridEvent({ event, openDrawer }: { event: OperatingCalendarEvent; openDrawer: CalendarBoardProps['openDrawer'] }) {
-  const drawerType = eventDrawerType(event);
-  const actionable = Boolean(drawerType && event.recordId);
+function CalendarGridEvent({
+  event,
+  onSelectEvent,
+  canDrag,
+}: {
+  event: OperatingCalendarEvent;
+  onSelectEvent: (event: OperatingCalendarEvent) => void;
+  canDrag: boolean;
+}) {
   const rangeSummary = event.durationDays > 1 ? `${formatRangeLabel(event)} - Blocks ${event.durationDays} days` : formatRangeLabel(event);
+  const meta = eventPrimaryMeta(event);
   const content = (
     <>
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 items-start gap-2">
         <CategoryIcon category={event.category} size="xs" />
-        <span className="truncate text-[11px] font-black text-jdt-text">{event.title}</span>
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-[11px] font-black leading-tight text-jdt-text">{event.title}</span>
+            {(event.readinessIssues.length > 0 || event.conflicts.length > 0) && (
+              <AlertTriangle className="h-3 w-3 shrink-0 text-amber-700" aria-label="Needs review" />
+            )}
+          </div>
+          <p className="mt-0.5 truncate text-[9px] font-black uppercase text-zinc-500">{meta.client}</p>
+        </div>
       </div>
-      <div className="mt-1 flex items-center justify-between gap-2">
-        <span className="truncate text-[9px] font-bold uppercase text-zinc-500">{event.assignee || event.timeLabel}</span>
+      <div className="mt-1 grid gap-0.5 pl-8">
+        <span className="truncate text-[9px] font-bold text-zinc-500">{meta.location}</span>
+        <span className="truncate text-[9px] font-black uppercase text-zinc-500">{meta.assignee}</span>
+      </div>
+      <div className="mt-1 flex items-center justify-end gap-2">
         {event.durationDays > 1 && <span title={`Blocks ${event.durationDays} days`} className="shrink-0 rounded bg-jdt-sand px-1.5 py-0.5 text-[8px] font-black uppercase text-jdt-olive">{event.durationDays}d</span>}
       </div>
     </>
   );
 
-  if (!actionable) {
-    return <article title={rangeSummary} aria-label={`${event.title} ${rangeSummary}`} className={`rounded-md border border-l-4 px-2 py-1.5 ${statusClass(event)} ${categoryAccentBorderClass(event.category)}`}>{content}</article>;
-  }
-
   return (
     <button
       type="button"
-      onClick={() => openDrawer(drawerType!, event.recordId!)}
+      draggable={canDrag}
+      onDragStart={(dragEvent) => {
+        if (!canDrag) return;
+        dragEvent.dataTransfer.setData('application/x-jdt-calendar-event', event.id);
+        dragEvent.dataTransfer.effectAllowed = 'move';
+      }}
+      onClick={() => onSelectEvent(event)}
       title={rangeSummary}
       aria-label={`${event.title} ${rangeSummary}`}
-      className={`w-full rounded-md border border-l-4 px-2 py-1.5 text-left transition-colors hover:border-jdt-olive ${statusClass(event)} ${categoryAccentBorderClass(event.category)}`}
+      className={`w-full rounded-md border border-l-4 px-2 py-1.5 text-left transition-colors hover:border-jdt-olive ${statusClass(event)} ${categoryAccentBorderClass(event.category)} ${canDrag ? 'cursor-grab active:cursor-grabbing' : ''}`}
     >
       {content}
     </button>
   );
 }
 
-function CalendarGrid({ days, view, openDrawer }: { days: CalendarGridDay[]; view: CalendarGridView; openDrawer: CalendarBoardProps['openDrawer'] }) {
+function CalendarGrid({
+  days,
+  view,
+  onSelectEvent,
+  onRescheduleEvent,
+}: {
+  days: CalendarGridDay[];
+  view: CalendarGridView;
+  onSelectEvent: (event: OperatingCalendarEvent) => void;
+  onRescheduleEvent?: CalendarBoardProps['onRescheduleEvent'];
+}) {
+  const eventLookup = useMemo(() => {
+    const lookup = new Map<string, OperatingCalendarEvent>();
+    days.forEach((day) => day.events.forEach((event) => lookup.set(event.id, event)));
+    return lookup;
+  }, [days]);
+  const canReschedule = Boolean(onRescheduleEvent);
+  const handleDrop = (dateIso: string, dropEvent: React.DragEvent<HTMLElement>) => {
+    if (!onRescheduleEvent) return;
+    const eventId = dropEvent.dataTransfer.getData('application/x-jdt-calendar-event');
+    const event = eventLookup.get(eventId);
+    if (!event) return;
+    dropEvent.preventDefault();
+    if (event.dateIso === dateIso) return;
+    void onRescheduleEvent(event, dateIso);
+  };
+
   if (view === 'Day') {
     const day = days[0];
     return (
-      <section className="rounded-xl border border-jdt-border bg-white p-4 shadow-sm">
+      <section
+        className="rounded-xl border border-jdt-border bg-white p-4 shadow-sm"
+        onDragOver={(event) => {
+          if (canReschedule) event.preventDefault();
+        }}
+        onDrop={(event) => handleDrop(day.dateIso, event)}
+      >
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <p className="text-[10px] font-black uppercase text-jdt-olive">{formatWeekday(day.dateIso, 'long')}</p>
@@ -289,7 +359,7 @@ function CalendarGrid({ days, view, openDrawer }: { days: CalendarGridDay[]; vie
         </div>
         {day.events.length > 0 ? (
           <div className="grid gap-3 lg:grid-cols-2">
-            {day.events.map((event) => <EventCard key={`${day.dateIso}-${event.id}`} event={event} openDrawer={openDrawer} />)}
+            {day.events.map((event) => <EventCard key={`${day.dateIso}-${event.id}`} event={event} onSelectEvent={onSelectEvent} />)}
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-jdt-border bg-jdt-panel p-8 text-center">
@@ -317,7 +387,11 @@ function CalendarGrid({ days, view, openDrawer }: { days: CalendarGridDay[]; vie
           return (
             <div
               key={day.dateIso}
-              className={`min-h-[160px] border-r border-b border-jdt-border p-2 last:border-r-0 ${day.isCurrentMonth ? 'bg-white' : 'bg-zinc-50/80'} ${day.isToday ? 'ring-2 ring-inset ring-jdt-olive' : ''}`}
+              onDragOver={(event) => {
+                if (canReschedule) event.preventDefault();
+              }}
+              onDrop={(event) => handleDrop(day.dateIso, event)}
+              className={`min-h-[145px] border-r border-b border-jdt-border p-2 last:border-r-0 ${day.isCurrentMonth ? 'bg-white' : 'bg-zinc-50/80'} ${day.isToday ? 'ring-2 ring-inset ring-jdt-olive' : ''} ${canReschedule ? 'transition-colors hover:bg-jdt-sand/30' : ''}`}
             >
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div>
@@ -327,7 +401,7 @@ function CalendarGrid({ days, view, openDrawer }: { days: CalendarGridDay[]; vie
                 {day.events.length > 0 && <span className="rounded bg-jdt-panel px-1.5 py-0.5 text-[8px] font-black uppercase text-zinc-500">{day.events.length}</span>}
               </div>
               <div className="space-y-1.5">
-                {visibleEvents.map((event) => <CalendarGridEvent key={`${day.dateIso}-${event.id}`} event={event} openDrawer={openDrawer} />)}
+                {visibleEvents.map((event) => <CalendarGridEvent key={`${day.dateIso}-${event.id}`} event={event} onSelectEvent={onSelectEvent} canDrag={canReschedule} />)}
                 {overflow > 0 && <div className="rounded-md border border-dashed border-jdt-border bg-jdt-panel px-2 py-1.5 text-center text-[9px] font-black uppercase text-zinc-500">+{overflow} more</div>}
               </div>
             </div>
@@ -335,6 +409,82 @@ function CalendarGrid({ days, view, openDrawer }: { days: CalendarGridDay[]; vie
         })}
       </div>
     </section>
+  );
+}
+
+function CalendarEventDetailPanel({
+  event,
+  onClose,
+  openDrawer,
+}: {
+  event: OperatingCalendarEvent;
+  onClose: () => void;
+  openDrawer: CalendarBoardProps['openDrawer'];
+}) {
+  const drawerType = eventDrawerType(event);
+  const meta = eventPrimaryMeta(event);
+  const nextRange = rescheduledEventDateRange(event, event.dateIso);
+  return (
+    <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col border-l border-jdt-border bg-jdt-panel shadow-2xl">
+      <div className="flex items-start justify-between gap-4 border-b border-jdt-border bg-white p-5">
+        <div className="flex min-w-0 items-start gap-3">
+          <CategoryIcon category={event.category} size="md" />
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-wide text-jdt-olive">{categoryLabel(event.category)} Schedule Detail</p>
+            <h3 className="mt-1 text-xl font-black text-jdt-primary">{event.title}</h3>
+            <p className="mt-1 text-xs font-bold text-zinc-500">{formatRangeLabel(event)} - {event.timeLabel}</p>
+          </div>
+        </div>
+        <button type="button" onClick={onClose} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">
+          Close
+        </button>
+      </div>
+      <div className="flex-1 space-y-4 overflow-y-auto p-5">
+        <section className="grid gap-3 sm:grid-cols-2">
+          {[
+            ['Client', meta.client],
+            ['Location', meta.location],
+            ['Assigned', meta.assignee],
+            ['Status', event.status],
+            ['Start', nextRange.dateIso],
+            ['End', nextRange.endDateIso],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-lg border border-jdt-border bg-white p-3">
+              <p className="text-[10px] font-black uppercase text-zinc-400">{label}</p>
+              <p className="mt-1 text-sm font-black text-jdt-text">{value || '-'}</p>
+            </div>
+          ))}
+        </section>
+        {event.detail && (
+          <section className="rounded-lg border border-jdt-border bg-white p-4">
+            <p className="text-[10px] font-black uppercase text-zinc-400">Details</p>
+            <p className="mt-2 text-sm font-bold text-jdt-text">{event.detail}</p>
+          </section>
+        )}
+        {(event.readinessIssues.length > 0 || event.conflicts.length > 0) && (
+          <section className="rounded-lg border border-jdt-border bg-white p-4">
+            <p className="text-[10px] font-black uppercase text-zinc-400">Needs Attention</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {event.conflicts.map((issue) => (
+                <span key={issue} className={`rounded-md border px-2 py-1 text-[10px] font-black uppercase ${riskPillClass('watch')}`}>{issue}</span>
+              ))}
+              {event.readinessIssues.map((issue) => (
+                <span key={issue} className="rounded-md border border-jdt-border bg-jdt-panel px-2 py-1 text-[10px] font-black uppercase text-jdt-text">{issue}</span>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+      <div className="border-t border-jdt-border bg-white p-4">
+        {drawerType && event.recordId ? (
+          <button type="button" onClick={() => openDrawer(drawerType, event.recordId!)} className="w-full rounded-lg bg-jdt-primary px-4 py-3 text-xs font-black uppercase text-white hover:bg-jdt-olive">
+            Open Full Record
+          </button>
+        ) : (
+          <p className="rounded-lg border border-jdt-border bg-jdt-panel px-4 py-3 text-xs font-bold text-zinc-500">This imported schedule item has no full JDT record linked yet.</p>
+        )}
+      </div>
+    </aside>
   );
 }
 
@@ -346,9 +496,14 @@ export default function CalendarBoard({
   treeRelocationRecords = [],
   equipment = [],
   todayIso,
-  initialDisplayMode = 'Planner',
+  initialDisplayMode = 'Calendar Grid',
   initialRangeView = 'Week',
   initialFocusDateIso,
+  canSyncGoogleCalendar = true,
+  isSyncingGoogleCalendar = false,
+  googleCalendarSyncStatus,
+  onSyncGoogleCalendar,
+  onRescheduleEvent,
   openDrawer,
 }: CalendarBoardProps) {
   const [displayMode, setDisplayMode] = useState<CalendarDisplayMode>(initialDisplayMode);
@@ -356,6 +511,7 @@ export default function CalendarBoard({
   const [focusDateIso, setFocusDateIso] = useState(initialFocusDateIso || todayIso || new Date().toISOString().slice(0, 10));
   const [categoryFilter, setCategoryFilter] = useState<'All' | OperatingCategory>('All');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   const calendar = useMemo(() => buildOperatingCalendar({
     jobs,
@@ -373,9 +529,12 @@ export default function CalendarBoard({
       .filter((event) => matchesStatusFilter(event, statusFilter))
   ), [calendar.events, categoryFilter, statusFilter]);
 
+  const primaryFilteredEvents = useMemo(() => primaryCalendarGridEvents(filteredEvents), [filteredEvents]);
+  const surfaceEvents = displayMode === 'Calendar Grid' ? primaryFilteredEvents : filteredEvents;
+
   const gridDays = useMemo(() => (
-    buildCalendarGridDays(filteredEvents, rangeView, focusDateIso, calendar.todayIso)
-  ), [filteredEvents, rangeView, focusDateIso, calendar.todayIso]);
+    buildCalendarGridDays(surfaceEvents, rangeView, focusDateIso, calendar.todayIso)
+  ), [surfaceEvents, rangeView, focusDateIso, calendar.todayIso]);
 
   const groupedEvents = gridDays
     .filter((day) => day.events.length > 0)
@@ -383,9 +542,18 @@ export default function CalendarBoard({
 
   const monthLabel = new Date(`${calendar.todayIso}T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const readiness = calendar.tomorrowReadiness;
-  const activeCategoryFilters = categoryFilters.filter((category) => category === 'All' || calendar.events.some((event) => event.category === category));
-  const todayCount = buildCalendarGridDays(calendar.events, 'Day', calendar.todayIso, calendar.todayIso)[0]?.events.length || 0;
+  const filterSourceEvents = displayMode === 'Calendar Grid' ? primaryCalendarGridEvents(calendar.events) : calendar.events;
+  const activeCategoryFilters = categoryFilters.filter((category) => category === 'All' || filterSourceEvents.some((event) => event.category === category));
+  const todayCount = buildCalendarGridDays(primaryCalendarGridEvents(calendar.events), 'Day', calendar.todayIso, calendar.todayIso)[0]?.events.length || 0;
   const selectedRangeCount = gridDays.reduce((total, day) => total + day.events.length, 0);
+  const selectedEvent = selectedEventId ? calendar.events.find((event) => event.id === selectedEventId) || null : null;
+  const syncWindow = {
+    startIso: gridDays[0]?.dateIso || focusDateIso,
+    endIso: gridDays[gridDays.length - 1]?.dateIso || focusDateIso,
+    view: rangeView,
+    focusIso: focusDateIso,
+  };
+  const googleCalendarSyncEnabled = Boolean(onSyncGoogleCalendar) && canSyncGoogleCalendar;
 
   const readinessPanel = (
     <section className="rounded-xl border border-jdt-border bg-white p-4 shadow-sm">
@@ -437,23 +605,35 @@ export default function CalendarBoard({
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 border-b border-jdt-border pb-5 lg:flex-row lg:items-center lg:justify-between">
+    <div className="space-y-4">
+      <header className="rounded-xl border border-jdt-border bg-jdt-panel p-4 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-start gap-3">
           <CategoryIcon category="schedule" size="md" />
           <div>
-            <p className="text-xs font-black uppercase text-jdt-olive">Operations Calendar</p>
-            <h2 className="mt-1 text-2xl font-black text-jdt-primary">{rangeView} Operations {displayMode === 'Planner' ? 'Planner' : 'Calendar'}</h2>
-            <p className="mt-1 text-sm font-bold text-zinc-500">Crew work, freight, equipment, project dates, tree-care timing, and multi-day blocked-out assignments from the live workspace.</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-jdt-olive">Operations Calendar</p>
+              <h2 className="mt-0.5 text-3xl font-black tracking-normal text-jdt-primary">Calendar</h2>
+            <p className="mt-1 text-sm font-bold text-zinc-500">Scheduled work by date, division, client, location, and assigned crew.</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-jdt-border bg-jdt-panel px-4 py-2 shadow-sm">
-          <CalendarIcon className="h-4 w-4 text-jdt-olive" />
-          <span className="text-xs font-black uppercase text-zinc-800">{monthLabel}</span>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="rounded-lg border border-jdt-border bg-white px-3 py-2">
+              <p className="text-[9px] font-black uppercase tracking-wide text-zinc-400">View</p>
+              <p className="mt-0.5 text-xs font-black uppercase text-jdt-primary">{rangeView} {displayMode === 'Planner' ? 'Planner' : 'Grid'}</p>
+            </div>
+            <div className="rounded-lg border border-jdt-border bg-white px-3 py-2">
+              <p className="text-[9px] font-black uppercase tracking-wide text-zinc-400">Month</p>
+              <p className="mt-0.5 text-xs font-black uppercase text-jdt-primary">{monthLabel}</p>
+            </div>
+            <div className="rounded-lg border border-jdt-border bg-white px-3 py-2">
+              <p className="text-[9px] font-black uppercase tracking-wide text-zinc-400">Showing</p>
+              <p className="mt-0.5 text-xs font-black uppercase text-jdt-primary">{selectedRangeCount} items</p>
+            </div>
+          </div>
         </div>
-      </div>
+      </header>
 
-      <section className="grid gap-3 md:grid-cols-5">
+      {displayMode === 'Planner' && <section className="calendar-planner-kpi-strip grid gap-2 rounded-xl border border-jdt-border bg-white p-2 shadow-sm sm:grid-cols-3 xl:grid-cols-5">
         {[
           { label: 'Today', value: todayCount, tone: 'border-jdt-border bg-white text-jdt-primary' },
           { label: 'Tomorrow', value: readiness.total, tone: 'border-jdt-border bg-white text-jdt-primary' },
@@ -461,82 +641,106 @@ export default function CalendarBoard({
           { label: 'Ready', value: readiness.ready, tone: riskSurfaceClass('low') },
           { label: 'Conflicts', value: readiness.conflicts, tone: readinessMetricTone(readiness.conflicts) },
         ].map((metric) => (
-          <div key={metric.label} className={`rounded-lg border p-4 shadow-sm ${metric.tone}`}>
-            <p className="text-[10px] font-black uppercase tracking-wide opacity-75">{metric.label}</p>
-            <p className="mt-2 text-3xl font-black leading-none">{metric.value}</p>
+          <div key={metric.label} className={`calendar-planner-kpi-card flex min-h-12 items-center justify-between gap-3 rounded-lg border px-3 py-2 ${metric.tone}`}>
+            <p className="min-w-0 truncate text-[9px] font-black uppercase tracking-wide opacity-75">{metric.label}</p>
+            <p className="shrink-0 text-lg font-black leading-none">{metric.value}</p>
           </div>
         ))}
-      </section>
+      </section>}
 
       <section className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-jdt-border p-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-wrap gap-2">
+        <div className={`grid gap-3 border-b border-jdt-border p-3 ${googleCalendarSyncEnabled ? 'xl:grid-cols-[0.85fr_1.25fr_1.5fr_1fr]' : 'xl:grid-cols-[0.85fr_1.25fr_1.8fr]'}`}>
+          <CalendarControlGroup label="View">
+            <div className="grid grid-cols-2 gap-1.5">
               {displayModes.map((mode) => (
                 <button
                   key={mode}
                   type="button"
                   onClick={() => setDisplayMode(mode)}
-                  className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${displayMode === mode ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-white text-zinc-600 hover:border-jdt-olive'}`}
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-md border px-2.5 py-2 text-[10px] font-black uppercase ${displayMode === mode ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-jdt-panel text-zinc-600 hover:border-jdt-olive'}`}
                 >
                   {mode === 'Planner' ? <ListChecks className="h-3.5 w-3.5" /> : <CalendarDays className="h-3.5 w-3.5" />}
-                  {mode}
+                  {mode === 'Calendar Grid' ? 'Grid' : mode}
                 </button>
               ))}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+          </CalendarControlGroup>
+
+          <CalendarControlGroup label="Range">
+            <div className="flex flex-wrap items-center gap-1.5">
               {rangeViews.map((view) => (
                 <button
                   key={view}
                   type="button"
                   onClick={() => setRangeView(view)}
-                  className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase ${rangeView === view ? 'border-jdt-olive bg-jdt-olive text-white' : 'border-jdt-border bg-white text-zinc-600 hover:border-jdt-olive'}`}
+                  className={`rounded-md border px-2.5 py-2 text-[10px] font-black uppercase ${rangeView === view ? 'border-jdt-olive bg-jdt-olive text-white' : 'border-jdt-border bg-jdt-panel text-zinc-600 hover:border-jdt-olive'}`}
                 >
                   {view}
                 </button>
               ))}
-              <div className="ml-0 flex items-center gap-1 rounded-lg border border-jdt-border bg-white p-1 lg:ml-2">
-                <button type="button" onClick={() => setFocusDateIso((value) => shiftFocusDate(value, rangeView, -1))} className="rounded-md p-1.5 text-zinc-600 hover:bg-jdt-sand" aria-label="Previous calendar range">
+              <div className="flex items-center gap-1 rounded-md border border-jdt-border bg-jdt-panel p-1">
+                <button type="button" onClick={() => setFocusDateIso((value) => shiftFocusDate(value, rangeView, -1))} className="rounded p-1.5 text-zinc-600 hover:bg-jdt-sand" aria-label="Previous calendar range">
                   <ChevronLeft className="h-4 w-4" />
                 </button>
-                <button type="button" onClick={() => setFocusDateIso(calendar.todayIso)} className="rounded-md px-2 py-1.5 text-[10px] font-black uppercase text-jdt-text hover:bg-jdt-sand">
+                <button type="button" onClick={() => setFocusDateIso(calendar.todayIso)} className="rounded px-2 py-1.5 text-[10px] font-black uppercase text-jdt-text hover:bg-jdt-sand">
                   Today
                 </button>
-                <button type="button" onClick={() => setFocusDateIso((value) => shiftFocusDate(value, rangeView, 1))} className="rounded-md p-1.5 text-zinc-600 hover:bg-jdt-sand" aria-label="Next calendar range">
+                <button type="button" onClick={() => setFocusDateIso((value) => shiftFocusDate(value, rangeView, 1))} className="rounded p-1.5 text-zinc-600 hover:bg-jdt-sand" aria-label="Next calendar range">
                   <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
-              <span className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-zinc-600">{rangeLabel(rangeView, focusDateIso)}</span>
+              <span className="rounded-md border border-jdt-border bg-jdt-panel px-2.5 py-2 text-[10px] font-black uppercase text-zinc-600">{rangeLabel(rangeView, focusDateIso)}</span>
             </div>
-          </div>
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-            <div className="flex flex-wrap items-center gap-2">
-              <Filter className="h-4 w-4 text-zinc-400" />
-              {activeCategoryFilters.map((category) => (
-                <button
-                  key={category}
-                  type="button"
-                  onClick={() => setCategoryFilter(category)}
-                  className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-black uppercase ${categoryFilter === category ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-white text-zinc-600 hover:border-jdt-olive'}`}
-                >
-                  {category === 'All' ? 'All' : <span className="inline-flex items-center gap-1.5"><CategoryIcon category={category} size="xs" className={categoryFilter === category ? 'border-white/20 bg-white/10 text-white' : ''} /> {categoryLabel(category)}</span>}
-                </button>
-              ))}
+          </CalendarControlGroup>
+
+          <CalendarControlGroup label="Filters">
+            <div className="flex flex-col gap-2 2xl:flex-row 2xl:items-center">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Filter className="h-4 w-4 text-zinc-400" />
+                {activeCategoryFilters.map((category) => (
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => setCategoryFilter(category)}
+                    className={`rounded-md border px-2.5 py-1.5 text-[10px] font-black uppercase ${categoryFilter === category ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-jdt-panel text-zinc-600 hover:border-jdt-olive'}`}
+                  >
+                    {category === 'All' ? 'All' : <span className="inline-flex items-center gap-1.5"><CategoryIcon category={category} size="xs" className={categoryFilter === category ? 'border-white/20 bg-white/10 text-white' : ''} /> {categoryLabel(category)}</span>}
+                  </button>
+                ))}
+              </div>
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="rounded-md border border-jdt-border bg-jdt-panel px-2.5 py-2 text-[10px] font-black uppercase text-jdt-text"
+              >
+                {statusFilters.map((filter) => <option key={filter} value={filter}>{filter}</option>)}
+              </select>
             </div>
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-xs font-black uppercase text-jdt-text"
-            >
-              {statusFilters.map((filter) => <option key={filter} value={filter}>{filter}</option>)}
-            </select>
-          </div>
+          </CalendarControlGroup>
+
+          {googleCalendarSyncEnabled && (
+            <CalendarControlGroup label="Calendar Source">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isSyncingGoogleCalendar || !onSyncGoogleCalendar) return;
+                  void onSyncGoogleCalendar(syncWindow);
+                }}
+                disabled={isSyncingGoogleCalendar}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-jdt-olive bg-jdt-panel px-3 py-2 text-[10px] font-black uppercase text-jdt-primary transition-colors hover:bg-jdt-sand disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <CalendarDays className="h-3.5 w-3.5" />
+                {isSyncingGoogleCalendar ? 'Syncing Calendar' : 'Sync Google Calendar'}
+              </button>
+              {googleCalendarSyncStatus && <span className="mt-2 block truncate text-[9px] font-bold uppercase text-zinc-500">{googleCalendarSyncStatus}</span>}
+            </CalendarControlGroup>
+          )}
         </div>
 
         <div className={`grid gap-4 p-4 ${displayMode === 'Planner' ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : ''}`}>
           <div className="space-y-4">
             {displayMode === 'Calendar Grid' ? (
-              <CalendarGrid days={gridDays} view={rangeView} openDrawer={openDrawer} />
+              <CalendarGrid days={gridDays} view={rangeView} onSelectEvent={(event) => setSelectedEventId(event.id)} onRescheduleEvent={onRescheduleEvent} />
             ) : groupedEvents.length > 0 ? (
               groupedEvents.map((group) => (
                 <section key={group.dateIso} className="rounded-xl border border-jdt-border bg-jdt-sand/30 p-3">
@@ -556,7 +760,7 @@ export default function CalendarBoard({
                           <span className="rounded-md border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-zinc-500">{projectGroup.events.length} assignments</span>
                         </div>
                         <div className="grid gap-3 2xl:grid-cols-2">
-                          {projectGroup.events.map((event) => <EventCard key={event.id} event={event} openDrawer={openDrawer} />)}
+                          {projectGroup.events.map((event) => <EventCard key={event.id} event={event} onSelectEvent={(item) => setSelectedEventId(item.id)} />)}
                         </div>
                       </div>
                     ))}
@@ -578,18 +782,12 @@ export default function CalendarBoard({
               {readinessPanel}
               {conflictPanel}
             </aside>
-          ) : (
-            <details className="rounded-xl border border-jdt-border bg-white p-4 shadow-sm">
-              <summary className="cursor-pointer text-sm font-black uppercase text-jdt-text">Readiness & Conflict Check</summary>
-              <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                <VisualLegend />
-                {readinessPanel}
-                {conflictPanel}
-              </div>
-            </details>
-          )}
+          ) : null}
         </div>
       </section>
+      {selectedEvent && (
+        <CalendarEventDetailPanel event={selectedEvent} onClose={() => setSelectedEventId(null)} openDrawer={openDrawer} />
+      )}
     </div>
   );
 }

@@ -122,6 +122,12 @@ function usesRentalEquipment(formData: Record<string, unknown>) {
   return source.includes('rental') || requestType.includes('rental');
 }
 
+function isContractForm(formData: Record<string, unknown>) {
+  const category = String(formData.category || '').trim().toLowerCase();
+  const folder = String(formData.documentFolder || '').trim().toLowerCase();
+  return category === 'contract' || category === 'signed contract' || folder === 'signed contracts';
+}
+
 function employeeHasDriverRole(formData: Record<string, unknown>) {
   return String(formData.role || '').toLowerCase().includes('driver');
 }
@@ -241,11 +247,17 @@ const fieldSets: Record<string, FieldConfig[]> = {
   ],
   client: [
     { key: 'name', label: 'Company Name', required: true },
+    { key: 'clientStatus', label: 'Client Status', type: 'select', options: ['Active', 'Prospect', 'Inactive', 'On Hold'] },
+    { key: 'clientType', label: 'Client Type', type: 'select', options: ['Golf Club', 'Landscape Contractor', 'Developer / Builder', 'Residential Estate', 'Municipality', 'Other'] },
     { key: 'contactName', label: 'Primary Contact' },
     { key: 'phone', label: 'Phone', type: 'tel' },
     { key: 'email', label: 'Email', type: 'email' },
-    { key: 'billingAddress', label: 'Billing Address' },
-    { key: 'accessNotes', label: 'Access Notes', type: 'textarea' },
+    { key: 'billingAddress', label: 'Billing Address', section: 'Billing' },
+    { key: 'billingDetails', label: 'Terms & Billing Info', placeholder: 'Net 30' },
+    { key: 'billingContactName', label: 'Billing / AP Contact' },
+    { key: 'billingEmail', label: 'Billing / AP Email', type: 'email' },
+    { key: 'accessNotes', label: 'Account / Site Access Notes', type: 'textarea', section: 'Notes', wide: true },
+    { key: 'notes', label: 'Internal Notes', type: 'textarea', wide: true },
   ],
   contact: [
     { key: 'name', label: 'Contact Name', required: true },
@@ -478,9 +490,17 @@ const fieldSets: Record<string, FieldConfig[]> = {
   document: [
     { key: 'name', label: 'Document Name', required: true },
     { key: 'job', label: 'Linked Project' },
-    { key: 'category', label: 'Category', type: 'select', options: ['Permit', 'Closeout Proof', 'Field Photo', 'Bill of Lading', 'Proof of Delivery', 'Driver License', 'Medical Card', 'Vehicle Registration', 'Insurance', 'Contract', 'Invoice', 'Other'] },
+    { key: 'documentFolder', label: 'Document Folder', type: 'select', options: ['Signed Contracts', 'Proposals / Estimates', 'Change Orders', 'Billing / Terms', 'Insurance / COI / W-9', 'Site Maps / Access Docs', 'Permits / Compliance', 'Photos / Field Docs', 'Client Correspondence', 'Other'] },
+    { key: 'category', label: 'Category', type: 'select', options: ['Signed Contract', 'Proposal', 'Estimate', 'Change Order', 'Billing Terms', 'Invoice', 'COI', 'W-9', 'Insurance', 'Site Map', 'Access Document', 'Permit', 'Compliance', 'Field Photo', 'Closeout Proof', 'Client Correspondence', 'Bill of Lading', 'Proof of Delivery', 'Driver License', 'Medical Card', 'Vehicle Registration', 'Other'] },
+    { key: 'documentLevel', label: 'Document Level', type: 'select', options: ['Client', 'Project', 'Job', 'Tree'] },
     { key: 'status', label: 'Status', type: 'select', options: ['Draft', 'Received', 'Filed', 'Needs Review', 'Approved', 'Expired', 'Missing'] },
     { key: 'reviewStatus', label: 'Review Status', type: 'select', options: ['Needs Review', 'Approved', 'Rejected', 'Filed'] },
+    { key: 'contractNumber', label: 'Contract Number', section: 'Contract Details', showWhen: isContractForm },
+    { key: 'signedDate', label: 'Signed Date', type: 'date', showWhen: isContractForm },
+    { key: 'contractValue', label: 'Contract Value', type: 'number', showWhen: isContractForm },
+    { key: 'scopeTreeCount', label: 'Scope Tree Count', type: 'number', showWhen: isContractForm },
+    { key: 'scopeOfWork', label: 'Scope of Work', type: 'textarea', rows: 3, wide: true, showWhen: isContractForm },
+    { key: 'scopeTreeDetails', label: 'Scope Tree Details', type: 'textarea', rows: 3, wide: true, showWhen: isContractForm },
     { key: 'url', label: 'Source URL', type: 'url' },
     { key: 'relatedEntityType', label: 'Related Entity Type', type: 'select', options: ['client', 'project', 'job', 'workOrder', 'load', 'equipment', 'crew', 'tree', 'fieldUpdate'] },
     { key: 'relatedEntityId', label: 'Related Entity ID' },

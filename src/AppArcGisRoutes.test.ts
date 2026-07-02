@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const appSource = readFileSync(new URL('./App.tsx', import.meta.url), 'utf8');
+const globalStyles = readFileSync(new URL('./index.css', import.meta.url), 'utf8');
 
 test('App shell exposes dedicated online map routes and navigation entries', () => {
   assert.match(appSource, /ArcGisMapBoard/);
@@ -35,4 +36,20 @@ test('App shell supports a collapsible desktop sidebar across every board', () =
   assert.match(appSource, /NavGroup[\s\S]*collapsed={isSidebarCollapsed}/);
   assert.match(appSource, /title={item\.label}/);
   assert.match(appSource, /activeNav\.label/);
+});
+
+test('App shell renders one explicit sidebar logo instead of a global pseudo-logo overlay', () => {
+  assert.match(appSource, /<img\s+src="\/jd-thornton-logo\.png"[\s\S]*alt="JD Thornton Nurseries"/);
+  assert.match(appSource, /jdt-sidebar-brand/);
+  assert.doesNotMatch(globalStyles, /aside\s+\[class\*="border-white\/10"\][\s\S]*::before/);
+});
+
+test('App shell exposes a local client preview route that bypasses Firebase auth', () => {
+  const authSource = readFileSync(new URL('./AuthProvider.tsx', import.meta.url), 'utf8');
+
+  assert.match(appSource, /isLocalClientsPreviewRoute/);
+  assert.match(appSource, /window\.location\.pathname === '\/clients-preview'/);
+  assert.match(appSource, /isClientsPreview \? 'clients'/);
+  assert.match(appSource, /clientsPreviewInput\?\.clients \|\| clients/);
+  assert.match(authSource, /"\/clients-preview"/);
 });

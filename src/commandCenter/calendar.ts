@@ -221,8 +221,10 @@ function workOrderCategory(workOrder: WorkOrderRecord): OperatingCategory {
   const text = normalized([workOrder.workOrderType, workOrder.taskType, workOrder.title].filter(Boolean).join(" "));
   if (text.includes("freight") || text.includes("delivery") || text.includes("truck") || text.includes("trailer")) return "freight";
   if (text.includes("equipment") || text.includes("maintenance") || text.includes("service")) return "equipment";
-  if (text.includes("tree") || text.includes("prun") || text.includes("nutrient") || text.includes("treatment") || text.includes("aftercare")) return "nursery";
   if (text.includes("relocation") || text.includes("install")) return "relocation";
+  if (text.includes("tree_pruning") || text.includes("root") || text.includes("prun")) return "relocation";
+  if ((text.includes("nutrient") || text.includes("treatment") || text.includes("aftercare")) && firstText(workOrder.projectId, workOrder.projectName, workOrder.jobId)) return "relocation";
+  if (text.includes("tree") || text.includes("nutrient") || text.includes("treatment") || text.includes("aftercare")) return "nursery";
   return "crew";
 }
 
@@ -230,8 +232,10 @@ function scheduleTaskCategory(task: ScheduleTaskRecord): OperatingCategory {
   const text = normalized([task.activityType, task.task, task.jobStage, task.loadStatus, task.equipment, task.truck, task.trailer].filter(Boolean).join(" "));
   if (text.includes("freight") || text.includes("load") || text.includes("truck") || text.includes("trailer")) return "freight";
   if (text.includes("equipment") || text.includes("implement") || text.includes("service")) return "equipment";
-  if (text.includes("tree") || text.includes("prun") || text.includes("nutrient") || text.includes("treatment")) return "nursery";
   if (text.includes("relocation") || text.includes("install") || text.includes("site")) return "relocation";
+  if (text.includes("root") || text.includes("prun")) return "relocation";
+  if ((text.includes("nutrient") || text.includes("treatment") || text.includes("tree")) && firstText(task.projectName, task.jobScheduleId)) return "relocation";
+  if (text.includes("tree") || text.includes("nutrient") || text.includes("treatment")) return "nursery";
   return "crew";
 }
 
@@ -400,28 +404,46 @@ function buildEquipmentEvents(equipment: EquipmentRecord[]): OperatingCalendarEv
 }
 
 function buildTreeLifecycleEvents(input: OperatingCalendarInput): OperatingCalendarEvent[] {
-  return buildTreeLifecycleAlerts({
+  const groupedAlerts = new Map<string, ReturnType<typeof buildTreeLifecycleAlerts>>();
+  buildTreeLifecycleAlerts({
     trees: input.treeRelocationRecords || [],
     jobs: input.jobs || [],
     workOrders: input.workOrders || [],
     todayIso: input.todayIso,
-  }).map((alert) => calendarEvent({
-    id: `treeLifecycle-${alert.id}`,
-    sourceType: "treeLifecycle",
-    category: "nursery",
-    timeLabel: "Action due",
-    title: alert.title,
-    detail: alert.detail,
-    status: "Needs Review",
-    projectName: alert.projectName,
-    assignee: "",
-    location: "",
-    drawerType: alert.drawerType,
-    recordId: alert.recordId,
-    readinessIssues: ["Tree action due"],
-    conflicts: [],
-    resources: [],
-  }, dateOnly(alert.dueDate) || dateOnly(input.todayIso) || new Date().toISOString().slice(0, 10)));
+  }).forEach((alert) => {
+    const dueDate = dateOnly(alert.dueDate) || dateOnly(input.todayIso) || new Date().toISOString().slice(0, 10);
+    const key = [alert.projectId || alert.projectName, alert.action, dueDate].join("|");
+    groupedAlerts.set(key, [...(groupedAlerts.get(key) || []), alert]);
+  });
+
+  return Array.from(groupedAlerts.entries()).map(([key, alerts]) => {
+    const firstAlert = alerts[0];
+    const dueDate = dateOnly(firstAlert.dueDate) || key.split("|").at(-1) || dateOnly(input.todayIso) || new Date().toISOString().slice(0, 10);
+    const treeCount = alerts.length;
+    const title = treeCount > 1 ? `${firstAlert.title} (${treeCount} trees)` : firstAlert.title;
+    const projectName = firstText(firstAlert.projectName, "Project");
+    const detail = treeCount > 1
+      ? `${projectName}: ${treeCount} tree assets need ${firstAlert.title.toLowerCase()}. Review individual tags in the project profile or planner.`
+      : firstAlert.detail;
+
+    return calendarEvent({
+      id: `treeLifecycle-${key.replace(/[^a-z0-9]+/gi, "-")}`,
+      sourceType: "treeLifecycle",
+      category: "relocation",
+      timeLabel: "Planner due",
+      title,
+      detail,
+      status: "Needs Review",
+      projectName,
+      assignee: "",
+      location: "",
+      drawerType: firstAlert.drawerType,
+      recordId: firstAlert.recordId,
+      readinessIssues: [`${treeCount} tree action${treeCount === 1 ? "" : "s"} due`],
+      conflicts: [],
+      resources: [],
+    }, dueDate);
+  });
 }
 
 function applyConflicts(events: OperatingCalendarEvent[]): { events: OperatingCalendarEvent[]; conflicts: OperatingCalendarConflict[] } {
@@ -506,6 +528,18 @@ export function buildOperatingCalendar(input: OperatingCalendarInput): Operating
     events,
     conflicts,
     tomorrowReadiness: buildTomorrowReadiness(events, conflicts, tomorrowIso),
+  };
+}
+
+export function primaryCalendarGridEvents(events: OperatingCalendarEvent[]): OperatingCalendarEvent[] {
+  return events.filter((event) => event.sourceType !== "treeLifecycle" && event.sourceType !== "equipment");
+}
+
+export function rescheduledEventDateRange(event: OperatingCalendarEvent, nextDateIso: string): { dateIso: string; endDateIso: string } {
+  const dateIso = dateOnly(nextDateIso) || event.dateIso;
+  return {
+    dateIso,
+    endDateIso: addDaysIso(dateIso, Math.max(1, event.durationDays) - 1),
   };
 }
 

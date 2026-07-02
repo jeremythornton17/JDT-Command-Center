@@ -48,4 +48,32 @@ describe("Relocation & Installation jobs", () => {
     assert.equal(isRelocationInstallationJob({ title: "McArthur Frontyard Installation", client: "McArthur GC" }), true);
     assert.equal(isRelocationInstallationJob({ division: "Freight" }), false);
   });
+
+  it("shows the operating board with readiness filters, pipeline, and division-specific work order actions", () => {
+    const appSource = readProjectFile("src/App.tsx");
+
+    assert.match(appSource, /relocationReadinessFilters/);
+    assert.match(appSource, /Needs Scheduling/);
+    assert.match(appSource, /Needs Map Cleanup/);
+    assert.match(appSource, /Tree Relocation Pipeline/);
+    assert.match(appSource, /Readiness \/ Blockers/);
+    assert.match(appSource, /Create Work Order/);
+    assert.match(appSource, /Root Pruning/);
+    assert.match(appSource, /Relocation Move/);
+    assert.match(appSource, /Installation/);
+    assert.match(appSource, /Nutrient Care/);
+  });
+
+  it("adds project profile readiness, map, contracts, and field update tabs for relocation projects", () => {
+    const drawerSource = readProjectFile("src/components/CommandDrawer.tsx");
+
+    assert.match(drawerSource, /\['overview', 'readiness', 'work orders', 'trees', 'map', 'equipment', 'freight', 'contracts', 'documents', 'field updates', 'financials', 'history'\]/);
+    assert.match(drawerSource, /ProjectReadinessPanel/);
+    assert.match(drawerSource, /ProjectMapReadinessPanel/);
+    assert.match(drawerSource, /Project Readiness/);
+    assert.match(drawerSource, /Map \/ GIS Readiness/);
+    assert.match(drawerSource, /Contracts/);
+    assert.match(drawerSource, /Create Move Work/);
+    assert.match(drawerSource, /Request Freight/);
+  });
 });

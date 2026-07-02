@@ -55,6 +55,10 @@ describe("JDT ArcGIS mapping schema", () => {
       "species",
       "dbh",
       "status",
+      "loadersNeeded",
+      "additionalEquipmentRequired",
+      "equipmentAccess",
+      "issueAlert",
       "currentFieldLocation",
       "existingSourcePin",
       "destinationPin",
@@ -62,10 +66,13 @@ describe("JDT ArcGIS mapping schema", () => {
       "rootPruneDate",
       "finalMoveDate",
       "crew",
+      "crewNotes",
       "notes",
     ]);
     assert.equal(treeLayer?.fields.some((field) => field.name === "rootPruneDate"), true);
     assert.equal(treeLayer?.fields.some((field) => field.name === "finalMoveDate"), true);
+    assert.equal(treeLayer?.fields.some((field) => field.name === "loadersNeeded"), true);
+    assert.equal(treeLayer?.fields.some((field) => field.name === "issueAlert"), true);
     assert.equal(jdtArcGisLayerSchemas.find((layer) => layer.id === "projectBoundary")?.geometryType, "polygon");
     assert.equal(jdtArcGisLayerSchemas.find((layer) => layer.id === "holdingAreas")?.geometryType, "polygon");
     assert.equal(jdtArcGisLayerSchemas.find((layer) => layer.id === "equipmentLocations")?.geometryType, "point");
@@ -85,6 +92,11 @@ describe("JDT ArcGIS mapping schema", () => {
         relocationStatus: "Ready For Relocation",
         rootPruneDate1: "2026-02-01",
         relocationDate: "2026-06-01",
+        loaderNamesNeeded: ["Komatsu 500 - 1", "Caterpillar 988G"],
+        additionalEquipmentRequired: "Root ball straps",
+        equipmentAccess: "Requires Review",
+        issueAlert: "Needs Jeremy Review",
+        crewNotes: "Crew should verify access before cutting.",
         notes: "North course tree line",
         relocationMap: { source: { lat: 26.85703, lng: -80.05794 } },
       }],
@@ -94,10 +106,15 @@ describe("JDT ArcGIS mapping schema", () => {
     assert.equal(features[0].treeId, "1003");
     assert.equal(features[0].species, "Live Oak");
     assert.equal(features[0].dbh, "33");
-    assert.equal(features[0].status, "Ready For Relocation");
+    assert.equal(features[0].status, "Ready for Relocation");
     assert.equal(features[0].rootPruneDate, "2026-02-01");
     assert.equal(features[0].finalMoveDate, "2026-06-01");
     assert.equal(features[0].crew, "Carlos Reyes");
+    assert.equal(features[0].loadersNeeded, "Komatsu 500 - 1; Caterpillar 988G");
+    assert.equal(features[0].additionalEquipmentRequired, "Root ball straps");
+    assert.equal(features[0].equipmentAccess, "Requires Review");
+    assert.equal(features[0].issueAlert, "Needs Jeremy Review");
+    assert.equal(features[0].crewNotes, "Crew should verify access before cutting.");
     assert.equal(features[0].latitude, 26.85703);
     assert.equal(features[0].longitude, -80.05794);
   });
@@ -225,6 +242,11 @@ describe("JDT ArcGIS mapping schema", () => {
       species: "Live Oak",
       dbh: "33",
       status: "Root Pruning",
+      loadersNeeded: "Komatsu 500 - 1; Caterpillar 988G",
+      additionalEquipmentRequired: "None",
+      equipmentAccess: "Good",
+      issueAlert: "Stressed",
+      crewNotes: "Leaf wilt noted by crew.",
       rootPruneDate: "2026-02-01",
       finalMoveDate: "2026-06-01",
       crew: "Carlos Reyes",
@@ -237,6 +259,11 @@ describe("JDT ArcGIS mapping schema", () => {
     assert.equal(record.id, "tree-project-waterford-1003");
     assert.equal(record.projectId, "project-waterford");
     assert.equal(record.type, "Live Oak");
+    assert.deepEqual(record.loaderNamesNeeded, ["Komatsu 500 - 1", "Caterpillar 988G"]);
+    assert.equal(record.additionalEquipmentRequired, "None");
+    assert.equal(record.equipmentAccess, "Good");
+    assert.equal(record.issueAlert, "Stressed");
+    assert.equal(record.crewNotes, "Leaf wilt noted by crew.");
     assert.equal(record.arcGisFeatureId, "321");
     assert.deepEqual(record.relocationMap, {
       source: { lat: 26.85703, lng: -80.05794, label: "ArcGIS tree point" },
@@ -273,6 +300,11 @@ describe("JDT ArcGIS mapping schema", () => {
       assetCategory: "Relocation",
       dbh: "33",
       status: "50% Cut",
+      loadersNeeded: "Komatsu 500 - 1; Caterpillar 988G",
+      additionalEquipmentRequired: "Root ball straps",
+      equipmentAccess: "Blocked",
+      issueAlert: "Blocked Access",
+      crewNotes: "Gate was locked this morning.",
       currentFieldLocation: "Hole 3 left side",
       existingSourcePin: "26.85703,-80.05794",
       destinationPin: "26.858,-80.058",
@@ -295,6 +327,11 @@ describe("JDT ArcGIS mapping schema", () => {
     assert.equal(edit.attributes.Tree_Type, "Live Oak");
     assert.equal(edit.attributes.DBH_IN, 33);
     assert.equal(edit.attributes.Tree_Relocation_Status, "50% Cut");
+    assert.equal(edit.attributes.Loaders_Needed, "Komatsu 500 - 1; Caterpillar 988G");
+    assert.equal(edit.attributes.Additional_Equipment_Required, "Root ball straps");
+    assert.equal(edit.attributes.Equipment_Access, "Blocked");
+    assert.equal(edit.attributes.Issue_Alert, "Blocked Access");
+    assert.equal(edit.attributes.Crew_Notes, "Gate was locked this morning.");
     assert.equal(edit.attributes.Existing_Location_Description, "26.85703,-80.05794");
     assert.equal(edit.attributes.Proposed_Final_Location_Description, "26.858,-80.058");
   });

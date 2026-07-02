@@ -18,7 +18,7 @@ describe("ArcGisMapBoard", () => {
           projectName: "Waterford Relocation",
           type: "Live Oak",
           dbh: 33,
-          relocationStatus: "Root Pruning",
+          relocationStatus: "25% Cut",
           rootPruneDate1: "2026-02-01",
           crew: "Carlos Reyes",
           relocationMap: {
@@ -75,7 +75,7 @@ describe("ArcGisMapBoard", () => {
     assert.match(html, /DBH/);
     assert.match(html, /Crew/);
     assert.match(html, /Waterford Relocation/);
-    assert.match(html, /Root Pruning/);
+    assert.match(html, /25% Cut/);
     assert.match(html, /Live Oak/);
     assert.match(html, /Carlos Reyes/);
     assert.match(html, /Selected Tree \/ Map Position/);

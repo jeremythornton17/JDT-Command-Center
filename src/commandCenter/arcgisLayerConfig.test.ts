@@ -30,6 +30,19 @@ describe("JDT ArcGIS hosted layer config", () => {
     assert.deepEqual(treeLayer.primaryIdFields, ["Project_ID", "Tree_Asset_ID"]);
     assert.equal(treeLayer.fields.some((field) => field.name === "Tree_Asset_ID"), true);
     assert.equal(treeLayer.fields.some((field) => field.name === "Tree_Relocation_Status"), true);
+    assert.equal(treeLayer.fields.some((field) => field.name === "Loaders_Needed"), true);
+    assert.equal(treeLayer.fields.some((field) => field.name === "Additional_Equipment_Required"), true);
+    assert.equal(treeLayer.fields.some((field) => field.name === "Equipment_Access"), true);
+    assert.equal(treeLayer.fields.some((field) => field.name === "Equipment_Access_Notes"), true);
+    assert.equal(treeLayer.fields.some((field) => field.name === "Issue_Alert"), true);
+    assert.equal(treeLayer.fields.some((field) => field.name === "Crew_Notes"), true);
+    assert.equal(treeLayer.fields.some((field) => field.name === "Relocation_Cost"), true);
+    assert.equal(treeLayer.fields.some((field) => field.name === "Billing_Status"), true);
+    assert.equal(treeLayer.fields.some((field) => field.name === "Last_Updated_Source"), true);
+    assert.equal(treeLayer.fields.some((field) => field.name === "Last_Sync_Direction"), true);
+    assert.equal(treeLayer.fields.some((field) => field.name === "Sync_Transaction_ID"), true);
+    assert.equal(treeLayer.fields.some((field) => field.name === "ArcGIS_Last_Sync_At"), true);
+    assert.equal(treeLayer.fields.some((field) => field.name === "JDT_Last_Sync_At"), true);
     assert.equal(treeLayer.fields.some((field) => field.name === "Map_Geometry_Status"), true);
     assert.equal(treeLayer.fields.some((field) => field.name === "Last_Map_Sync_At"), true);
     assert.deepEqual(treeRelocationStatusValues, [
@@ -39,8 +52,10 @@ describe("JDT ArcGIS hosted layer config", () => {
       "75% Cut",
       "100% Cut",
       "Ready for Relocation",
-      "Moved to Holding",
+      "Moved to Holding Area",
       "Relocated",
+      "Removed",
+      "Remaining in Place",
     ]);
   });
 

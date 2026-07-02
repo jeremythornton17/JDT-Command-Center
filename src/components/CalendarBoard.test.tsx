@@ -6,7 +6,7 @@ import type { EquipmentRecord, JobRecord, LoadRecord, WorkOrderRecord } from "..
 import CalendarBoard from "./CalendarBoard";
 
 describe("CalendarBoard operations planner", () => {
-  it("renders planner views, category filters, readiness, and conflict warnings", () => {
+  it("defaults to a clean calendar grid and keeps planner-only noise out of the first view", () => {
     const jobs: JobRecord[] = [{
       id: "job-boca-course-1",
       title: "Boca West Course 1 Renovation",
@@ -48,27 +48,64 @@ describe("CalendarBoard operations planner", () => {
       />,
     );
 
-    assert.match(html, /Week.*Operations.*Planner/);
+    assert.match(html, /Operations Calendar/);
+    assert.match(html, /Week.*Grid/);
     assert.match(html, /Planner/);
-    assert.match(html, /Calendar Grid/);
+    assert.match(html, /Grid/);
     assert.match(html, /Day/);
-    assert.match(html, /Today/);
-    assert.match(html, /Tomorrow/);
     assert.match(html, /Week/);
     assert.match(html, /Month/);
+    assert.doesNotMatch(html, /Tomorrow Readiness/);
+    assert.doesNotMatch(html, /Conflict Watch/);
+    assert.doesNotMatch(html, /Visual Legend/);
+    assert.doesNotMatch(html, /Client \/ Project/);
+    assert.doesNotMatch(html, /Missing crew/);
+    assert.match(html, /Christian Crespo/);
+    assert.match(html, /Boca West Country Club/);
+    assert.match(html, /Boca West/);
+    assert.match(html, /Semi #1/);
+    assert.match(html, /Root prune Live Oak 1003/);
+    assert.doesNotMatch(html, /Service: Komatsu 500 - 1/);
+    assert.match(html, /data-category="freight"/);
+    assert.doesNotMatch(html, /data-category="nursery"/);
+    assert.doesNotMatch(html, /data-category="equipment"/);
+    assert.match(html, /data-category="relocation"/);
+  });
+
+  it("keeps planner details available when the planner mode is explicitly selected", () => {
+    const jobs: JobRecord[] = [{
+      id: "job-boca-course-1",
+      title: "Boca West Course 1 Renovation",
+      clientName: "Boca West Country Club",
+      projectName: "Boca West Course 1 Renovation",
+      scheduledDate: "2026-06-05",
+      location: "Boca West",
+      status: "Active",
+    }];
+
+    const html = renderToString(
+      <CalendarBoard
+        jobs={jobs}
+        loads={[]}
+        workOrders={[]}
+        equipment={[]}
+        scheduleTasks={[]}
+        treeRelocationRecords={[]}
+        todayIso="2026-06-04"
+        initialDisplayMode="Planner"
+        openDrawer={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Operations Calendar/);
+    assert.match(html, /Week.*Planner/);
     assert.match(html, /Tomorrow Readiness/);
     assert.match(html, /Conflict Watch/);
     assert.match(html, /Visual Legend/);
     assert.match(html, /Client \/ Project/);
-    assert.match(html, /Missing crew/);
-    assert.match(html, /Christian Crespo/);
-    assert.match(html, /Semi #1/);
-    assert.match(html, /Root prune Live Oak 1003/);
-    assert.match(html, /Service: Komatsu 500 - 1/);
-    assert.match(html, /data-category="freight"/);
-    assert.match(html, /data-category="nursery"/);
-    assert.match(html, /data-category="equipment"/);
-    assert.match(html, /data-category="relocation"/);
+    assert.match(html, /calendar-planner-kpi-strip/);
+    assert.match(html, /calendar-planner-kpi-card/);
+    assert.doesNotMatch(html, /text-3xl font-black leading-none/);
   });
 
   it("renders multi-day schedule context and calendar grid controls", () => {
@@ -100,9 +137,31 @@ describe("CalendarBoard operations planner", () => {
 
     assert.match(html, /Blocks 5 days/);
     assert.match(html, /Jun 8 - Jun 12/);
-    assert.match(html, /Calendar Grid/);
+    assert.match(html, /Grid/);
     assert.match(html, /Sun/);
     assert.match(html, /Mon/);
     assert.match(html, /Sat/);
+  });
+
+  it("renders the JD Thornton Work Schedule sync action when enabled", () => {
+    const html = renderToString(
+      <CalendarBoard
+        jobs={[]}
+        loads={[]}
+        workOrders={[]}
+        equipment={[]}
+        scheduleTasks={[]}
+        treeRelocationRecords={[]}
+        todayIso="2026-06-26"
+        initialDisplayMode="Calendar Grid"
+        googleCalendarSyncStatus="Ready to sync JD Thornton Work Schedule"
+        canSyncGoogleCalendar={true}
+        onSyncGoogleCalendar={() => undefined}
+        openDrawer={() => undefined}
+      />,
+    );
+
+    assert.match(html, /Sync Google Calendar/);
+    assert.match(html, /Ready to sync JD Thornton Work Schedule/);
   });
 });

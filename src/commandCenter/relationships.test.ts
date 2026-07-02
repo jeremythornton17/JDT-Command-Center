@@ -105,6 +105,23 @@ describe("client project job relationships", () => {
     );
   });
 
+  it("matches project tree assets by tag when generated ids and legacy tree ids differ", () => {
+    assert.equal(
+      sameProjectTreeAsset(
+        { projectId: "BWCC-060426", treeId: "101", tag: "101" },
+        { projectId: "BWCC-060426", treeId: "BWCC-060426-TREE-101", tag: "101" },
+      ),
+      true,
+    );
+    assert.equal(
+      sameProjectTreeAsset(
+        { projectId: "BWCC-060426", treeId: "101", tag: "101" },
+        { projectId: "BWCC-060426", treeId: "BWCC-060426-TREE-102", tag: "102" },
+      ),
+      false,
+    );
+  });
+
   it("builds stable work order ids under a job", () => {
     assert.equal(
       workOrderIdFromName("job-boca-west-relocation", "Root prune Hole 7"),

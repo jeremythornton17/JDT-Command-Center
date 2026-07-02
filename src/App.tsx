@@ -2,13 +2,18 @@ import { useMemo, useState } from 'react';
 import { useFirestoreSyncState } from './useFirestoreCollection';
 import {
   AlertTriangle,
+  Bell,
   BarChart2,
   Calendar,
+  CheckCircle2,
+  CirclePause,
   ChevronLeft,
   ChevronRight,
   Database,
   DollarSign,
+  FileText,
   Folder,
+  Gauge,
   HardHat,
   LayoutGrid,
   Leaf,
@@ -16,8 +21,10 @@ import {
   MapPin,
   Menu,
   Plus,
+  RefreshCw,
   Settings,
   Scissors,
+  Sun,
   Tractor,
   TreePine,
   Truck,
@@ -86,12 +93,15 @@ import type {
   WorkOrderRecord,
 } from './commandCenter/records';
 import { defaultJdtPersonnelRoster, mergePersonnelRecords } from './commandCenter/personnel';
-import { buildDashboardSummary, type DashboardCommandAlert, type DashboardWorkItem, type FeaturedOperation } from './commandCenter/dashboard';
+import { buildDashboardSummary, type DashboardCommandAlert, type DashboardSummaryInput, type DashboardWorkItem, type FeaturedOperation } from './commandCenter/dashboard';
 import { filterSeedRecords } from './commandCenter/operatingIntelligence';
 import { applyTelematicsEventsToFreightLoads, buildTelematicsExceptionAlerts } from './commandCenter/telematicsIntelligence';
 import { defaultRelocationStatus } from './commandCenter/treeLifecycle';
+import { treeRelocationStatusOptions } from './commandCenter/treeRelocationSchema';
 import { normalizeProjectImportContext, pasteHeadersForTemplate, sheetImportTemplates, type ImportPreview, type ProjectImportContext, type SheetImportTemplateId } from './commandCenter/sheetImport';
 import { dataSyncDraftStorageKey, serializeDataSyncDraft } from './commandCenter/syncDraft';
+import { getConfiguredGoogleCalendarName, syncGoogleCalendarToScheduleTasks } from './commandCenter/googleCalendarSync';
+import { rescheduledEventDateRange, type OperatingCalendarEvent } from './commandCenter/calendar';
 import {
   operatingJobIdFromParts,
   projectOperatingIdFromParts,
@@ -216,6 +226,205 @@ function appRouteFromPathname(pathname = typeof window !== 'undefined' ? window.
     return { activeTab: 'treeGisMap' };
   }
   return null;
+}
+
+function isLocalDashboardPreviewRoute() {
+  const isDev = Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV);
+  return Boolean(isDev && typeof window !== 'undefined' && window.location.pathname === '/dashboard-preview');
+}
+
+function isLocalCalendarPreviewRoute() {
+  const isDev = Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV);
+  return Boolean(isDev && typeof window !== 'undefined' && window.location.pathname === '/calendar-preview');
+}
+
+function isLocalClientsPreviewRoute() {
+  const isDev = Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV);
+  return Boolean(isDev && typeof window !== 'undefined' && window.location.pathname === '/clients-preview');
+}
+
+function buildDashboardPreviewInput(): DashboardSummaryInput {
+  const todayIso = '2026-06-17';
+  const activeProjects: ProjectRecord[] = [
+    { id: 'preview-boca-west', title: 'Boca West Tree Relocation', name: 'Boca West Tree Relocation', client: 'Boca West Country Club', location: 'Boca Raton, FL', status: 'Active', phase: '50% Cut', crew: 'Christian', equipment: ['Loader 1', 'Loader 2'], nextAction: 'Continue root pruning', notes: 'In Progress', startDate: todayIso, endDate: '2026-06-19' },
+    { id: 'preview-frenchmans', title: "Frenchman's Creek", name: "Frenchman's Creek", client: "Frenchman's Creek Country Club", location: 'Palm Beach Gardens, FL', status: 'Active', phase: '70% Cut', crew: 'Carlos', equipment: ['Mini X', 'Telehandler'], nextAction: 'Confirm equipment', notes: 'In Progress', startDate: todayIso },
+    { id: 'preview-mcarthur', title: 'McArthur Golf Club', name: 'McArthur Golf Club', client: 'McArthur Golf Club', location: 'Hobe Sound, FL', status: 'Active', phase: 'Relocation', crew: 'Nick', equipment: ['Semi Dropdeck'], nextAction: 'Finish delivery', notes: 'In Progress', startDate: '2026-06-18' },
+    { id: 'preview-bellaire', title: 'Bellaire Country Club', name: 'Bellaire Country Club', client: 'Bellaire Country Club', location: 'Bellaire, FL', status: 'Active', phase: 'Relocation', crew: 'Jack', equipment: ['TBD'], nextAction: 'Continue relocation', notes: 'In Progress', startDate: '2026-06-19' },
+    { id: 'preview-miakka', title: 'Miakka Golf Club', name: 'Miakka Golf Club', client: 'Miakka Golf Club', location: 'Sarasota, FL', status: 'Active', phase: '60% Cut', crew: 'Jeff / Santiago', equipment: ['Loader 1'], nextAction: 'Continue root pruning', notes: 'In Progress', startDate: '2026-06-20' },
+    { id: 'preview-waterford', title: 'Waterford', name: 'Waterford', client: 'Waterford', location: 'Juno Beach, FL', status: 'Active', phase: 'Relocation', crew: 'Carlos', equipment: ['TBD'], nextAction: 'Confirm site requirements', startDate: '2026-06-22' },
+    { id: 'preview-pine-tree', title: 'Pine Tree GC', name: 'Pine Tree GC', client: 'Pine Tree Golf Club', location: 'Boynton Beach, FL', status: 'Active', phase: 'Root Prep', crew: 'Warren', equipment: ['Loader 2'], nextAction: 'Set oaks on 18', startDate: '2026-06-23' },
+    { id: 'preview-seaglass', title: 'Seaglass', name: 'Seaglass', client: 'Seaglass', location: 'Delray Beach, FL', status: 'Active', phase: '40% Cut', crew: 'Doug', equipment: ['Mini X'], nextAction: 'Continue root pruning', startDate: '2026-06-24' },
+  ];
+  const upcomingProjects: ProjectRecord[] = Array.from({ length: 4 }, (_, index) => ({
+    id: `preview-upcoming-${index + 1}`,
+    title: ['Hammock Shores', 'Grove XXIII', 'Treetop Academy', 'Lost Tree'][index],
+    location: ['Palm Coast, FL', 'Hobe Sound, FL', 'Fort Myers, FL', 'North Palm Beach, FL'][index],
+    status: 'Upcoming',
+    phase: 'Scheduled soon',
+    crew: 'TBD',
+  }));
+  const onHoldProjects: ProjectRecord[] = Array.from({ length: 3 }, (_, index) => ({
+    id: `preview-hold-${index + 1}`,
+    title: ['Waterford Access Review', "Frenchman's Equipment Hold", 'Boca West Billing Hold'][index],
+    location: ['Juno Beach, FL', 'Palm Beach Gardens, FL', 'Boca Raton, FL'][index],
+    status: 'On Hold',
+    phase: 'Awaiting action',
+    crew: 'TBD',
+  }));
+
+  const treeRelocationRecords: TreeRelocationRecord[] = Array.from({ length: 240 }, (_, index) => {
+    const project = activeProjects[index % activeProjects.length];
+    return {
+      id: `preview-tree-${index + 1}`,
+      treeId: String(index + 1).padStart(3, '0'),
+      tag: String(index + 1),
+      type: index % 3 === 0 ? 'Live Oak' : index % 3 === 1 ? 'Densa Pine' : 'Crepe Myrtle',
+      projectId: project.id,
+      projectName: project.title,
+      relocationStatus: index < 98 ? 'Relocated' : index < 140 ? '50% Cut' : index < 190 ? '25% Cut' : 'Not Started',
+      status: index < 98 ? 'Relocated' : 'Active',
+      dbh: index % 3 === 0 ? '18' : index % 3 === 1 ? '12' : '7',
+    };
+  });
+
+  const jobs: JobRecord[] = activeProjects.concat(upcomingProjects, onHoldProjects).map((project) => ({
+    id: `job-${project.id}`,
+    projectId: project.id,
+    projectName: project.title,
+    title: project.title,
+    client: project.client,
+    location: project.location,
+    status: project.status,
+    jobType: String(project.phase || 'Project Work'),
+    crew: project.crew,
+    equipment: Array.isArray(project.equipment) ? project.equipment.join(', ') : String(project.equipment || ''),
+    nextAction: String(project.nextAction || 'Continue operations'),
+    notes: String(project.notes || ''),
+    startDate: project.startDate,
+    endDate: project.endDate,
+  }));
+
+  const clients: ClientRecord[] = [
+    {
+      id: 'preview-client-boca-west',
+      name: 'Boca West Country Club',
+      contactName: 'Travis Wehrs',
+      phone: '(239) 340-9223',
+      email: 'TWehrs@bocawestcc.org',
+      billingAddress: '20583 Boca West Dr, Boca Raton, FL 33434',
+      billingDetails: 'Net 30',
+      clientStatus: 'Active',
+      members: [{ name: 'Course Superintendent', role: 'Site Contact', phone: '(239) 340-9223', email: 'TWehrs@bocawestcc.org' }],
+    },
+    {
+      id: 'preview-client-frenchmans',
+      name: "Frenchman's Creek Country Club",
+      contactName: 'Bill Schmit',
+      phone: '904-463-1420',
+      email: 'wschmit@frenchmanscreek.com',
+      billingAddress: '13495 Tournament Dr, Palm Beach Gardens, FL 33410',
+      billingDetails: 'Net 30',
+      clientStatus: 'Active',
+    },
+    {
+      id: 'preview-client-mcarthur',
+      name: 'McArthur Golf Club',
+      contactName: 'Project Manager',
+      billingAddress: 'Hobe Sound, FL',
+      billingDetails: 'Net 30',
+      clientStatus: 'Active',
+    },
+    {
+      id: 'preview-client-missing',
+      name: 'Waterford',
+      clientStatus: 'Needs Cleanup',
+    },
+  ];
+
+  const loads: LoadRecord[] = [
+    { id: 'preview-load-alex', title: 'McArthur delivery', client: 'McArthur Golf Club', driver: 'Alex', truck: 'Semi #1', trailer: 'Dropdeck', status: 'En Route', origin: 'JD Thornton Nurseries Home Base', delivery: 'McArthur Golf Club', eta: '10:30 AM', date: todayIso },
+    { id: 'preview-load-vince', title: 'M&P delivery', client: 'M&P', driver: 'Vince', truck: 'F550 2018', trailer: 'Tag Along', status: 'En Route', origin: 'JD Thornton Nurseries Home Base', delivery: 'M&P delivery', eta: '1:00 PM', date: '2026-06-18' },
+    { id: 'preview-load-new', title: 'Starts Monday', client: 'Boca West Country Club', driver: 'New Driver', truck: 'Ram 2500', status: 'Scheduled', origin: 'JD Thornton Nurseries Home Base', delivery: 'Boca West', eta: 'Monday', date: '2026-06-22' },
+  ];
+
+  const workOrders: WorkOrderRecord[] = [
+    { id: 'preview-wo-christian', title: 'Boca West root prune block', projectName: 'Boca West Tree Relocation', crewLeadName: 'Christian Crew', taskType: '50% Cut', status: 'Active', startDate: todayIso, endDate: '2026-06-19' },
+    { id: 'preview-wo-nelson', title: "Frenchman's Creek root prune", projectName: "Frenchman's Creek", crewLeadName: 'Nelson Crew', taskType: '70% Cut', status: 'Active', startDate: todayIso },
+    { id: 'preview-wo-carlos', title: 'Bellaire install', projectName: 'Bellaire Country Club', crewLeadName: 'Carlos Crew', taskType: 'Installation', status: 'Active', startDate: '2026-06-19' },
+    { id: 'preview-wo-albert', title: 'McArthur oak prep', projectName: 'McArthur Golf Club', crewLeadName: 'Albert Crew', taskType: 'Root Prep', status: 'Active', startDate: '2026-06-18' },
+  ];
+
+  const scheduleTasks: ScheduleTaskRecord[] = [
+    { id: 'preview-pickup-coastal', title: 'Customer pickup - Coastal Gardens', task: 'Nursery customer pickup', clientCompany: 'Coastal Gardens', startDate: todayIso, status: 'Scheduled', notes: '10:30 AM pickup' },
+    { id: 'preview-pickup-signature', title: 'Customer pickup - Signature Landscape', task: 'Nursery customer pickup', clientCompany: 'Signature Landscape', startDate: '2026-06-18', status: 'Scheduled', notes: '2:00 PM pickup' },
+    { id: 'preview-irrigation', title: 'Nursery irrigation update', task: 'Irrigation / watering', startDate: '2026-06-20', status: 'Needs Update' },
+  ];
+
+  const nurseryTrees: InventoryItemRecord[] = [
+    ...Array.from({ length: 76 }, (_, index) => ({ id: `preview-prepped-${index}`, name: 'Live Oak', status: 'Prepped' })),
+    ...Array.from({ length: 22 }, (_, index) => ({ id: `preview-needs-prep-${index}`, name: 'Densa Pine', status: 'Needs Prep' })),
+    ...Array.from({ length: 31 }, (_, index) => ({ id: `preview-staged-${index}`, name: 'Podocarpus', status: 'Staged for Delivery' })),
+  ];
+
+  const equipment: EquipmentRecord[] = [
+    ...Array.from({ length: 27 }, (_, index) => ({ id: `preview-eq-in-use-${index}`, name: `Loader ${index + 1}`, category: 'Machine', status: 'In Use', currentLocationName: index % 2 ? 'Boca West' : 'Frenchman’s Creek' })),
+    ...Array.from({ length: 9 }, (_, index) => ({ id: `preview-eq-available-${index}`, name: `Trailer ${index + 1}`, category: 'Trailer', status: 'Available', currentLocationName: 'JD Thornton Nurseries Home Base' })),
+    ...Array.from({ length: 2 }, (_, index) => ({ id: `preview-eq-maint-${index}`, name: `Mini X ${index + 1}`, category: 'Machine', status: 'Maintenance', currentLocationName: 'Shop' })),
+    { id: 'preview-water-truck', name: 'Water Truck', category: 'Truck', status: 'Down - blown clutch', currentLocationName: 'Boca West' },
+  ];
+
+  const gpsEvents: FleetTelematicsEventRecord[] = [
+    { id: 'preview-gps-alex', provider: 'Reveal', vehicleName: 'Semi #1', driverName: 'Alex', status: 'En Route', address: 'McArthur Golf Club', eventAt: `${todayIso}T21:47:00.000Z`, latitude: 27.065, longitude: -80.14, speedMph: 42, matchedEquipmentDocumentName: 'Semi #1' },
+    { id: 'preview-gps-vince', provider: 'Reveal', vehicleName: 'F550 2018', driverName: 'Vince', status: 'En Route', address: 'M&P delivery', eventAt: `${todayIso}T21:44:00.000Z`, latitude: 26.82, longitude: -80.25, speedMph: 35, matchedEquipmentDocumentName: 'F550 2018' },
+    { id: 'preview-gps-water-truck', provider: 'Reveal', vehicleName: 'Water Truck', driverName: 'Carlos', status: 'Down', address: 'Boca West / blown clutch', eventAt: `${todayIso}T21:40:00.000Z`, latitude: 26.39, longitude: -80.17, speedMph: 0, matchedEquipmentDocumentName: 'Water Truck' },
+  ];
+
+  const fieldUpdates: FieldUpdateRecord[] = [
+    ...Array.from({ length: 27 }, (_, index) => ({
+      id: `demo-issue-${index + 1}`,
+      title: `Open field issue ${index + 1}`,
+      relatedTitle: index % 2 ? 'Waterford jobsite requirements needed' : 'Water Truck blown clutch',
+      crewName: index % 2 ? 'Carlos Reyes' : 'Alex Bueno',
+      updateType: 'Issue',
+      fieldStatus: 'Needs Attention',
+      needsAdminReview: true,
+    })),
+    ...Array.from({ length: 6 }, (_, index) => ({
+      id: `demo-report-${index + 1}`,
+      title: `Daily report ${index + 1}`,
+      relatedTitle: 'Daily closeout report submitted',
+      crewName: 'Christian Crew',
+      updateType: 'Daily Closeout',
+      fieldStatus: 'Closeout Submitted',
+    })),
+  ];
+
+  const alerts: AlertRecord[] = [
+    { id: 'preview-alert-waterford', title: 'Waterford jobsite requirements needed', severity: 'High', body: 'Due today' },
+    { id: 'preview-alert-water-truck', title: 'Water Truck blown clutch', severity: 'High', body: 'Equipment blocking dispatch' },
+    { id: 'preview-alert-frenchmans', title: "Confirm Frenchman's Creek equipment", severity: 'Medium', body: 'Due tomorrow' },
+    { id: 'preview-alert-new-driver', title: 'New driver compliance / contact details', severity: 'Medium', body: 'Before dispatch' },
+    { id: 'preview-alert-nursery', title: 'Nursery irrigation update needed', severity: 'Low', body: 'Watering status needs review' },
+    { id: 'preview-alert-billing', title: 'Boca West billing packet check', severity: 'Medium', body: 'Office review' },
+    { id: 'preview-alert-root-prune', title: 'Root prune schedule confirmation', severity: 'Low', body: 'Confirm crew windows' },
+  ];
+
+  return {
+    todayIso,
+    clients,
+    projects: [...activeProjects, ...upcomingProjects, ...onHoldProjects],
+    jobs,
+    loads,
+    trees: nurseryTrees,
+    equipment,
+    crew: [],
+    workOrders,
+    scheduleTasks,
+    treeRelocationRecords,
+    alerts,
+    fieldUpdates,
+    fleetTelematicsEvents: gpsEvents,
+  };
 }
 
 function upsertRecord<T extends CommandRecord>(items: T[], record: Partial<T>, fallbackPrefix: string, matcher?: (item: T) => boolean) {
@@ -566,9 +775,14 @@ function upsertClientSiteContact(
 }
 
 export default function App() {
-  const { user, logOut, permissions, authorizeGoogleSheetsAccess } = useAuth();
+  const { user, logOut, permissions, authorizeGoogleSheetsAccess, authorizeGoogleCalendarAccess } = useAuth();
+  const isDashboardPreview = isLocalDashboardPreviewRoute();
+  const isCalendarPreview = isLocalCalendarPreviewRoute();
+  const isClientsPreview = isLocalClientsPreviewRoute();
+  const isLocalPreview = isDashboardPreview || isCalendarPreview || isClientsPreview;
+  const firestoreEnabled = !!user && !isLocalPreview;
   const initialRouteIntent = appRouteFromPathname();
-  const [activeTab, setActiveTab] = useState(initialRouteIntent?.activeTab || 'board');
+  const [activeTab, setActiveTab] = useState(isCalendarPreview ? 'calendar' : isClientsPreview ? 'clients' : initialRouteIntent?.activeTab || 'board');
   const [arcGisInitialProjectId] = useState(initialRouteIntent?.projectId || '');
   const [drawerConfig, setDrawerConfig] = useState<DrawerConfig>({ isOpen: false, type: '', itemId: null, defaultTab: 'overview' });
   const [modalConfig, setModalConfig] = useState<ModalConfig>({ isOpen: false, type: '' });
@@ -582,34 +796,36 @@ export default function App() {
   const [revealRecommendedSyncStatus, setRevealRecommendedSyncStatus] = useState('Ready to sync Reveal driver, asset, geofence, inspection, GPS history, and segment APIs');
   const [isSyncingRevealLiveLocations, setIsSyncingRevealLiveLocations] = useState(false);
   const [revealLiveLocationSyncStatus, setRevealLiveLocationSyncStatus] = useState('Ready to sync Reveal live locations');
+  const [isSyncingGoogleCalendar, setIsSyncingGoogleCalendar] = useState(false);
+  const [googleCalendarSyncStatus, setGoogleCalendarSyncStatus] = useState(`Ready to sync ${getConfiguredGoogleCalendarName()}`);
   const [isPreviewingRevealMatches, setIsPreviewingRevealMatches] = useState(false);
   const [isApprovingRevealMatches, setIsApprovingRevealMatches] = useState(false);
   const [revealMatchReviewStatus, setRevealMatchReviewStatus] = useState('Review Reveal vehicle matches before trusting live GPS updates.');
   const [revealMatchCandidates, setRevealMatchCandidates] = useState<RevealVehicleMatchCandidate[]>([]);
   const [mapsIntent, setMapsIntent] = useState<MapsIntent | null>(null);
 
-  const [jobs, setJobs] = useFirestoreSyncState<JobRecord>('jobs', [], !!user);
-  const [projects, setProjects] = useFirestoreSyncState<ProjectRecord>('projects', [], !!user);
-  const [workOrders, setWorkOrders] = useFirestoreSyncState<WorkOrderRecord>('workOrders', [], !!user);
-  const [projectMaterialItems, setProjectMaterialItems] = useFirestoreSyncState<ProjectMaterialItemRecord>('projectMaterialItems', [], !!user);
-  const [loads, setLoads] = useFirestoreSyncState<LoadRecord>('loads', [], !!user);
-  const [ranchOaks, setRanchOaks] = useFirestoreSyncState<RanchOakRecord>('ranchOaks', [], !!user);
-  const [inventoryItems, setInventoryItems] = useFirestoreSyncState<InventoryItemRecord>('inventoryItems', [], !!user);
-  const [equipment, setEquipment] = useFirestoreSyncState<EquipmentRecord>('equipment', [], !!user);
-  const [crews, setCrews] = useFirestoreSyncState<CrewRecord>('crews', [], !!user);
-  const [staffDirectory, setStaffDirectory] = useFirestoreSyncState<StaffRecord>('staff', [], !!user);
-  const [clients, setClients] = useFirestoreSyncState<ClientRecord>('clients', [], !!user);
-  const [locations, setLocations] = useFirestoreSyncState<LocationRecord>('locations', [], !!user);
-  const [species, setSpecies] = useFirestoreSyncState<SpeciesRecord>('species', [], !!user);
-  const [scheduleTasks, setScheduleTasks] = useFirestoreSyncState<ScheduleTaskRecord>('scheduleTasks', [], !!user);
-  const [treeRelocationRecords, setTreeRelocationRecords] = useFirestoreSyncState<TreeRelocationRecord>('treeRelocationRecords', [], !!user);
-  const [fieldUpdates, setFieldUpdates] = useFirestoreSyncState<FieldUpdateRecord>('fieldUpdates', [], !!user);
-  const [alerts, setAlerts] = useFirestoreSyncState<AlertRecord>('alerts', [], !!user);
-  const [fleetTelematicsEvents] = useFirestoreSyncState<FleetTelematicsEventRecord>('fleetTelematicsEvents', [], !!user);
-  const [documents, setDocuments] = useFirestoreSyncState<DocumentRecord>('documents', [], !!user);
-  const [syncSources, setSyncSources] = useFirestoreSyncState<SyncSourceRecord>('syncSources', [], !!user);
-  const [syncMappings, setSyncMappings] = useFirestoreSyncState<SyncMappingRecord>('syncMappings', [], !!user);
-  const [importBatches, setImportBatches] = useFirestoreSyncState<ImportBatchRecord>('importBatches', [], !!user);
+  const [jobs, setJobs] = useFirestoreSyncState<JobRecord>('jobs', [], firestoreEnabled);
+  const [projects, setProjects] = useFirestoreSyncState<ProjectRecord>('projects', [], firestoreEnabled);
+  const [workOrders, setWorkOrders] = useFirestoreSyncState<WorkOrderRecord>('workOrders', [], firestoreEnabled);
+  const [projectMaterialItems, setProjectMaterialItems] = useFirestoreSyncState<ProjectMaterialItemRecord>('projectMaterialItems', [], firestoreEnabled);
+  const [loads, setLoads] = useFirestoreSyncState<LoadRecord>('loads', [], firestoreEnabled);
+  const [ranchOaks, setRanchOaks] = useFirestoreSyncState<RanchOakRecord>('ranchOaks', [], firestoreEnabled);
+  const [inventoryItems, setInventoryItems] = useFirestoreSyncState<InventoryItemRecord>('inventoryItems', [], firestoreEnabled);
+  const [equipment, setEquipment] = useFirestoreSyncState<EquipmentRecord>('equipment', [], firestoreEnabled);
+  const [crews, setCrews] = useFirestoreSyncState<CrewRecord>('crews', [], firestoreEnabled);
+  const [staffDirectory, setStaffDirectory] = useFirestoreSyncState<StaffRecord>('staff', [], firestoreEnabled);
+  const [clients, setClients] = useFirestoreSyncState<ClientRecord>('clients', [], firestoreEnabled);
+  const [locations, setLocations] = useFirestoreSyncState<LocationRecord>('locations', [], firestoreEnabled);
+  const [species, setSpecies] = useFirestoreSyncState<SpeciesRecord>('species', [], firestoreEnabled);
+  const [scheduleTasks, setScheduleTasks] = useFirestoreSyncState<ScheduleTaskRecord>('scheduleTasks', [], firestoreEnabled);
+  const [treeRelocationRecords, setTreeRelocationRecords] = useFirestoreSyncState<TreeRelocationRecord>('treeRelocationRecords', [], firestoreEnabled);
+  const [fieldUpdates, setFieldUpdates] = useFirestoreSyncState<FieldUpdateRecord>('fieldUpdates', [], firestoreEnabled);
+  const [alerts, setAlerts] = useFirestoreSyncState<AlertRecord>('alerts', [], firestoreEnabled);
+  const [fleetTelematicsEvents] = useFirestoreSyncState<FleetTelematicsEventRecord>('fleetTelematicsEvents', [], firestoreEnabled);
+  const [documents, setDocuments] = useFirestoreSyncState<DocumentRecord>('documents', [], firestoreEnabled);
+  const [syncSources, setSyncSources] = useFirestoreSyncState<SyncSourceRecord>('syncSources', [], firestoreEnabled);
+  const [syncMappings, setSyncMappings] = useFirestoreSyncState<SyncMappingRecord>('syncMappings', [], firestoreEnabled);
+  const [importBatches, setImportBatches] = useFirestoreSyncState<ImportBatchRecord>('importBatches', [], firestoreEnabled);
   const personnel = useMemo(() => mergePersonnelRecords(defaultJdtPersonnelRoster, [...staffDirectory, ...crews]), [staffDirectory, crews]);
   const nurseryInventory = useMemo<RanchOakRecord[]>(() => [...inventoryItems, ...ranchOaks], [inventoryItems, ranchOaks]);
   const equipmentWithDefaults = useMemo<EquipmentRecord[]>(() => equipment.map(withHomeBaseEquipmentDefaults), [equipment]);
@@ -625,8 +841,12 @@ export default function App() {
   const alertsWithTelematics = useMemo(() => [...telematicsAlerts, ...alerts], [telematicsAlerts, alerts]);
 
   const activeNav = navItems.find((item) => item.id === activeTab) || navItems[0];
+  const previewInput = useMemo(() => isLocalPreview ? buildDashboardPreviewInput() : null, [isLocalPreview]);
+  const dashboardPreviewInput = isDashboardPreview ? previewInput : null;
+  const calendarPreviewInput = isCalendarPreview ? previewInput : null;
+  const clientsPreviewInput = isClientsPreview ? previewInput : null;
 
-  const dashboardSummary = useMemo(() => buildDashboardSummary({
+  const dashboardSummary = useMemo(() => buildDashboardSummary(dashboardPreviewInput || {
     jobs,
     loads: loadsWithTelematics,
     trees: nurseryInventory,
@@ -642,7 +862,7 @@ export default function App() {
     fieldUpdates,
     fleetTelematicsEvents,
     importBatches,
-  }), [jobs, loadsWithTelematics, nurseryInventory, equipmentWithDefaults, personnel, clients, projects, workOrders, scheduleTasks, treeRelocationRecords, documents, alertsWithTelematics, fieldUpdates, fleetTelematicsEvents, importBatches]);
+  }), [dashboardPreviewInput, jobs, loadsWithTelematics, nurseryInventory, equipmentWithDefaults, personnel, clients, projects, workOrders, scheduleTasks, treeRelocationRecords, documents, alertsWithTelematics, fieldUpdates, fleetTelematicsEvents, importBatches]);
 
   const recentRecords = useMemo(() => [
     ...jobs.map((item) => ({ type: 'job', label: item.title || item.client || 'Untitled project', meta: item.status || item.date || 'Project', id: item.id || item.title })),
@@ -658,6 +878,121 @@ export default function App() {
     const id = `toast-${Date.now()}`;
     setToasts((prev) => [...prev, { id, message, type }]);
     window.setTimeout(() => setToasts((prev) => prev.filter((toast) => toast.id !== id)), 4000);
+  };
+
+  const handleSyncGoogleCalendar = async (syncRange: { startIso: string; endIso: string; view: string; focusIso: string }) => {
+    if (user === null) {
+      addToast('Sign in before syncing Google Calendar', 'error');
+      return;
+    }
+    if (!permissions.canManageSources && !permissions.canImport) {
+      addToast('You do not have permission to sync Google Calendar into the app.', 'error');
+      return;
+    }
+
+    setIsSyncingGoogleCalendar(true);
+    setGoogleCalendarSyncStatus(`Opening Google authorization for ${getConfiguredGoogleCalendarName()}`);
+
+    try {
+      const accessToken = await authorizeGoogleCalendarAccess();
+      setGoogleCalendarSyncStatus(`Syncing ${getConfiguredGoogleCalendarName()} for ${syncRange.startIso} to ${syncRange.endIso}`);
+      const result = await syncGoogleCalendarToScheduleTasks({
+        accessToken,
+        existingScheduleTasks: scheduleTasks,
+        window: { startIso: syncRange.startIso, endIso: syncRange.endIso },
+      });
+      const saved = await setScheduleTasks(result.scheduleTasks);
+      if (!saved) throw new Error('Google Calendar events imported, but schedule tasks could not be saved to Firestore.');
+
+      const summary = `${result.importedCount} Google Calendar event${result.importedCount === 1 ? '' : 's'} synced from ${result.calendar.summary || getConfiguredGoogleCalendarName()}.${result.removedCount ? ` ${result.removedCount} stale event${result.removedCount === 1 ? '' : 's'} removed.` : ''}`;
+      setGoogleCalendarSyncStatus(summary);
+      addToast(summary, result.importedCount || result.removedCount ? 'success' : 'info');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Google Calendar sync failed.';
+      setGoogleCalendarSyncStatus(message);
+      addToast(message, 'error');
+    } finally {
+      setIsSyncingGoogleCalendar(false);
+    }
+  };
+
+  const handleRescheduleCalendarEvent = async (event: OperatingCalendarEvent, nextDateIso: string) => {
+    const nextRange = rescheduledEventDateRange(event, nextDateIso);
+    const notes = `${event.title} moved to ${nextRange.dateIso}${nextRange.endDateIso !== nextRange.dateIso ? ` through ${nextRange.endDateIso}` : ''}`;
+    let matched = false;
+
+    const stampMovedRecord = <T extends CommandRecord>(nextRecord: T, previousRecord: T): T => stampRecordForSave(nextRecord, previousRecord, {
+      actorEmail: user?.email,
+      event: 'Rescheduled from calendar',
+      notes,
+    });
+
+    if (event.sourceType === 'job') {
+      const saved = await setJobs((prev) => prev.map((job) => {
+        const isMatch = job.id === event.recordId || job.jobId === event.recordId || job.projectId === event.recordId || job.title === event.recordId;
+        if (!isMatch) return job;
+        matched = true;
+        return stampMovedRecord({
+          ...job,
+          startDate: nextRange.dateIso,
+          endDate: nextRange.endDateIso,
+          scheduledDate: nextRange.dateIso,
+          scheduledEndDate: nextRange.endDateIso,
+        }, job);
+      }));
+      addToast(saved && matched ? `Calendar item rescheduled: ${event.title}` : `Could not reschedule ${event.title}`, saved && matched ? 'success' : 'error');
+      return;
+    }
+
+    if (event.sourceType === 'freight') {
+      const saved = await setLoads((prev) => prev.map((load) => {
+        const isMatch = load.id === event.recordId || load.loadNumber === event.recordId || load.title === event.recordId;
+        if (!isMatch) return load;
+        matched = true;
+        return stampMovedRecord({
+          ...load,
+          date: nextRange.dateIso,
+          pickupDate: nextRange.dateIso,
+          deliveryDate: nextRange.endDateIso,
+        }, load);
+      }));
+      addToast(saved && matched ? `Freight move rescheduled: ${event.title}` : `Could not reschedule ${event.title}`, saved && matched ? 'success' : 'error');
+      return;
+    }
+
+    if (event.sourceType === 'workOrder') {
+      const saved = await setWorkOrders((prev) => prev.map((workOrder) => {
+        const isMatch = workOrder.id === event.recordId || workOrder.jobId === event.recordId || workOrder.projectId === event.recordId || workOrder.title === event.recordId;
+        if (!isMatch) return workOrder;
+        matched = true;
+        return stampMovedRecord({
+          ...workOrder,
+          startDate: nextRange.dateIso,
+          scheduledDate: nextRange.dateIso,
+          endDate: nextRange.endDateIso,
+        }, workOrder);
+      }));
+      addToast(saved && matched ? `Work order rescheduled: ${event.title}` : `Could not reschedule ${event.title}`, saved && matched ? 'success' : 'error');
+      return;
+    }
+
+    if (event.sourceType === 'scheduleTask') {
+      const saved = await setScheduleTasks((prev) => prev.map((task) => {
+        const isMatch = task.id === event.recordId || task.jobScheduleId === event.recordId || task.title === event.recordId || task.task === event.recordId;
+        if (!isMatch) return task;
+        matched = true;
+        return stampMovedRecord({
+          ...task,
+          date: nextRange.dateIso,
+          startDate: nextRange.dateIso,
+          endDate: nextRange.endDateIso,
+        }, task);
+      }));
+      addToast(saved && matched ? `Schedule item rescheduled: ${event.title}` : `Could not reschedule ${event.title}`, saved && matched ? 'success' : 'error');
+      return;
+    }
+
+    addToast('This planner item cannot be rescheduled from the calendar grid.', 'info');
   };
 
   const openDrawer = (type: string, itemId: string, defaultTab = 'overview') => {
@@ -1509,7 +1844,7 @@ export default function App() {
   const renderActiveBoard = () => {
     switch (activeTab) {
       case 'tracker':
-        return <TrackerBoard projects={projects} jobs={jobs} workOrders={workOrders} projectMaterialItems={projectMaterialItems} openDrawer={openDrawer} openModal={openModal} />;
+        return <TrackerBoard projects={projects} jobs={jobs} workOrders={workOrders} projectMaterialItems={projectMaterialItems} treeRelocationRecords={treeRelocationRecords} openDrawer={openDrawer} openModal={openModal} />;
       case 'freight':
         return <FreightBoard loads={loadsWithTelematics} equipment={equipmentWithDefaults} workOrders={workOrders} openDrawer={openDrawer} openModal={openModal} onOpenLiveMap={() => openLiveGpsMap()} />;
       case 'inventory':
@@ -1558,11 +1893,27 @@ export default function App() {
           />
         );
       case 'clients':
-        return <ClientsBoard clients={clients} projects={projects} jobs={jobs} openModal={openModal} openDrawer={openDrawer} />;
+        return <ClientsBoard clients={clientsPreviewInput?.clients || clients} projects={clientsPreviewInput?.projects || projects} jobs={clientsPreviewInput?.jobs || jobs} openModal={openModal} openDrawer={openDrawer} />;
       case 'alerts':
         return <AlertsBoard alerts={alertsWithTelematics} setAlerts={setAlerts} openModal={openModal} />;
       case 'calendar':
-        return <CalendarBoard jobs={jobs} loads={loadsWithTelematics} workOrders={workOrders} scheduleTasks={scheduleTasks} treeRelocationRecords={treeRelocationRecords} equipment={equipmentWithDefaults} openDrawer={openDrawer} />;
+        return (
+          <CalendarBoard
+            jobs={calendarPreviewInput?.jobs || jobs}
+            loads={calendarPreviewInput?.loads || loadsWithTelematics}
+            workOrders={calendarPreviewInput?.workOrders || workOrders}
+            scheduleTasks={calendarPreviewInput?.scheduleTasks || scheduleTasks}
+            treeRelocationRecords={calendarPreviewInput?.treeRelocationRecords || treeRelocationRecords}
+            equipment={calendarPreviewInput?.equipment || equipmentWithDefaults}
+            todayIso={calendarPreviewInput?.todayIso}
+            canSyncGoogleCalendar={!isCalendarPreview && (permissions.canManageSources || permissions.canImport)}
+            isSyncingGoogleCalendar={isSyncingGoogleCalendar}
+            googleCalendarSyncStatus={googleCalendarSyncStatus}
+            onSyncGoogleCalendar={handleSyncGoogleCalendar}
+            onRescheduleEvent={isCalendarPreview ? undefined : handleRescheduleCalendarEvent}
+            openDrawer={openDrawer}
+          />
+        );
       case 'jdtLocations':
         return (
           <MapsBoard
@@ -1649,11 +2000,13 @@ export default function App() {
       case 'settings':
         return <SettingsBoard openModal={openModal} onClearSeedData={handleClearSeedData} />;
       default:
-        return <Dashboard recentRecords={recentRecords} dashboardSummary={dashboardSummary} workOrders={workOrders} openModal={openModal} openDrawer={openDrawer} setActiveTab={setActiveTab} />;
+      return <Dashboard user={user} recentRecords={recentRecords} dashboardSummary={dashboardSummary} workOrders={workOrders} openModal={openModal} openDrawer={openDrawer} setActiveTab={setActiveTab} />;
     }
   };
 
+  const isDashboardActive = activeTab === 'board';
   const isMapActive = ['jdtLocations', 'treeGisMap', 'fleetGps', 'mapImports'].includes(activeTab);
+  const isCalendarActive = activeTab === 'calendar';
 
   return (
     <div className="min-h-screen bg-jdt-bg text-jdt-text">
@@ -1667,9 +2020,10 @@ export default function App() {
         <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed inset-y-0 left-0 z-50 w-72 bg-jdt-primary text-white transition-[width,transform] duration-200 lg:sticky lg:top-0 lg:translate-x-0 lg:h-screen ${isSidebarCollapsed ? 'lg:w-20' : 'lg:w-72'}`}>
           <div className="flex h-full flex-col">
             <div className={`flex items-center justify-between gap-3 border-b border-white/10 py-5 ${isSidebarCollapsed ? 'px-3 lg:px-2' : 'px-5'}`}>
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50">JD Thornton</p>
-                <h1 className={`text-lg font-black ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>Command Center</h1>
+              <div className={`jdt-sidebar-brand min-w-0 ${isSidebarCollapsed ? 'lg:hidden' : ''}`}>
+                <img src="/jd-thornton-logo.png" alt="JD Thornton Nurseries" className="h-24 w-40 rounded-sm bg-white object-contain p-2 shadow-sm" />
+                <p className="mt-3 text-[0.78rem] font-black uppercase tracking-[0.18em] text-white/85">Command Center</p>
+                <p className="mt-1 text-[0.62rem] font-black uppercase tracking-[0.22em] text-white/50">Big Trees, Big Moves</p>
               </div>
               <div className="flex items-center gap-1">
                 {isSidebarCollapsed ? (
@@ -1713,16 +2067,18 @@ export default function App() {
 
         {isSidebarOpen && <button type="button" aria-label="Close menu" onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 z-40 bg-black/30 lg:hidden" />}
 
-        <main className={`min-w-0 flex-1 ${isMapActive ? 'p-3 sm:p-4 lg:p-5' : 'p-4 sm:p-6 lg:p-8'}`}>
-          <header className="mb-6 flex flex-col gap-4 border-b border-jdt-border pb-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Live Workspace</p>
-              <h2 className="mt-1 text-3xl font-black text-jdt-primary">{activeNav.label}</h2>
-            </div>
-            <button onClick={() => openModal('job')} className="inline-flex items-center justify-center gap-2 rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white shadow-sm hover:bg-jdt-dark transition-colors">
-              <Plus className="h-4 w-4" /> New Project
-            </button>
-          </header>
+        <main className={`min-w-0 flex-1 ${isMapActive || isDashboardActive || isCalendarActive ? 'p-3 sm:p-4 lg:p-5' : 'p-4 sm:p-6 lg:p-8'}`}>
+          {!isDashboardActive && !isCalendarActive && (
+            <header className="mb-6 flex flex-col gap-4 border-b border-jdt-border pb-5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Live Workspace</p>
+                <h2 className="mt-1 text-3xl font-black text-jdt-primary">{activeNav.label}</h2>
+              </div>
+              <button onClick={() => openModal('job')} className="inline-flex items-center justify-center gap-2 rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white shadow-sm hover:bg-jdt-dark transition-colors">
+                <Plus className="h-4 w-4" /> New Project
+              </button>
+            </header>
+          )}
 
           {renderActiveBoard()}
         </main>
@@ -1856,376 +2212,411 @@ function dataQualitySeverityClass(severity: string) {
   return riskPillClass('low');
 }
 
-export function Dashboard({ recentRecords, dashboardSummary, openModal, openDrawer, setActiveTab }: any) {
-  const dailyBrief = dashboardSummary.dailyBrief;
-  const topRisks = (dashboardSummary.projectRisks || []).slice(0, 4);
-  const ownerGroups = (dashboardSummary.ownerReviewGroups || []).filter((group: any) => group.items?.length > 0);
-  const blockingDataGroups = (dashboardSummary.dataQualityGroups || []).filter((group: any) => group.items?.length > 0);
+const overviewKpiIcons: Record<string, typeof LayoutGrid> = {
+  activeProjects: LayoutGrid,
+  inProgress: CheckCircle2,
+  upcoming: Calendar,
+  onHold: CirclePause,
+  openIssues: AlertTriangle,
+  relocatedTrees: TreePine,
+  activeAlerts: AlertTriangle,
+  reportsToday: BarChart2,
+};
 
-  const openWorkItem = (item: DashboardWorkItem) => {
-    if (item.recordId && drawerBackedTypes.has(item.drawerType)) {
-      openDrawer(item.drawerType, item.recordId);
-      return;
-    }
-    setActiveTab(item.targetTab);
-  };
+const overviewKpiToneClass: Record<string, string> = {
+  green: 'border-emerald-100 bg-emerald-50/40 text-emerald-800',
+  blue: 'border-blue-100 bg-blue-50/50 text-blue-800',
+  amber: 'border-amber-100 bg-amber-50/50 text-amber-800',
+  red: 'border-red-100 bg-red-50/50 text-red-800',
+  purple: 'border-violet-100 bg-violet-50/50 text-violet-800',
+  teal: 'border-teal-100 bg-teal-50/50 text-teal-800',
+};
 
-  const openDataQualityItem = (item: any) => {
-    if (item.recordId && drawerBackedTypes.has(item.drawerType)) {
-      openDrawer(item.drawerType, item.recordId);
-      return;
-    }
-    setActiveTab(item.targetTab || 'reports');
-  };
+const movementToneClass: Record<string, string> = {
+  active: 'bg-emerald-50 text-emerald-800',
+  moving: 'bg-blue-50 text-blue-800',
+  scheduled: 'bg-amber-50 text-amber-800',
+  issue: 'bg-red-50 text-red-800',
+  stale: 'bg-zinc-100 text-zinc-600',
+};
 
-  const openRisk = (risk: any) => {
-    if (risk.recordId && drawerBackedTypes.has(risk.drawerType)) {
-      openDrawer(risk.drawerType, risk.recordId);
-      return;
-    }
-    setActiveTab(risk.targetTab || 'tracker');
-  };
+const mapMarkerClass: Record<string, string> = {
+  active: 'bg-emerald-600',
+  moving: 'bg-blue-600',
+  scheduled: 'bg-amber-500',
+  issue: 'bg-red-600',
+  stale: 'bg-zinc-500',
+};
 
-  const openQueueItem = (item: any, fallbackTab: string) => {
-    if (item.recordId && drawerBackedTypes.has(item.drawerType)) {
-      openDrawer(item.drawerType, item.recordId);
-      return;
-    }
-    setActiveTab(item.targetTab || fallbackTab);
-  };
+function formatOverviewDate(value: string) {
+  const date = value ? new Date(`${value}T12:00:00`) : new Date();
+  return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(date);
+}
+
+function formatOverviewTime(value: string) {
+  if (!value || value === 'No sync yet') return value || 'No sync yet';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(parsed);
+}
+
+function displayFirstName(user: any) {
+  const source = user?.displayName || user?.email || '';
+  const first = String(source).split('@')[0].split(/[.\s_-]+/).find(Boolean);
+  if (!first) return 'Jeremy';
+  return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
+function initialsForUser(user: any) {
+  const name = user?.displayName || user?.email || 'Jeremy';
+  const parts = String(name).replace(/@.*/, '').split(/[.\s_-]+/).filter(Boolean);
+  return (parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : parts[0]?.slice(0, 2) || 'JR').toUpperCase();
+}
+
+function openDashboardRecord(item: any, setActiveTab: (tab: string) => void, openDrawer: (type: string, id: string) => void, fallbackTab = 'tracker') {
+  if (item?.recordId && item?.drawerType && drawerBackedTypes.has(item.drawerType)) {
+    openDrawer(item.drawerType, item.recordId);
+    return;
+  }
+  setActiveTab(item?.targetTab || fallbackTab);
+}
+
+export function Dashboard({ user, dashboardSummary, openDrawer, setActiveTab }: any) {
+  const overview = dashboardSummary.overview;
+  const displayName = displayFirstName(user);
+  const userInitials = initialsForUser(user);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-3">
+      <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <p className="text-xs font-black uppercase text-jdt-olive">Live Operations</p>
-          <h2 className="mt-1 text-2xl font-black text-jdt-primary sm:text-3xl">Today's Command Board</h2>
-          <p className="mt-1 text-sm font-bold text-zinc-500">
-            {dailyBrief?.todayIso ? `${dailyBrief.todayIso} - ` : ''}Today's work, crew assignments, tree status, equipment readiness, and blockers.
-          </p>
+          <p className="text-xs font-black text-jdt-primary">Welcome back, {displayName}</p>
+          <h2 className="mt-0.5 text-3xl font-black tracking-normal text-jdt-primary">Command Center Overview</h2>
+          <p className="mt-1 text-sm font-semibold text-zinc-500">Live summary of today's operations, projects, crews, freight, nursery, equipment, and critical needs.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => openModal('assign_work')} className="inline-flex items-center justify-center gap-2 rounded-lg bg-jdt-primary px-4 py-2.5 text-xs font-black uppercase text-white shadow-sm hover:bg-jdt-dark">
-            <HardHat className="h-4 w-4" /> Assign Work
+        <div className="flex flex-wrap items-center gap-2 text-jdt-text">
+          <div className="rounded-full border border-jdt-border bg-white px-3 py-1.5 text-xs font-black shadow-sm">{formatOverviewDate(overview.date)}</div>
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-100 bg-white px-3 py-1.5 text-xs font-black shadow-sm">
+            <Sun className="h-4 w-4 text-amber-400" /> 86 F
+          </div>
+          <button type="button" onClick={() => setActiveTab('alerts')} className="relative rounded-full border border-jdt-border bg-white p-2.5 shadow-sm hover:border-jdt-olive">
+            <Bell className="h-4 w-4 text-jdt-primary" />
+            <span className="absolute -right-1 -top-1 rounded-full bg-orange-600 px-1.5 py-0.5 text-[10px] font-black text-white">{overview.kpis.find((kpi: any) => kpi.id === 'activeAlerts')?.value || 0}</span>
           </button>
-          <button onClick={() => openModal('load')} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-jdt-panel px-4 py-2.5 text-xs font-black uppercase text-jdt-text shadow-sm hover:bg-jdt-sand">
-            <Truck className="h-4 w-4" /> Dispatch Freight Move
-          </button>
-          <button onClick={() => setActiveTab('calendar')} className="inline-flex items-center justify-center gap-2 rounded-lg border border-jdt-border bg-jdt-panel px-4 py-2.5 text-xs font-black uppercase text-jdt-text shadow-sm hover:bg-jdt-sand">
-            <Calendar className="h-4 w-4" /> Calendar
-          </button>
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-jdt-primary text-xs font-black text-white shadow-sm">{userInitials}</div>
         </div>
-      </div>
+      </header>
 
-      <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-        {dashboardSummary.commandAlerts.map((alert: DashboardCommandAlert) => {
-          const Icon = commandAlertIconMap[alert.id];
+      <section className="grid gap-2 grid-cols-2 md:grid-cols-4 xl:grid-cols-8">
+        {overview.kpis.map((kpi: any) => {
+          const Icon = overviewKpiIcons[kpi.id] || LayoutGrid;
           return (
-            <button key={alert.id} type="button" onClick={() => setActiveTab(alert.targetTab)} className={`min-h-[92px] rounded-lg border p-3 text-left shadow-sm transition-colors hover:border-jdt-olive ${commandAlertToneMap[alert.tone]}`}>
-              <div className="flex items-start justify-between gap-2">
-                <p className={`text-[10px] font-black uppercase ${alert.tone === 'context' ? 'text-white/70' : 'text-zinc-500'}`}>{alert.label}</p>
-                <Icon className={`h-4 w-4 ${alert.tone === 'context' ? 'text-jdt-sand' : 'text-jdt-olive'}`} />
+            <button key={kpi.id} type="button" onClick={() => setActiveTab(kpi.targetTab)} className="min-h-[70px] rounded-lg border border-jdt-border bg-white p-2.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-jdt-olive hover:shadow-md">
+              <div className="flex items-start gap-2">
+                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${overviewKpiToneClass[kpi.tone] || overviewKpiToneClass.green}`}>
+                  <Icon className="h-3.5 w-3.5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-[9px] font-black uppercase text-zinc-600">{kpi.label}</p>
+                  <p className="mt-0.5 text-xl font-black leading-none text-jdt-primary">{kpi.value}</p>
+                  <p className="mt-0.5 truncate text-[10px] font-bold text-zinc-500">{kpi.detail}</p>
+                </div>
               </div>
-              <p className="mt-2 text-3xl font-black leading-none">{alert.value}</p>
-              <p className={`mt-1 text-[10px] font-bold ${alert.tone === 'context' ? 'text-white/70' : 'text-zinc-500'}`}>{alert.detail}</p>
             </button>
           );
         })}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
-        <div className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-jdt-border px-5 py-4">
-            <div>
-              <h3 className="text-sm font-black uppercase text-jdt-text">Today's Field Schedule</h3>
-              <p className="mt-1 text-xs font-bold text-zinc-500">Grouped by crew, work order, equipment, and field action.</p>
-            </div>
-            <button onClick={() => setActiveTab('calendar')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">Open Planner</button>
-          </div>
-          {dashboardSummary.todaySchedule.length > 0 ? (
-            <div className="grid gap-3 p-4 lg:grid-cols-2">
-              {dashboardSummary.todaySchedule.map((item: DashboardWorkItem) => {
-                const category = categoryForWorkItemTone(item.tone);
-                const tags = item.treeTags || [];
-                const equipment = item.equipmentAssigned || [];
-                return (
-                  <article key={`${item.drawerType}-${item.id}`} className={`rounded-lg border border-jdt-border border-l-4 p-4 shadow-sm ${categorySurfaceClass(category)} ${categoryAccentBorderClass(category)}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <CategoryIcon category={category} size="xs" />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-black text-jdt-text">{item.crewLeader || item.assignee}</p>
-                          <p className="truncate text-[10px] font-black uppercase text-zinc-500">{item.workType || 'Field Work'}</p>
-                        </div>
-                      </div>
-                      <span className={`shrink-0 rounded border px-2 py-1 text-[9px] font-black uppercase shadow-sm ${item.blockerFlag ? riskPillClass('critical') : statusPillClass(item.status)}`}>{item.blockerFlag ? 'Blocked' : item.status}</span>
-                    </div>
-                    <button type="button" onClick={() => openWorkItem(item)} className="mt-3 block w-full text-left">
-                      <p className="line-clamp-2 text-base font-black uppercase text-jdt-text hover:underline">{item.title}</p>
-                      <p className="mt-1 truncate text-xs font-bold text-zinc-500">{item.projectName || item.detail}</p>
-                    </button>
-                    <div className="mt-3 grid gap-2 text-[10px] font-black uppercase text-zinc-500 sm:grid-cols-2">
-                      <span className="rounded border border-jdt-border bg-white/80 px-2 py-1">Date: {item.scheduledDate || 'Today'}</span>
-                      <span className="rounded border border-jdt-border bg-white/80 px-2 py-1">Trees: {item.treeCount || tags.length || '-'}</span>
-                      <span className="rounded border border-jdt-border bg-white/80 px-2 py-1">Tags: {tags.slice(0, 3).join(', ') || '-'}</span>
-                      <span className="rounded border border-jdt-border bg-white/80 px-2 py-1">Equip: {equipment.slice(0, 2).join(', ') || '-'}</span>
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      <DashboardActionButton label="Start" onClick={() => openWorkItem(item)} />
-                      <DashboardActionButton label="Complete" onClick={() => openModal('closeout', { relatedRecordId: item.recordId, relatedTitle: item.title })} />
-                      <DashboardActionButton label="Add Note" onClick={() => openModal('task', { relatedRecordId: item.recordId, relatedTitle: item.title, projectName: item.projectName })} />
-                      <DashboardActionButton label="Add Photo" onClick={() => openModal('document', { relatedRecordId: item.recordId, relatedTitle: item.title, projectName: item.projectName })} />
-                      <DashboardActionButton label="Blocker" onClick={() => openModal('delay', { relatedRecordId: item.recordId, relatedTitle: item.title, projectName: item.projectName })} />
-                      <DashboardActionButton label="View Map" onClick={() => setActiveTab(item.treeCount ? 'treeGisMap' : 'jdtLocations')} />
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          ) : (
-            <DashboardEmpty icon={Calendar} title="No scheduled field work on the board yet" detail="Crew work orders, scheduled project work, freight moves, and calendar tasks will collect here." />
-          )}
-        </div>
-
-        <div className="space-y-4">
-          <section className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
-            <div className="flex items-center justify-between gap-3 border-b border-jdt-border px-5 py-4">
-              <div>
-                <h3 className="text-sm font-black uppercase text-jdt-text">Owner Review Queue</h3>
-                <p className="mt-1 text-xs font-bold text-zinc-500">Decision, schedule, billing, confirmation, and high-risk tree items.</p>
-              </div>
-              <AlertTriangle className="h-5 w-5 text-jdt-olive" />
-            </div>
-            {ownerGroups.length > 0 ? (
-              <div className="space-y-3 p-4">
-                {ownerGroups.map((group: any) => (
-                  <div key={group.id} className="rounded-lg border border-jdt-border bg-white p-3">
-                    <p className="text-[10px] font-black uppercase text-jdt-olive">{group.label}</p>
-                    <div className="mt-2 space-y-2">
-                      {group.items.slice(0, 2).map((item: DashboardWorkItem) => (
-                        <article key={`${group.id}-${item.id}`} className="rounded border border-jdt-border bg-jdt-panel p-3">
-                          <p className="line-clamp-1 text-xs font-black uppercase text-jdt-text">{item.decisionNeeded || item.title}</p>
-                          <p className="mt-1 line-clamp-2 text-[10px] font-bold text-zinc-500">{item.projectName || item.detail}</p>
-                          <p className="mt-2 text-[10px] font-black uppercase text-jdt-olive">{item.suggestedNextAction}</p>
-                          <div className="mt-3 grid grid-cols-2 gap-1">
-                            <DashboardActionButton label="Approve" onClick={() => openWorkItem(item)} />
-                            <DashboardActionButton label="Assign" onClick={() => openModal('assign_work', { relatedRecordId: item.recordId, projectName: item.projectName })} />
-                            <DashboardActionButton label="Dismiss" onClick={() => setActiveTab('alerts')} />
-                            <DashboardActionButton label="Open" onClick={() => openWorkItem(item)} />
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <DashboardEmpty icon={AlertTriangle} title="No owner review items" detail="Blocked jobs, freight issues, billing cues, and high-risk trees will collect here." />
-            )}
-          </section>
-
-          <section className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
-            <div className="border-b border-jdt-border px-5 py-4">
-              <h3 className="text-sm font-black uppercase text-jdt-text">At Risk Projects</h3>
-              <p className="mt-1 text-xs font-bold text-zinc-500">Fix assignment, open project, or run readiness review.</p>
-            </div>
-            {topRisks.length > 0 ? (
-              <div className="space-y-3 p-4">
-                {topRisks.map((risk: any) => (
-                  <article key={risk.id} className="rounded-lg border border-jdt-border bg-white p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-black uppercase text-jdt-text">{risk.title}</p>
-                        <p className="mt-1 text-[10px] font-black uppercase text-zinc-500">{risk.clientName || 'No client linked'}</p>
-                      </div>
-                      <span className={`shrink-0 rounded px-2 py-1 text-[9px] font-black uppercase ${riskLevelClass(risk.level)}`}>{risk.level} {risk.score}</span>
-                    </div>
-                    <ul className="mt-3 space-y-1">
-                      {risk.reasons.slice(0, 2).map((reason: string) => (
-                        <li key={reason} className="text-[11px] font-bold text-zinc-600">- {reason}</li>
-                      ))}
-                    </ul>
-                    <div className="mt-3 grid grid-cols-1 gap-2">
-                      <DashboardActionButton label="Fix Assignment" onClick={() => openModal('assign_work', { projectName: risk.title })} />
-                      <DashboardActionButton label="Open Project" onClick={() => openRisk(risk)} />
-                      <DashboardActionButton label="Open Readiness Checklist" onClick={() => setActiveTab('reports')} />
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <DashboardEmpty icon={AlertTriangle} title="No project risk detected" detail="Missing crew, freight gaps, equipment holds, field issues, and proof gaps will show here." />
-            )}
-          </section>
-        </div>
+      <section className="grid gap-3 md:grid-cols-[3fr_5fr] 2xl:grid-cols-[4fr_7fr]">
+        <FleetGpsQuickGlanceCard fleetGps={overview.fleetGps} setActiveTab={setActiveTab} />
+        <ProjectSnapshotsCard projects={overview.projectSnapshots} openDrawer={openDrawer} setActiveTab={setActiveTab} />
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
-        <div className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-black uppercase text-jdt-text">Tree Relocation Pipeline</h3>
-              <p className="mt-1 text-xs font-bold text-zinc-500">Relocation status from not started through relocated.</p>
-            </div>
-            <button onClick={() => setActiveTab('tracker')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">Open Trees</button>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {(dashboardSummary.treePipeline || []).map((bucket: any) => (
-              <button key={bucket.status} type="button" onClick={() => setActiveTab(bucket.targetTab)} className={`rounded-lg border px-3 py-3 text-left transition-colors hover:border-jdt-olive ${statusPillClass(bucket.status)}`}>
-                <p className="text-[10px] font-black uppercase">{bucket.status}</p>
-                <p className="mt-2 text-2xl font-black">{bucket.count}</p>
-                <p className="mt-1 text-[10px] font-bold opacity-80">{bucket.detail}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <DashboardQueueCard title="Root Prune Events Due" subtitle="Schedule or confirm root pruning work" items={dashboardSummary.rootPruneDueQueue || []} empty="No root prune events due" onOpen={openWorkItem} actionLabel="Open" />
-          <DashboardQueueCard title="Nutrient Care Due" subtitle="Treatment and care follow-ups" items={dashboardSummary.nutrientCareDueQueue || []} empty="No nutrient care due" onOpen={openWorkItem} actionLabel="Open" />
-          <DashboardQueueCard title="Move / Relocation Work Due" subtitle="Ready trees, holding moves, and relocation work" items={dashboardSummary.relocationWorkDueQueue || []} empty="No move work due" onOpen={openWorkItem} actionLabel="Open" />
-        </div>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
-        <DashboardQueueCard title="Equipment Board" subtitle="Current equipment, location, assignment, and dispatch blockers" items={dashboardSummary.equipmentBoard || []} empty="No equipment records ready" onOpen={openWorkItem} actionLabel="Open Equipment" />
-        <div className="space-y-4">
-          <DashboardSimpleList title="Resource Conflicts" subtitle="Double-booked crew, drivers, trucks, trailers, or equipment" items={dashboardSummary.resourceConflictQueue || []} empty="No resource conflicts detected" onOpen={() => setActiveTab('calendar')} />
-          <DashboardSimpleList title="Compliance Blocking Dispatch" subtitle="Driver and vehicle documents that can block today" items={dashboardSummary.dispatchBlockingComplianceQueue || []} empty="No dispatch-blocking compliance items" onOpen={(item: any) => openQueueItem(item, 'documents')} />
-        </div>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
-        <div className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-black uppercase text-jdt-text">Map Snapshot</h3>
-              <p className="mt-1 text-xs font-bold text-zinc-500">Open live GPS, project maps, tree pins, and saved project access points.</p>
-            </div>
-            <MapPin className="h-5 w-5 text-jdt-olive" />
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <button onClick={() => setActiveTab('jdtLocations')} className="rounded-lg border border-jdt-border bg-white p-4 text-left hover:border-jdt-olive">
-              <p className="text-xs font-black uppercase text-jdt-text">JDT Locations</p>
-              <p className="mt-1 text-[10px] font-bold text-zinc-500">Jobsite, access, client, and farm pins</p>
-            </button>
-            <button onClick={() => setActiveTab('fleetGps')} className="rounded-lg border border-jdt-border bg-white p-4 text-left hover:border-jdt-olive">
-              <p className="text-xs font-black uppercase text-jdt-text">Fleet GPS</p>
-              <p className="mt-1 text-[10px] font-bold text-zinc-500">Vehicles, equipment, freight</p>
-            </button>
-            <button onClick={() => setActiveTab('treeGisMap')} className="rounded-lg border border-jdt-border bg-white p-4 text-left hover:border-jdt-olive">
-              <p className="text-xs font-black uppercase text-jdt-text">Tree GIS Map</p>
-              <p className="mt-1 text-[10px] font-bold text-zinc-500">ArcGIS hosted layers and geometry sync</p>
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <section className="rounded-xl border border-jdt-border bg-jdt-panel shadow-sm">
-            <div className="border-b border-jdt-border px-5 py-4">
-              <h3 className="text-sm font-black uppercase text-jdt-text">Data Quality Queue</h3>
-              <p className="mt-1 text-xs font-bold text-zinc-500">Grouped by what the missing data blocks.</p>
-            </div>
-            {blockingDataGroups.length > 0 ? (
-              <div className="space-y-3 p-4">
-                {blockingDataGroups.map((group: any) => (
-                  <div key={group.id} className="rounded-lg border border-jdt-border bg-white p-3">
-                    <p className="text-[10px] font-black uppercase text-jdt-olive">{group.label}</p>
-                    {group.items.slice(0, 2).map((item: any) => (
-                      <button key={item.id} type="button" onClick={() => openDataQualityItem(item)} className="mt-2 w-full rounded border border-jdt-border bg-jdt-panel p-3 text-left hover:border-jdt-olive">
-                        <p className="truncate text-xs font-black text-jdt-text">{item.title}</p>
-                        <p className="mt-1 line-clamp-2 text-[10px] font-bold text-zinc-500">{item.detail}</p>
-                        {item.recommendedAction && (
-                          <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] font-black uppercase text-amber-900">
-                            {item.recommendedAction}
-                          </p>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <DashboardEmpty icon={Database} title="No data quality issues detected" detail="Schedule, billing, report, and cleanup issues will collect here." />
-            )}
-          </section>
-          <DashboardSimpleList title="Workflow Readiness" subtitle="Required details missing before dispatch or closeout" items={dashboardSummary.workflowReadinessQueue || []} empty="No workflow readiness issues" onOpen={(item: any) => openQueueItem(item, 'reports')} />
-          <DashboardCloseoutReviewList items={dashboardSummary.fieldCloseoutReviewQueue || []} onOpen={(item: any) => openQueueItem(item, 'crewView')} />
-          <DashboardSimpleList title="Compliance Review" subtitle="Driver, CDL, vehicle, registration, and insurance documents needing attention" items={dashboardSummary.complianceReviewQueue || []} empty="No compliance review items" onOpen={(item: any) => openQueueItem(item, 'documents')} />
-        </div>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
-        <div className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-black uppercase text-jdt-text">Daily Command Brief</h3>
-              <p className="mt-1 text-xs font-bold text-zinc-500">{dailyBrief?.summary || 'Today, tomorrow, and owner decisions in one summary.'}</p>
-            </div>
-            <button onClick={() => setActiveTab('reports')} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-text hover:border-jdt-olive">Reports</button>
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            {[
-              { title: 'Today', date: dailyBrief?.todayIso, items: dailyBrief?.today || [], empty: 'No work dated today' },
-              { title: 'Tomorrow', date: dailyBrief?.tomorrowIso, items: dailyBrief?.tomorrow || [], empty: 'No tomorrow prep staged' },
-              { title: 'Decisions', date: 'Review', items: dailyBrief?.decisions || [], empty: 'No owner decisions flagged' },
-            ].map((section) => (
-              <DashboardBriefColumn key={section.title} section={section} onOpen={(item: any) => openQueueItem(item, item.targetTab || 'reports')} />
-            ))}
-          </div>
-        </div>
-
-        <section className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-          <h3 className="text-sm font-black uppercase text-jdt-text">Quick Actions</h3>
-          <div className="mt-4 grid gap-2">
-            <button onClick={() => openModal('job')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Create Project</button>
-            <button onClick={() => openModal('project_tree_asset')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Add Project Tree</button>
-            <button onClick={() => openModal('equipment')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Add Equipment</button>
-            <button onClick={() => setActiveTab('sheets')} className="rounded-lg border border-jdt-border bg-white px-4 py-3 text-left text-xs font-black uppercase text-jdt-text hover:border-jdt-olive">Import / Backup</button>
-          </div>
-        </section>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
-        <div className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-black uppercase text-jdt-text">Recent Records</h3>
-              <p className="mt-1 text-xs font-bold text-zinc-500">Lower-priority activity feed.</p>
-            </div>
-          </div>
-          {recentRecords.length > 0 ? (
-            <div className="grid gap-2 md:grid-cols-2">
-              {recentRecords.map((record: any) => (
-                <button key={`${record.type}-${record.id}-${record.label}`} type="button" onClick={() => setActiveTab(record.type === 'job' ? 'tracker' : record.type === 'tree' ? 'inventory' : record.type === 'fieldUpdate' ? 'crewView' : record.type)} className="rounded-lg border border-jdt-border bg-white p-3 text-left hover:border-jdt-olive">
-                  <p className="truncate text-xs font-black uppercase text-jdt-text">{record.label}</p>
-                  <p className="mt-1 truncate text-[10px] font-bold text-zinc-500">{record.meta}</p>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <DashboardEmpty icon={Database} title="No recent records yet" detail="Projects, trees, freight, equipment, field updates, and documents will appear here after entry." compact />
-          )}
-        </div>
-
-        <div className="rounded-xl border border-jdt-border bg-jdt-panel p-5 shadow-sm">
-          <div className="mb-4 flex items-center gap-2">
-            <DollarSign className="h-4 w-4 text-jdt-primary" />
-            <h3 className="text-sm font-black uppercase text-jdt-text">Sales Pipeline</h3>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {dashboardSummary.pipeline.map((stage: any) => (
-              <div key={stage.id} className="rounded-lg border border-jdt-border bg-white p-3 text-center">
-                <p className="text-[10px] font-black uppercase text-zinc-500">{stage.label}</p>
-                <p className="mt-2 text-2xl font-black text-jdt-text">{stage.value}</p>
-                <p className="mt-1 text-[10px] font-bold text-jdt-olive">{stage.detail}</p>
-              </div>
-            ))}
-          </div>
-        </div>
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <FreightTodayOverviewCard items={overview.freightToday} setActiveTab={setActiveTab} />
+        <CrewAtGlanceOverviewCard items={overview.crewAtGlance} setActiveTab={setActiveTab} />
+        <NurseryOverviewCard snapshot={overview.nurserySnapshot} setActiveTab={setActiveTab} />
+        <EquipmentStatusOverviewCard status={overview.equipmentStatus} setActiveTab={setActiveTab} />
+        <AttentionOverviewCard items={overview.alerts} openDrawer={openDrawer} setActiveTab={setActiveTab} />
       </section>
     </div>
   );
+}
+
+function OverviewCardShell({ icon: Icon, title, children, footer, accent = 'bg-emerald-50 text-emerald-800' }: { icon: any; title: string; children: any; footer?: any; accent?: string }) {
+  return (
+    <section className="rounded-lg border border-jdt-border bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center gap-2.5">
+        <span className={`flex h-7 w-7 items-center justify-center rounded-full ${accent}`}>
+          <Icon className="h-4 w-4" />
+        </span>
+        <h3 className="text-xs font-black uppercase text-jdt-text">{title}</h3>
+      </div>
+      {children}
+      {footer}
+    </section>
+  );
+}
+
+function FleetGpsQuickGlanceCard({ fleetGps, setActiveTab }: { fleetGps: any; setActiveTab: (tab: string) => void }) {
+  const statItems = [
+    ['GPS assets visible', fleetGps.visibleAssets],
+    ['Vehicles on road', fleetGps.vehiclesOnRoad],
+    ['Equipment offsite', fleetGps.equipmentOffsite],
+    ['Unmatched GPS', fleetGps.unmatchedAssets],
+  ];
+  const markerPositions = [
+    ['20%', '22%'], ['42%', '34%'], ['68%', '28%'], ['76%', '62%'], ['36%', '70%'],
+    ['55%', '56%'], ['88%', '42%'], ['14%', '64%'], ['61%', '78%'], ['29%', '44%'],
+  ];
+
+  return (
+    <section className="rounded-lg border border-jdt-border bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wide text-jdt-primary">Fleet GPS Quick Glance</h3>
+          <p className="mt-0.5 text-xs font-semibold text-zinc-500">Live vehicle, equipment, freight, and unmatched GPS asset tracking</p>
+        </div>
+        <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase text-emerald-800">Last sync {formatOverviewTime(fleetGps.lastSyncAt)}</span>
+      </div>
+
+      <button type="button" onClick={() => setActiveTab('fleetGps')} className="relative h-28 w-full overflow-hidden rounded-lg border border-jdt-border bg-[radial-gradient(circle_at_25%_20%,#365f48_0,#214735_28%,#163628_42%,#243f31_57%,#496245_74%,#1d3b2e_100%)] text-left shadow-inner xl:h-36">
+        <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(35deg,transparent_0_44%,rgba(255,255,255,.22)_45%_47%,transparent_48%_100%),linear-gradient(120deg,transparent_0_55%,rgba(84,196,140,.24)_56%_58%,transparent_59%_100%)]" />
+        <span className="absolute left-2.5 top-2.5 rounded-full bg-white px-3 py-1 text-[10px] font-black text-jdt-primary shadow-sm">Satellite</span>
+        <span className="absolute bottom-3 left-3 rounded-lg bg-zinc-950/75 px-3 py-2 text-xs font-bold text-white">{fleetGps.visibleAssets} GPS assets visible • Last sync {formatOverviewTime(fleetGps.lastSyncAt)}</span>
+        {(fleetGps.mapMarkers?.length ? fleetGps.mapMarkers : fleetGps.movements).slice(0, 10).map((marker: any, index: number) => {
+          const [left, top] = markerPositions[index % markerPositions.length];
+          return (
+            <span key={marker.id || `${marker.label}-${index}`} title={marker.label} className={`absolute h-3 w-3 rounded-full border-2 border-white shadow-lg ${mapMarkerClass[marker.tone] || mapMarkerClass.active}`} style={{ left, top }} />
+          );
+        })}
+      </button>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-4">
+        {statItems.map(([label, value]) => (
+          <div key={label} className="rounded-md border border-jdt-border bg-jdt-panel px-2.5 py-2">
+            <p className="text-xl font-black leading-none text-jdt-primary">{value}</p>
+            <p className="mt-1 text-[9px] font-black uppercase text-zinc-500">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3">
+        <p className="mb-1.5 text-[11px] font-black uppercase text-jdt-text">Quick movement</p>
+        <div className="space-y-1.5">
+          {(fleetGps.movements || []).slice(0, 4).map((item: any) => (
+            <div key={item.id} className="grid grid-cols-[minmax(0,.7fr)_auto_minmax(0,1fr)] items-center gap-2 text-xs">
+              <span className="truncate font-black text-jdt-text">{item.label}</span>
+              <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${movementToneClass[item.tone] || movementToneClass.active}`}>{item.status}</span>
+              <span className="truncate font-semibold text-zinc-500">{item.detail}</span>
+            </div>
+          ))}
+          {(!fleetGps.movements || fleetGps.movements.length === 0) && (
+            <p className="rounded-md border border-dashed border-jdt-border bg-jdt-panel px-3 py-3 text-xs font-semibold text-zinc-500">No live GPS movement records yet.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 flex justify-end gap-2">
+        <button type="button" onClick={() => setActiveTab('fleetGps')} className="rounded-full bg-jdt-primary px-4 py-1.5 text-[11px] font-black uppercase text-white hover:bg-jdt-dark">Open Fleet Map</button>
+        <button type="button" onClick={() => setActiveTab('fleetGps')} className="rounded-full border border-jdt-border bg-white px-4 py-1.5 text-[11px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Sync GPS</button>
+      </div>
+    </section>
+  );
+}
+
+function ProjectSnapshotsCard({ projects, openDrawer, setActiveTab }: { projects: any[]; openDrawer: (type: string, id: string) => void; setActiveTab: (tab: string) => void }) {
+  return (
+    <section className="rounded-lg border border-jdt-border bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wide text-jdt-text">Project Snapshots</h3>
+          <p className="mt-0.5 text-xs font-semibold text-zinc-500">Quick status cards for active relocation and installation work</p>
+        </div>
+        <button type="button" onClick={() => setActiveTab('tracker')} className="text-[11px] font-black uppercase text-jdt-olive hover:text-jdt-primary">View all projects</button>
+      </div>
+
+      {projects.length > 0 ? (
+        <div className="grid gap-2 md:grid-cols-3">
+          {projects.slice(0, 6).map((project) => (
+            <button key={project.id} type="button" onClick={() => openDashboardRecord(project, setActiveTab, openDrawer, 'tracker')} className="rounded-lg border border-jdt-border border-l-4 border-l-jdt-primary bg-jdt-panel p-2.5 text-left transition hover:-translate-y-0.5 hover:border-jdt-olive hover:shadow-md">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-jdt-text">{project.name}</p>
+                  <p className="mt-0.5 truncate text-[11px] font-bold text-zinc-500">{project.location}</p>
+                </div>
+                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[8px] font-black uppercase ${statusPillClass(project.status)}`}>{project.status}</span>
+              </div>
+              <div className="mt-1.5 grid grid-cols-[56px_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[10px]">
+                <span className="font-black uppercase text-zinc-500">Phase</span><span className="font-bold text-jdt-text">{project.phase}</span>
+                <span className="font-black uppercase text-zinc-500">Crew</span><span className="truncate font-bold text-jdt-text">{project.crewLead}</span>
+                <span className="font-black uppercase text-zinc-500">Equipment</span><span className="truncate font-bold text-jdt-text">{project.equipment?.join(', ') || 'TBD'}</span>
+              </div>
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-zinc-100">
+                <div className="h-full rounded-full bg-jdt-primary" style={{ width: `${Math.max(0, Math.min(100, project.progressPercent || 0))}%` }} />
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-bold">
+                <span className="text-emerald-700">Trees: {project.treesRelocatedCount} of {project.treesTotalCount} relocated</span>
+                <span className={project.issuesCount > 0 ? 'text-red-700' : 'text-emerald-700'}>Issues: {project.issuesCount}</span>
+              </div>
+              <p className="mt-1 truncate text-[10px] font-black text-jdt-olive">Next: {project.nextAction}</p>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <DashboardEmpty icon={LayoutGrid} title="No project snapshots yet" detail="Active, upcoming, and on-hold project summaries will appear here once projects are saved." compact />
+      )}
+    </section>
+  );
+}
+
+function FreightTodayOverviewCard({ items, setActiveTab }: { items: any[]; setActiveTab: (tab: string) => void }) {
+  return (
+    <OverviewCardShell icon={Truck} title="Freight Today" accent="bg-blue-50 text-blue-800" footer={<OverviewFooter label="View all freight" onClick={() => setActiveTab('freight')} />}>
+      <div className="space-y-2">
+        {items.slice(0, 4).map((item) => (
+          <div key={item.id} className="flex items-start gap-2 rounded-md border border-jdt-border bg-jdt-panel p-2">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[11px] font-black text-blue-800">{item.driverName.slice(0, 2).toUpperCase()}</span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-black text-jdt-text">{item.driverName}</p>
+              <p className="truncate text-[11px] font-semibold text-zinc-500">{item.assignmentSummary}</p>
+              <p className="mt-0.5 truncate text-[10px] font-bold text-zinc-500">{item.destination}</p>
+            </div>
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[8px] font-black uppercase ${movementToneClass[fleetToneForDisplay(item.status)]}`}>{item.status}</span>
+          </div>
+        ))}
+        {items.length === 0 && <CompactEmpty text="No freight moves are active today." />}
+      </div>
+    </OverviewCardShell>
+  );
+}
+
+function CrewAtGlanceOverviewCard({ items, setActiveTab }: { items: any[]; setActiveTab: (tab: string) => void }) {
+  return (
+    <OverviewCardShell icon={HardHat} title="Crew at a Glance" accent="bg-emerald-50 text-emerald-800" footer={<OverviewFooter label="View all crews" onClick={() => setActiveTab('crews')} />}>
+      <div className="space-y-2">
+        {items.slice(0, 5).map((item) => (
+          <div key={item.id} className="grid grid-cols-[1fr_auto] gap-2 rounded-md border border-jdt-border bg-jdt-panel p-2">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-black text-jdt-text">{item.crewLead}</p>
+              <p className="truncate text-[11px] font-semibold text-zinc-500">{item.currentJob}</p>
+            </div>
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[8px] font-black uppercase text-emerald-800">{item.phase}</span>
+          </div>
+        ))}
+        {items.length === 0 && <CompactEmpty text="No crew assignments are visible yet." />}
+      </div>
+    </OverviewCardShell>
+  );
+}
+
+function NurseryOverviewCard({ snapshot, setActiveTab }: { snapshot: any; setActiveTab: (tab: string) => void }) {
+  const rows = [
+    ['Orders Today', snapshot.ordersToday],
+    ['Trees Prepped', snapshot.treesPrepped],
+    ['Needs Prepped', snapshot.needsPrepped],
+    ['Staged for Delivery', snapshot.stagedForDelivery],
+  ];
+  return (
+    <OverviewCardShell icon={Leaf} title="Nursery Snapshot" accent="bg-emerald-50 text-emerald-800" footer={<OverviewFooter label="View nursery" onClick={() => setActiveTab('inventory')} />}>
+      <div className="space-y-1.5">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex items-center justify-between border-b border-jdt-border pb-1.5 text-xs">
+            <span className="font-semibold text-zinc-500">{label}</span>
+            <span className="font-black text-jdt-primary">{value}</span>
+          </div>
+        ))}
+        <div className="flex items-center justify-between border-b border-jdt-border pb-1.5 text-xs">
+          <span className="font-semibold text-zinc-500">Irrigation / Watering</span>
+          <span className={`font-black ${snapshot.irrigationStatus === 'Good' ? 'text-emerald-700' : 'text-amber-700'}`}>{snapshot.irrigationStatus}</span>
+        </div>
+      </div>
+      <div className="mt-3">
+        <p className="text-[10px] font-black uppercase text-jdt-olive">Customer Pickups</p>
+        <div className="mt-1.5 space-y-1">
+          {(snapshot.customerPickups || []).slice(0, 2).map((pickup: any) => (
+            <p key={pickup.id} className="truncate text-[11px] font-semibold text-jdt-text">{pickup.customer} <span className="text-zinc-500">{pickup.time}</span></p>
+          ))}
+          {(!snapshot.customerPickups || snapshot.customerPickups.length === 0) && <p className="text-[11px] font-semibold text-zinc-500">No customer pickups staged.</p>}
+        </div>
+      </div>
+    </OverviewCardShell>
+  );
+}
+
+function EquipmentStatusOverviewCard({ status, setActiveTab }: { status: any; setActiveTab: (tab: string) => void }) {
+  const rows = [
+    ['In Use', status.inUse, status.utilizationPercent, 'bg-emerald-700'],
+    ['Available', status.available, status.availablePercent, 'bg-emerald-600'],
+    ['In Maintenance', status.maintenance, status.maintenancePercent, 'bg-amber-600'],
+    ['Down', status.down, status.downPercent, 'bg-red-700'],
+  ];
+  return (
+    <OverviewCardShell icon={Tractor} title="Equipment Status" accent="bg-violet-50 text-violet-800" footer={<OverviewFooter label="View equipment" onClick={() => setActiveTab('equipment')} />}>
+      <div className="space-y-2">
+        {rows.map(([label, count, percent, color]) => (
+          <div key={label} className="space-y-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-jdt-text">{label}</span>
+              <span className="font-black text-jdt-primary">{count} <span className="ml-2 text-[11px] font-semibold text-zinc-500">{percent}%</span></span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-zinc-100">
+              <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.max(0, Math.min(100, Number(percent) || 0))}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-[11px] font-bold text-red-700">Highlight: {status.keyIssue}</p>
+    </OverviewCardShell>
+  );
+}
+
+function AttentionOverviewCard({ items, openDrawer, setActiveTab }: { items: any[]; openDrawer: (type: string, id: string) => void; setActiveTab: (tab: string) => void }) {
+  return (
+    <OverviewCardShell icon={AlertTriangle} title="Alerts / Needs Attention" accent="bg-amber-50 text-amber-800" footer={<OverviewFooter label="View all alerts" onClick={() => setActiveTab('alerts')} />}>
+      <div className="space-y-2">
+        {items.slice(0, 5).map((item) => (
+          <button key={item.id} type="button" onClick={() => openDashboardRecord(item, setActiveTab, openDrawer, 'alerts')} className="grid w-full grid-cols-[auto_auto_1fr] items-center gap-2 rounded-md border border-jdt-border bg-jdt-panel p-2 text-left hover:border-jdt-olive">
+            <span className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase ${attentionSeverityClass(item.severity)}`}>{item.severity}</span>
+            <span className="text-xs font-black text-jdt-primary">{item.count}</span>
+            <span className="min-w-0">
+              <span className="block truncate text-[11px] font-black text-jdt-text">{item.title}</span>
+              <span className="block truncate text-[10px] font-semibold text-zinc-500">{item.detail}</span>
+            </span>
+          </button>
+        ))}
+        {items.length === 0 && <CompactEmpty text="No attention items are open." />}
+      </div>
+    </OverviewCardShell>
+  );
+}
+
+function OverviewFooter({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="mt-3 text-[11px] font-black uppercase text-jdt-olive hover:text-jdt-primary">
+      {label} <ChevronRight className="inline h-3.5 w-3.5" />
+    </button>
+  );
+}
+
+function CompactEmpty({ text }: { text: string }) {
+  return <p className="rounded-md border border-dashed border-jdt-border bg-jdt-panel px-3 py-3 text-xs font-semibold text-zinc-500">{text}</p>;
+}
+
+function attentionSeverityClass(severity: string) {
+  if (severity === 'High') return 'bg-red-50 text-red-800';
+  if (severity === 'Medium') return 'bg-amber-50 text-amber-800';
+  if (severity === 'Low') return 'bg-emerald-50 text-emerald-800';
+  return 'bg-blue-50 text-blue-800';
+}
+
+function fleetToneForDisplay(status: string) {
+  const text = String(status || '').toLowerCase();
+  if (/route|transit|moving|dispatched/.test(text)) return 'moving';
+  if (/delay|issue|down|review|cancel/.test(text)) return 'issue';
+  if (/scheduled|loading|pending/.test(text)) return 'scheduled';
+  if (/delivered|complete|site/.test(text)) return 'active';
+  return 'scheduled';
 }
 
 function DashboardActionButton({ label, onClick }: { label: string; onClick: () => void }) {
@@ -2472,12 +2863,198 @@ function mergedRelocationInstallationProjects(projects: any[] = [], jobs: any[] 
   ));
 }
 
-export function TrackerBoard({ projects = [], jobs = [], workOrders = [], projectMaterialItems = [], openDrawer, openModal }: any) {
-  const [jobFilter, setJobFilter] = useState<RelocationInstallationJobFilter>('All');
-  const relocationInstallationProjects = useMemo(() => mergedRelocationInstallationProjects(projects, jobs), [projects, jobs]);
-  const filteredProjects = relocationInstallationProjects.filter((project: any) => (
-    jobFilter === 'All' || classifyRelocationInstallationJob(project) === jobFilter
+const relocationReadinessFilters = [
+  'All',
+  'Ready',
+  'Needs Scheduling',
+  'Needs Crew',
+  'Needs Equipment',
+  'Needs Freight',
+  'Needs Map Cleanup',
+  'Blocked',
+  'Tomorrow',
+] as const;
+
+type RelocationReadinessFilter = typeof relocationReadinessFilters[number];
+
+function trackerDateOnly(value: unknown): string {
+  return String(value || '').trim().slice(0, 10);
+}
+
+function trackerIsCompleteStatus(value: unknown): boolean {
+  const status = String(value || '').toLowerCase();
+  return status.includes('complete') || status.includes('cancel') || status.includes('relocated');
+}
+
+function trackerArrayHasValue(value: unknown): boolean {
+  return Array.isArray(value) ? value.some(Boolean) : Boolean(String(value || '').trim());
+}
+
+function treeRelocationStatus(tree: TreeRelocationRecord): string {
+  const status = String(tree.treeRelocationStatus || tree.relocationStatus || tree.status || tree.currentStatus || defaultRelocationStatus).trim();
+  return treeRelocationStatusOptions.find((option) => option.toLowerCase() === status.toLowerCase()) || status || defaultRelocationStatus;
+}
+
+function treeHasSourcePin(tree: TreeRelocationRecord): boolean {
+  return Boolean(
+    tree.existingSourcePin
+    || (tree.existingLatitude !== undefined && tree.existingLongitude !== undefined)
+    || tree.relocationMap?.source?.lat !== undefined,
+  );
+}
+
+function treeHasDestinationPin(tree: TreeRelocationRecord): boolean {
+  return Boolean(
+    tree.destinationPin
+    || (tree.destinationLatitude !== undefined && tree.destinationLongitude !== undefined)
+    || tree.relocationMap?.destination?.lat !== undefined,
+  );
+}
+
+function treeAssetsForTrackerProject(treeRelocationRecords: TreeRelocationRecord[], project: any): TreeRelocationRecord[] {
+  return treeRelocationRecords.filter((tree) => (
+    trackerFieldMatches(tree.projectId, project.projectId)
+    || trackerFieldMatches(tree.projectId, project.projectsId)
+    || trackerFieldMatches(tree.projectId, project.id)
+    || trackerFieldMatches(tree.projectsId, project.projectsId)
+    || trackerFieldMatches(tree.projectsId, project.projectId)
+    || trackerFieldMatches(tree.jobId, project.id)
+    || trackerFieldMatches(tree.sourceJobId, project.id)
+    || trackerFieldMatches(tree.projectName, project.projectName)
+    || trackerFieldMatches(tree.projectName, project.title)
   ));
+}
+
+function buildTrackerPipeline(treeAssets: TreeRelocationRecord[]) {
+  return treeRelocationStatusOptions.map((status) => ({
+    status,
+    count: treeAssets.filter((tree) => treeRelocationStatus(tree).toLowerCase() === status.toLowerCase()).length,
+  }));
+}
+
+function buildTrackerReadiness(project: any, linkedWorkOrders: WorkOrderRecord[], treeAssets: TreeRelocationRecord[], linkedMaterialItems: ProjectMaterialItemRecord[]) {
+  const openWorkOrders = linkedWorkOrders.filter((workOrder) => !trackerIsCompleteStatus(workOrder.status));
+  const treeWorkOrders = openWorkOrders.filter((workOrder) => ['tree_pruning', 'tree_relocation_work', 'treatment_aftercare'].includes(String(workOrder.workOrderType || '')));
+  const linkedEquipmentNames = workOrderResourceNames(linkedWorkOrders, 'equipmentNames');
+  const linkedLoadNames = workOrderResourceNames(linkedWorkOrders, 'loadNames');
+  const readyTrees = treeAssets.filter((tree) => treeRelocationStatus(tree) === 'Ready for Relocation').length;
+  const missingSourcePins = treeAssets.filter((tree) => !treeHasSourcePin(tree)).length;
+  const missingDestinationPins = treeAssets.filter((tree) => !treeHasDestinationPin(tree)).length;
+  const requiredMaterialCount = linkedMaterialItems.reduce((sum: number, item: ProjectMaterialItemRecord) => sum + Number(item.quantityRequired || 0), 0);
+  const installedMaterialCount = linkedMaterialItems.reduce((sum: number, item: ProjectMaterialItemRecord) => sum + Number(item.quantityInstalled || 0), 0);
+  const issues: string[] = [];
+  const blockers = linkedWorkOrders.map((workOrder) => String(workOrder.blockerReason || '').trim()).filter(Boolean);
+
+  if (!project.location) issues.push('Missing main address');
+  if (!project.crewAccessAddress && !project.truckAccessAddress && !project.constructionAccessPin && !project.loadUnloadPin) issues.push('Missing access pins');
+  if (treeAssets.length === 0) issues.push('No tree assets');
+  if (missingSourcePins > 0) issues.push(`${missingSourcePins} source pins missing`);
+  if (missingDestinationPins > 0) issues.push(`${missingDestinationPins} destination pins missing`);
+  if (openWorkOrders.length === 0) issues.push('Needs scheduling');
+  if (treeWorkOrders.length > 0 && !openWorkOrders.some((workOrder) => trackerArrayHasValue(workOrder.assignedCrewNames) || workOrder.crewLeadName)) issues.push('Needs crew');
+  if (treeWorkOrders.length > 0 && linkedEquipmentNames.length === 0) issues.push('Needs equipment');
+  if ((readyTrees > 0 || openWorkOrders.some((workOrder) => workOrder.workOrderType === 'tree_relocation_work')) && linkedLoadNames.length === 0) issues.push('Needs freight');
+  if (requiredMaterialCount > installedMaterialCount) issues.push(`${installedMaterialCount}/${requiredMaterialCount} material installed`);
+  if (blockers.length > 0) issues.push('Blocked');
+
+  const status = blockers.length
+    ? 'Blocked'
+    : missingSourcePins > 0 || missingDestinationPins > 0 || (!project.crewAccessAddress && !project.truckAccessAddress && !project.constructionAccessPin && !project.loadUnloadPin)
+      ? 'Needs Map Cleanup'
+      : issues.includes('Needs crew')
+        ? 'Needs Crew'
+        : issues.includes('Needs equipment')
+          ? 'Needs Equipment'
+          : issues.includes('Needs freight')
+            ? 'Needs Freight'
+            : issues.includes('Needs scheduling')
+              ? 'Needs Scheduling'
+              : 'Ready';
+
+  return {
+    status,
+    issues,
+    blockers,
+    openWorkOrders,
+    readyTrees,
+    missingSourcePins,
+    missingDestinationPins,
+    requiredMaterialCount,
+    installedMaterialCount,
+    linkedEquipmentNames,
+    linkedLoadNames,
+  };
+}
+
+function trackerMatchesReadinessFilter(snapshot: any, filter: RelocationReadinessFilter, todayIso: string, tomorrowIso: string): boolean {
+  if (filter === 'All') return true;
+  if (filter === 'Tomorrow') {
+    return snapshot.workOrders.some((workOrder: WorkOrderRecord) => (
+      trackerDateOnly(workOrder.scheduledDate || workOrder.dueDate || workOrder.startDate) === tomorrowIso
+    )) || trackerDateOnly(snapshot.project.scheduledDate || snapshot.project.date || snapshot.project.startDate) === tomorrowIso;
+  }
+  if (filter === 'Ready') return snapshot.readiness.status === 'Ready';
+  return snapshot.readiness.status === filter || snapshot.readiness.issues.some((issue: string) => issue.toLowerCase().includes(filter.replace('Needs ', '').toLowerCase()));
+}
+
+function TrackerKpiCard({ icon: Icon, label, value, detail, tone }: { icon: any; label: string; value: string | number; detail: string; tone: string }) {
+  return (
+    <div className={`rounded-xl border px-3 py-3 shadow-sm ${tone}`}>
+      <div className="flex items-center gap-2">
+        <span className="rounded-lg border border-white/60 bg-white/70 p-2">
+          <Icon className="h-4 w-4" />
+        </span>
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-wide opacity-70">{label}</p>
+          <p className="text-2xl font-black leading-none">{value}</p>
+        </div>
+      </div>
+      <p className="mt-2 text-[10px] font-bold opacity-75">{detail}</p>
+    </div>
+  );
+}
+
+function WorkOrderActionMenu({ project, assignmentBase, openModal }: { project: any; assignmentBase: any; openModal: (type: string, data?: any) => void }) {
+  const projectTitle = project.title || project.projectName || 'project';
+  const actions = [
+    { label: 'Root Pruning', category: 'crew' as const, type: 'assign_work', data: { workOrderType: 'tree_pruning', taskType: 'Root Pruning' } },
+    { label: 'Relocation Move', category: 'crew' as const, type: 'assign_work', data: { workOrderType: 'tree_relocation_work', taskType: 'Relocation Work' } },
+    { label: 'Installation', category: 'crew' as const, type: 'assign_work', data: { workOrderType: 'general_task', taskType: 'Installation' } },
+    { label: 'Nutrient Care', category: 'crew' as const, type: 'assign_work', data: { workOrderType: 'treatment_aftercare', taskType: 'Nutrient Care' } },
+    { label: 'Equipment', category: 'equipment' as const, type: 'assign_equipment', data: { workOrderType: 'equipment', taskType: 'Equipment change request', equipmentRequestType: 'Add Equipment' } },
+    { label: 'Freight', category: 'freight' as const, type: 'assign_freight', data: { workOrderType: 'freight', taskType: 'Freight support request', origin: project.location, destination: project.location } },
+  ];
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {actions.map((action) => (
+        <button
+          key={action.label}
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            openModal(action.type, {
+              ...assignmentBase,
+              ...action.data,
+              title: `${action.label} for ${projectTitle}`,
+              status: 'Draft',
+              priority: 'Normal',
+            });
+          }}
+          className={`inline-flex items-center rounded border px-2 py-1 text-[9px] font-black uppercase hover:border-jdt-olive ${action.label === 'Root Pruning' || action.label === 'Relocation Move' || action.label === 'Installation' || action.label === 'Nutrient Care' ? 'border-jdt-border bg-jdt-primary text-white' : 'border-jdt-border bg-white text-jdt-primary'}`}
+        >
+          <CategoryIcon category={action.category} size="xs" className="mr-1.5 border-white/40 bg-white/20 text-current" />
+          {action.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function TrackerBoard({ projects = [], jobs = [], workOrders = [], projectMaterialItems = [], treeRelocationRecords = [], openDrawer, openModal }: any) {
+  const [jobFilter, setJobFilter] = useState<RelocationInstallationJobFilter>('All');
+  const [readinessFilter, setReadinessFilter] = useState<RelocationReadinessFilter>('All');
+  const relocationInstallationProjects = useMemo(() => mergedRelocationInstallationProjects(projects, jobs), [projects, jobs]);
   const filterCounts = relocationInstallationJobFilters.reduce<Record<string, number>>((counts, filter) => {
     counts[filter] = filter === 'All'
       ? relocationInstallationProjects.length
@@ -2499,6 +3076,32 @@ export function TrackerBoard({ projects = [], jobs = [], workOrders = [], projec
     || trackerFieldMatches(item.projectName, project.projectName)
     || trackerFieldMatches(item.projectName, project.title)
   ));
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowIso = tomorrow.toISOString().slice(0, 10);
+  const projectSnapshots = relocationInstallationProjects.map((project: any) => {
+    const linkedWorkOrders = workOrdersForProject(project);
+    const linkedMaterialItems = materialItemsForProject(project);
+    const treeAssets = treeAssetsForTrackerProject(treeRelocationRecords, project);
+    return {
+      project,
+      jobType: classifyRelocationInstallationJob(project),
+      workOrders: linkedWorkOrders,
+      materialItems: linkedMaterialItems,
+      treeAssets,
+      pipeline: buildTrackerPipeline(treeAssets),
+      readiness: buildTrackerReadiness(project, linkedWorkOrders, treeAssets, linkedMaterialItems),
+    };
+  });
+  const filteredSnapshots = projectSnapshots.filter((snapshot) => (
+    (jobFilter === 'All' || snapshot.jobType === jobFilter)
+    && trackerMatchesReadinessFilter(snapshot, readinessFilter, todayIso, tomorrowIso)
+  ));
+  const readinessFilterCounts = relocationReadinessFilters.reduce<Record<string, number>>((counts, filter) => {
+    counts[filter] = projectSnapshots.filter((snapshot) => trackerMatchesReadinessFilter(snapshot, filter, todayIso, tomorrowIso)).length;
+    return counts;
+  }, {});
   const projectPayloadForProject = (project: any) => ({
     clientId: project.clientId,
     clientName: project.clientName || project.client,
@@ -2518,15 +3121,25 @@ export function TrackerBoard({ projects = [], jobs = [], workOrders = [], projec
       project.secondaryLoadUnloadPin,
     ].filter(Boolean),
   });
-  const clientGroups = filteredProjects.reduce<Array<{ clientName: string; clientId?: string; projects: any[] }>>((groups, project) => {
+  const activeWorkOrders = workOrders.filter((workOrder: WorkOrderRecord) => !trackerIsCompleteStatus(workOrder.status));
+  const trackerKpis = {
+    activeProjects: relocationInstallationProjects.length,
+    workOrdersToday: activeWorkOrders.filter((workOrder: WorkOrderRecord) => trackerDateOnly(workOrder.scheduledDate || workOrder.dueDate || workOrder.startDate) === todayIso).length,
+    treesReady: projectSnapshots.reduce((sum, snapshot) => sum + snapshot.readiness.readyTrees, 0),
+    rootPruneDue: activeWorkOrders.filter((workOrder: WorkOrderRecord) => workOrder.workOrderType === 'tree_pruning' && trackerDateOnly(workOrder.scheduledDate || workOrder.dueDate) && trackerDateOnly(workOrder.scheduledDate || workOrder.dueDate) <= todayIso).length,
+    blockedProjects: projectSnapshots.filter((snapshot) => snapshot.readiness.status === 'Blocked').length,
+    resourceNeeds: projectSnapshots.filter((snapshot) => ['Needs Crew', 'Needs Equipment', 'Needs Freight'].includes(snapshot.readiness.status)).length,
+  };
+  const clientGroups = filteredSnapshots.reduce<Array<{ clientName: string; clientId?: string; projects: any[] }>>((groups, snapshot) => {
+    const project = snapshot.project;
     const clientName = trackerClientName(project);
     const clientId = String(project.clientId || '').trim();
     const existing = groups.find((group) => group.clientId === clientId || group.clientName === clientName);
     if (existing) {
-      existing.projects.push(project);
+      existing.projects.push(snapshot);
       return groups;
     }
-    groups.push({ clientName, clientId, projects: [project] });
+    groups.push({ clientName, clientId, projects: [snapshot] });
     return groups;
   }, []);
 
@@ -2550,20 +3163,49 @@ export function TrackerBoard({ projects = [], jobs = [], workOrders = [], projec
 
       {relocationInstallationProjects.length > 0 ? (
         <div>
-          <div className="flex flex-wrap gap-2 border-b border-jdt-border bg-white px-4 py-3">
-            {relocationInstallationJobFilters.map((filter) => (
-              <button
-                key={filter}
-                type="button"
-                onClick={() => setJobFilter(filter)}
-                className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase transition-colors ${jobFilter === filter ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-jdt-panel text-zinc-600 hover:border-jdt-olive'}`}
-              >
-                {filter} <span className={jobFilter === filter ? 'text-white/80' : 'text-zinc-400'}>{filterCounts[filter] || 0}</span>
-              </button>
-            ))}
+          <div className="grid gap-3 border-b border-jdt-border bg-white p-4 sm:grid-cols-2 xl:grid-cols-6">
+            <TrackerKpiCard icon={MapPin} label="Active Projects" value={trackerKpis.activeProjects} detail="Relocation, install, and mixed work" tone="border-emerald-200 bg-emerald-50 text-emerald-950" />
+            <TrackerKpiCard icon={Calendar} label="Work Orders Today" value={trackerKpis.workOrdersToday} detail="Scheduled or due today" tone="border-sky-200 bg-sky-50 text-sky-950" />
+            <TrackerKpiCard icon={TreePine} label="Trees Ready" value={trackerKpis.treesReady} detail="Ready for relocation" tone="border-lime-200 bg-lime-50 text-lime-950" />
+            <TrackerKpiCard icon={Scissors} label="Root Prune Due" value={trackerKpis.rootPruneDue} detail="Due or overdue cuts" tone="border-amber-200 bg-amber-50 text-amber-950" />
+            <TrackerKpiCard icon={AlertTriangle} label="Blocked" value={trackerKpis.blockedProjects} detail="Needs a decision or fix" tone="border-red-200 bg-red-50 text-red-950" />
+            <TrackerKpiCard icon={Tractor} label="Resource Needs" value={trackerKpis.resourceNeeds} detail="Crew, equipment, or freight gaps" tone="border-violet-200 bg-violet-50 text-violet-950" />
           </div>
 
-          {filteredProjects.length > 0 ? (
+          <div className="space-y-3 border-b border-jdt-border bg-white px-4 py-3">
+            <div>
+              <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-zinc-400">Scope Type</p>
+              <div className="flex flex-wrap gap-2">
+                {relocationInstallationJobFilters.map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => setJobFilter(filter)}
+                    className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase transition-colors ${jobFilter === filter ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-jdt-panel text-zinc-600 hover:border-jdt-olive'}`}
+                  >
+                    {filter} <span className={jobFilter === filter ? 'text-white/80' : 'text-zinc-400'}>{filterCounts[filter] || 0}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-zinc-400">Readiness</p>
+              <div className="flex flex-wrap gap-2">
+                {relocationReadinessFilters.map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => setReadinessFilter(filter)}
+                    className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase transition-colors ${readinessFilter === filter ? 'border-jdt-primary bg-jdt-primary text-white' : 'border-jdt-border bg-jdt-panel text-zinc-600 hover:border-jdt-olive'}`}
+                  >
+                    {filter} <span className={readinessFilter === filter ? 'text-white/80' : 'text-zinc-400'}>{readinessFilterCounts[filter] || 0}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {filteredSnapshots.length > 0 ? (
             <div className="space-y-4 bg-jdt-sand/20 p-4">
               {clientGroups.map((group) => (
                 <section key={group.clientId || group.clientName} className="overflow-hidden rounded-xl border border-jdt-border bg-white shadow-sm">
@@ -2578,92 +3220,40 @@ export function TrackerBoard({ projects = [], jobs = [], workOrders = [], projec
                   </div>
 
                   <div className="divide-y divide-jdt-border">
-                    {group.projects.map((project: any) => {
-                    const jobType = classifyRelocationInstallationJob(project);
-                    const linkedWorkOrders = workOrdersForProject(project);
-                    const nextWorkOrder = linkedWorkOrders.find((workOrder: WorkOrderRecord) => !['Complete', 'Cancelled'].includes(String(workOrder.status || ''))) || linkedWorkOrders[0];
-                    const linkedEquipmentNames = workOrderResourceNames(linkedWorkOrders, 'equipmentNames');
+                    {group.projects.map((snapshot: any) => {
+                    const { project, jobType, workOrders: linkedWorkOrders, materialItems: linkedMaterialItems, treeAssets, pipeline, readiness } = snapshot;
+                    const nextWorkOrder = linkedWorkOrders.find((workOrder: WorkOrderRecord) => !trackerIsCompleteStatus(workOrder.status)) || linkedWorkOrders[0];
                     const linkedImplementNames = workOrderResourceNames(linkedWorkOrders, 'implementNames');
-                    const linkedLoadNames = workOrderResourceNames(linkedWorkOrders, 'loadNames');
                     const assignmentBase = projectPayloadForProject(project);
-                    const linkedMaterialItems = materialItemsForProject(project);
-                    const requiredMaterialCount = linkedMaterialItems.reduce((sum: number, item: ProjectMaterialItemRecord) => sum + Number(item.quantityRequired || 0), 0);
-                    const installedMaterialCount = linkedMaterialItems.reduce((sum: number, item: ProjectMaterialItemRecord) => sum + Number(item.quantityInstalled || 0), 0);
                     return (
                       <div
                         key={project.id || project.projectId || project.title}
                         className={`cursor-pointer border-l-4 p-4 transition-colors hover:bg-jdt-sand/40 ${relocationInstallationJobTypeAccentClass(jobType)}`}
                         onClick={() => openDrawer(project.drawerType || 'project', project.id || project.projectId || project.title)}
                       >
-                        <div className="grid gap-4 xl:grid-cols-[minmax(260px,1.15fr)_minmax(220px,0.85fr)_minmax(260px,1fr)]">
+                        <div className="grid gap-4 xl:grid-cols-[minmax(280px,1.1fr)_minmax(260px,0.9fr)_minmax(320px,1.1fr)]">
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="text-base font-black text-[#384521]">{project.title || project.projectName || 'Untitled project'}</p>
                               <span className={`inline-flex rounded-md border px-2 py-1 text-[9px] font-black uppercase ${relocationInstallationJobTypeTone(jobType)}`}>
                                 {jobType}
                               </span>
+                              <span className={`inline-flex rounded-md border px-2 py-1 text-[9px] font-black uppercase ${statusPillClass(readiness.status)}`}>
+                                {readiness.status}
+                              </span>
                             </div>
                             <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">Project ID: {project.projectId || project.id || '-'}</p>
                             <p className="mt-2 text-xs font-bold text-zinc-600">{project.location || project.division || relocationInstallationDivisionLabel}</p>
-                            <div className="mt-3 flex flex-wrap gap-1.5">
-                            <button
-                              type="button"
-                              aria-label="Create Crew Work"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openModal('assign_work', {
-                                  ...assignmentBase,
-                                  title: `Work order for ${project.title || project.projectName || 'project'}`,
-                                  workOrderType: 'general_task',
-                                  taskType: 'Field work',
-                                  status: 'Draft',
-                                  priority: 'Normal',
-                                });
-                              }}
-                              className="inline-flex items-center gap-1.5 rounded bg-jdt-primary px-2 py-1 text-[9px] font-black uppercase text-white"
-                            >
-                              <CategoryPill category="crew" compact className="border-white/20 bg-white/10 px-1.5 py-0.5 text-white" />
-                              Create Job / Work Order
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openModal('assign_equipment', {
-                                  ...assignmentBase,
-                                  title: `Equipment for ${project.title || project.projectName || 'project'}`,
-                                  workOrderType: 'equipment',
-                                  taskType: 'Equipment change request',
-                                  status: 'Draft',
-                                  priority: 'Normal',
-                                });
-                              }}
-                              className="inline-flex items-center gap-1.5 rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
-                            >
-                              <CategoryPill category="equipment" compact className="px-1.5 py-0.5" />
-                              Request Equipment
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openModal('assign_freight', {
-                                  ...assignmentBase,
-                                  title: `Freight support for ${project.title || project.projectName || 'project'}`,
-                                  workOrderType: 'freight',
-                                  taskType: 'Freight support request',
-                                  status: 'Draft',
-                                  priority: 'Normal',
-                                  origin: project.location,
-                                  destination: project.location,
-                                });
-                              }}
-                              className="inline-flex items-center gap-1.5 rounded border border-jdt-border bg-white px-2 py-1 text-[9px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
-                            >
-                              <CategoryPill category="freight" compact className="px-1.5 py-0.5" />
-                              Request Freight
-                            </button>
-                          </div>
+                            {jobType === 'Mixed Job' && (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase text-emerald-800">Relocation Scope</span>
+                                <span className="rounded border border-sky-200 bg-sky-50 px-2 py-1 text-[9px] font-black uppercase text-sky-800">Installation Scope</span>
+                              </div>
+                            )}
+                            <div className="mt-3">
+                              <p className="mb-1 text-[9px] font-black uppercase text-zinc-400">Create Work Order</p>
+                              <WorkOrderActionMenu project={project} assignmentBase={assignmentBase} openModal={openModal} />
+                            </div>
                           </div>
 
                           <div className="grid grid-cols-2 gap-2 text-xs font-bold text-zinc-600 sm:grid-cols-4 xl:grid-cols-2">
@@ -2683,6 +3273,14 @@ export function TrackerBoard({ projects = [], jobs = [], workOrders = [], projec
                               <p className="text-[9px] font-black uppercase text-zinc-400">PM</p>
                               <p>{project.pm || '-'}</p>
                             </div>
+                            <div>
+                              <p className="text-[9px] font-black uppercase text-zinc-400">Trees</p>
+                              <p>{treeAssets.length}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] font-black uppercase text-zinc-400">Pins</p>
+                              <p>{`${treeAssets.length - readiness.missingSourcePins}/${treeAssets.length} source | ${treeAssets.length - readiness.missingDestinationPins}/${treeAssets.length} destination`}</p>
+                            </div>
                           </div>
 
                           <div className="font-bold text-zinc-600">
@@ -2694,19 +3292,36 @@ export function TrackerBoard({ projects = [], jobs = [], workOrders = [], projec
                                   {workOrder.jobId || workOrder.status || 'Job'}
                                 </span>
                               ))}
-                              {linkedEquipmentNames.slice(0, 2).map((name) => <CategoryPill key={name} category="equipment" label={name} className="bg-zinc-100 text-zinc-700" />)}
+                              {readiness.linkedEquipmentNames.slice(0, 2).map((name: string) => <CategoryPill key={name} category="equipment" label={name} className="bg-zinc-100 text-zinc-700" />)}
                               {linkedImplementNames.slice(0, 2).map((name) => <span key={name} className="rounded bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-800">{name}</span>)}
-                              {linkedLoadNames.slice(0, 2).map((name) => <CategoryPill key={name} category="freight" label={name} className="bg-zinc-100 text-zinc-700" />)}
+                              {readiness.linkedLoadNames.slice(0, 2).map((name: string) => <CategoryPill key={name} category="freight" label={name} className="bg-zinc-100 text-zinc-700" />)}
                             </div>
                           </div>
 
-                          <div>
-                            <p className="text-[9px] font-black uppercase text-zinc-400">Needs</p>
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {!nextWorkOrder?.assignedCrewNames?.length && <CategoryPill category="crew" label="Needs crew" className={riskPillClass('watch')} />}
-                              {!linkedEquipmentNames.length && <CategoryPill category="equipment" label="Needs equipment" className={riskPillClass('watch')} />}
-                              {!linkedLoadNames.length && <CategoryPill category="freight" label="Needs freight" className={riskPillClass('watch')} />}
-                              {requiredMaterialCount > installedMaterialCount && <span className={`rounded border px-2 py-1 text-[9px] font-black uppercase ${riskPillClass('watch')}`}>{installedMaterialCount}/{requiredMaterialCount} material</span>}
+                          <div className="xl:col-span-3">
+                            <div className="grid gap-3 lg:grid-cols-[minmax(320px,1fr)_minmax(260px,0.8fr)]">
+                              <div>
+                                <p className="text-[9px] font-black uppercase text-zinc-400">Tree Relocation Pipeline</p>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {pipeline.map((bucket: { status: string; count: number }) => (
+                                    <span key={bucket.status} className={`rounded border px-2 py-1 text-[9px] font-black uppercase ${bucket.count ? statusPillClass(bucket.status) : 'border-jdt-border bg-white text-zinc-400'}`}>
+                                      {bucket.status}: {bucket.count}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                              <div>
+                                <p className="text-[9px] font-black uppercase text-zinc-400">Readiness / Blockers</p>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {readiness.issues.length > 0 ? readiness.issues.slice(0, 6).map((issue: string) => (
+                                    <span key={issue} className={`rounded border px-2 py-1 text-[9px] font-black uppercase ${issue === 'Blocked' ? riskPillClass('high') : riskPillClass('watch')}`}>
+                                      {issue}
+                                    </span>
+                                  )) : (
+                                    <span className={`rounded border px-2 py-1 text-[9px] font-black uppercase ${riskPillClass('low')}`}>Ready for dispatch</span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>

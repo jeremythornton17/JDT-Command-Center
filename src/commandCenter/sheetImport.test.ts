@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { nurseryInventoryCardTitle, nurseryInventoryCode, nurseryInventoryDisplayName, nurseryInventorySearchText, nurseryInventoryTableTitle, nurseryInventoryType } from "./nurseryDisplay";
 import {
   buildImportPreview,
+  matchSurveySourceCoordinatesToTreeAssets,
   parseDelimitedRows,
   pasteHeadersForTemplate,
   previewDetailsForRecord,
@@ -422,6 +423,107 @@ describe("sheet import mapping", () => {
       lng: -80.172,
       label: "Imported destination pin",
     });
+  });
+
+  it("matches survey source coordinates to existing project tree assets by tree number", () => {
+    const result = matchSurveySourceCoordinatesToTreeAssets({
+      coordinateRows: [
+        ["TREE#", "NORTHING", "EASTING"],
+        ["101", "742114.38", "930763.398"],
+        ["102", "742107.397", "930758.884"],
+        ["999", "742000", "930700"],
+      ],
+      existingTrees: [
+        {
+          id: "BWCC-060426-TREE-101",
+          treeId: "BWCC-060426-TREE-101",
+          projectId: "BWCC-060426",
+          projectName: "Boca West Course 1 Renovation",
+          tag: "101",
+          treeType: "Live Oak",
+          relocationMap: { destination: { lat: 26.38, lng: -80.17 } },
+        },
+        {
+          id: "tree-asset-102",
+          treeAssetId: "tree-asset-102",
+          projectId: "BWCC-060426",
+          treeTag: "102",
+          treeType: "Live Oak",
+        },
+      ],
+      projectId: "BWCC-060426",
+      projectName: "Boca West Course 1 Renovation",
+      sourceCrsWkid: 2236,
+      sourceCrsLabel: "NAD83 / Florida East (ftUS)",
+      townshipRange: "Township 47 S, Range 42 E",
+      projectCoordinate: ({ treeNumber }) => {
+        if (treeNumber === "101") return { lat: 26.37289, lng: -80.16132 };
+        if (treeNumber === "102") return { lat: 26.37288, lng: -80.16133 };
+        return undefined;
+      },
+    });
+
+    assert.equal(result.updatedTrees.length, 2);
+    assert.equal(result.unmatchedRows.length, 1);
+    assert.match(result.warnings.join("\n"), /TREE# 999/);
+    assert.equal(result.updatedTrees[0].id, "BWCC-060426-TREE-101");
+    assert.equal(result.updatedTrees[0].existingSourcePin, "26.37289,-80.16132");
+    assert.equal(result.updatedTrees[0].existingLatitude, 26.37289);
+    assert.equal(result.updatedTrees[0].existingLongitude, -80.16132);
+    assert.equal(result.updatedTrees[0].sourceNorthing, 742114.38);
+    assert.equal(result.updatedTrees[0].sourceEasting, 930763.398);
+    assert.equal(result.updatedTrees[0].sourceCrsWkid, 2236);
+    assert.equal(result.updatedTrees[0].sourceCrsLabel, "NAD83 / Florida East (ftUS)");
+    assert.equal(result.updatedTrees[0].surveyTownshipRange, "Township 47 S, Range 42 E");
+    assert.equal(result.updatedTrees[0].mapGeometryStatus, "Source Pin Projected");
+    assert.deepEqual(result.updatedTrees[0].relocationMap?.destination, { lat: 26.38, lng: -80.17 });
+    assert.deepEqual(result.updatedTrees[0].relocationMap?.source, {
+      lat: 26.37289,
+      lng: -80.16132,
+      label: "Survey source pin #101",
+    });
+  });
+
+  it("imports project tree source coordinate updates without requiring tree type again", () => {
+    const preview = buildImportPreview("jdt_project_flow_tree_assets", [
+      ["101", "26.37289", "-80.16132", "742114.38", "930763.398", "2236", "NAD83 / Florida East (ftUS)", "Township 47 S, Range 42 E"],
+    ], {
+      projectContext: {
+        clientId: "CLI-2275",
+        clientName: "Boca West Country Club",
+        projectId: "BWCC-060426",
+        projectName: "Boca West Course 1 Renovation",
+      },
+      includedHeaders: [
+        "Tag",
+        "Existing_Latitude",
+        "Existing_Longitude",
+        "Source_Northing",
+        "Source_Easting",
+        "Source_CRS_WKID",
+        "Source_CRS_Label",
+        "Survey_Township_Range",
+      ],
+    });
+    const trees = preview.targets.find((target) => target.collectionName === "treeRelocationRecords")?.records as any[];
+
+    assert.equal(trees?.length, 1);
+    assert.equal(trees[0].id, "BWCC-060426-TREE-101");
+    assert.equal(trees[0].tag, "101");
+    assert.equal(trees[0].projectId, "BWCC-060426");
+    assert.equal(trees[0].existingSourcePin, "26.37289,-80.16132");
+    assert.equal(trees[0].existingLatitude, 26.37289);
+    assert.equal(trees[0].existingLongitude, -80.16132);
+    assert.equal(trees[0].sourceNorthing, 742114.38);
+    assert.equal(trees[0].sourceEasting, 930763.398);
+    assert.equal(trees[0].sourceCrsWkid, "2236");
+    assert.equal(trees[0].surveyTownshipRange, "Township 47 S, Range 42 E");
+    assert.deepEqual(trees[0].relocationMap.source, {
+      lat: 26.37289,
+      lng: -80.16132,
+      label: "Imported source pin",
+    });
+    assert.equal(preview.warnings.some((warning) => /Tree_Type/.test(warning)), false);
   });
 
   it("defaults imported project tree assets with blank relocation status to Not Started", () => {

@@ -15,6 +15,9 @@ export type RelationshipInput = {
   jobScheduleId?: unknown;
   projectsId?: unknown;
   treeId?: unknown;
+  treeAssetId?: unknown;
+  tag?: unknown;
+  treeTag?: unknown;
 };
 
 export type RelationshipFields = {
@@ -295,7 +298,11 @@ export function sameProject(project: RelationshipInput, record: RelationshipInpu
 export function sameProjectTreeAsset(left: RelationshipInput, right: RelationshipInput): boolean {
   const leftTreeId = cleanString(left.treeId) || cleanString(left.id);
   const rightTreeId = cleanString(right.treeId) || cleanString(right.id);
-  if (!leftTreeId || !rightTreeId || leftTreeId !== rightTreeId) return false;
+  const leftTreeTag = treeAssetTag(left);
+  const rightTreeTag = treeAssetTag(right);
+  const sameTreeId = Boolean(leftTreeId && rightTreeId && leftTreeId === rightTreeId);
+  const sameTag = Boolean(leftTreeTag && rightTreeTag && leftTreeTag === rightTreeTag);
+  if (!sameTreeId && !sameTag) return false;
 
   const leftProjectId = cleanString(left.projectId) || cleanString(left.projectsId);
   const rightProjectId = cleanString(right.projectId) || cleanString(right.projectsId);
@@ -306,6 +313,29 @@ export function sameProjectTreeAsset(left: RelationshipInput, right: Relationshi
   if (leftJobId || rightJobId) return Boolean(leftJobId && rightJobId && leftJobId === rightJobId);
 
   return cleanString(left.id) === cleanString(right.id);
+}
+
+function treeAssetTag(record: RelationshipInput): string {
+  return normalizeTreeAssetTag(
+    cleanString(record.tag)
+    || cleanString(record.treeTag)
+    || lastTreeIdSegment(record.treeAssetId)
+    || lastTreeIdSegment(record.treeId)
+    || lastTreeIdSegment(record.id),
+  );
+}
+
+function lastTreeIdSegment(value: unknown): string {
+  const text = cleanString(value);
+  if (!text) return "";
+  const segments = text.split(/[^a-zA-Z0-9]+/).filter(Boolean);
+  return segments[segments.length - 1] || "";
+}
+
+function normalizeTreeAssetTag(value: unknown): string {
+  const normalized = cleanString(value).replace(/^#+/, "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  if (/^\d+$/.test(normalized)) return normalized.replace(/^0+(?=\d)/, "");
+  return normalized;
 }
 
 function cleanString(value: unknown): string {

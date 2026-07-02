@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { EquipmentRecord, JobRecord, LoadRecord, ScheduleTaskRecord, TreeRelocationRecord, WorkOrderRecord } from "./records";
-import { buildCalendarGridDays, buildOperatingCalendar, eventsForCalendarView } from "./calendar";
+import { buildCalendarGridDays, buildOperatingCalendar, eventsForCalendarView, primaryCalendarGridEvents, rescheduledEventDateRange } from "./calendar";
 
 describe("operating calendar planner", () => {
   const job: JobRecord = {
@@ -74,10 +74,64 @@ describe("operating calendar planner", () => {
 
     assert.equal(calendar.events.some((event) => event.category === "relocation" && event.title === "Boca West Course 1 Renovation"), true);
     assert.equal(calendar.events.some((event) => event.category === "freight" && event.title === "Semi #1 equipment move"), true);
-    assert.equal(calendar.events.some((event) => event.category === "nursery" && event.title === "Root prune Live Oak 1003"), true);
+    assert.equal(calendar.events.some((event) => event.category === "relocation" && event.title === "Root prune Live Oak 1003"), true);
     assert.equal(calendar.events.some((event) => event.category === "equipment" && event.title === "Service: Komatsu 500 - 1"), true);
     assert.equal(calendar.events.some((event) => event.title === "Schedule 1st Cut"), true);
     assert.deepEqual(calendar.events.map((event) => event.dateIso), [...calendar.events.map((event) => event.dateIso)].sort());
+  });
+
+  it("keeps tree lifecycle and equipment awareness out of the primary calendar grid", () => {
+    const tree: TreeRelocationRecord = {
+      id: "tree-1003",
+      treeId: "1003",
+      type: "Live Oak",
+      projectId: "WATERFORD-060526",
+      projectName: "Waterford Relocation",
+      relocationStatus: "Not Started",
+    };
+    const equipment: EquipmentRecord = {
+      id: "equipment-komatsu-500-1",
+      name: "Komatsu 500 - 1",
+      category: "Machine",
+      nextServiceDue: "2026-06-05",
+      status: "Available",
+    };
+
+    const calendar = buildOperatingCalendar({
+      jobs: [job],
+      workOrders: [rootPrune],
+      treeRelocationRecords: [tree],
+      equipment: [equipment],
+      todayIso: "2026-06-04",
+    });
+    const primaryGridEvents = primaryCalendarGridEvents(calendar.events);
+
+    assert.equal(primaryGridEvents.some((event) => event.sourceType === "treeLifecycle"), false);
+    assert.equal(primaryGridEvents.some((event) => event.sourceType === "equipment"), false);
+    assert.equal(primaryGridEvents.some((event) => event.sourceType === "job"), true);
+    assert.equal(primaryGridEvents.some((event) => event.sourceType === "workOrder"), true);
+  });
+
+  it("preserves the blocked span when a calendar event is moved to a new date", () => {
+    const calendar = buildOperatingCalendar({
+      jobs: [{
+        id: "job-boca-root-pruning-window",
+        title: "Boca West root pruning window",
+        startDate: "2026-06-08",
+        endDate: "2026-06-12",
+        crew: "Carlos Reyes",
+        status: "Scheduled",
+        location: "Boca West",
+      }],
+      todayIso: "2026-06-07",
+    });
+    const event = calendar.events.find((item) => item.id === "job-job-boca-root-pruning-window");
+    assert.ok(event);
+
+    assert.deepEqual(rescheduledEventDateRange(event, "2026-06-15"), {
+      dateIso: "2026-06-15",
+      endDateIso: "2026-06-19",
+    });
   });
 
   it("flags tomorrow readiness gaps and resource conflicts", () => {

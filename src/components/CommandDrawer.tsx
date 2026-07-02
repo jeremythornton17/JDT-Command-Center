@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, MapPin, User, Truck, Tractor, HardHat, Leaf, Clock, History, Edit2, FileText, Upload, Search } from 'lucide-react';
+import { X, MapPin, User, Truck, Tractor, HardHat, Leaf, Clock, History, Edit2, FileText, Upload, Search, Maximize2, Minimize2 } from 'lucide-react';
 import type { DocumentRecord, FieldUpdateRecord, LoadRecord, ProjectMaterialItemRecord, TreeRelocationRecord, WorkOrderRecord } from '../commandCenter/records';
 import type { ProjectImportContext, SheetImportTemplateId } from '../commandCenter/sheetImport';
 import { sameClient, sameProject } from '../commandCenter/relationships';
@@ -361,6 +361,46 @@ function documentsForRecord(record: any, documents: DocumentRecord[], treeAssets
     || (Array.isArray(doc.treeIds) && doc.treeIds.some((treeId) => treeIds.has(String(treeId))))
     || sameProject(record, doc)
   ));
+}
+
+function isContractDocument(doc: DocumentRecord) {
+  const category = String(doc.category || '').trim().toLowerCase();
+  const folder = String(doc.documentFolder || '').trim().toLowerCase();
+  const fileType = String(doc.fileType || (doc as any).type || '').trim().toLowerCase();
+  const name = String(doc.name || doc.title || '').trim().toLowerCase();
+  return category === 'contract'
+    || category === 'signed contract'
+    || folder === 'signed contracts'
+    || fileType.includes('contract')
+    || /\b(contract|agreement|scope of work)\b/.test(name);
+}
+
+function contractScopeTreeCount(doc: DocumentRecord) {
+  const raw = doc.scopeTreeCount ?? (doc as any).contractTreeCount ?? (doc as any).treeCount ?? (doc as any).relocationTreeCount;
+  if (raw === null || raw === undefined || raw === '') return undefined;
+  const amount = Number(String(raw).replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(amount) ? Math.max(0, Math.trunc(amount)) : undefined;
+}
+
+function pluralTree(count: number) {
+  return `${count} tree${count === 1 ? '' : 's'}`;
+}
+
+function contractTreeComparisonLabel(doc: DocumentRecord, treeAssets: TreeRelocationRecord[]) {
+  const expectedCount = contractScopeTreeCount(doc);
+  const linkedCount = treeAssets.length;
+  if (!expectedCount) return `${linkedCount} JDT ${pluralTree(linkedCount)} linked`;
+  return `${Math.min(linkedCount, expectedCount)} of ${expectedCount} contract trees linked`;
+}
+
+function contractTreeGapLabel(doc: DocumentRecord, treeAssets: TreeRelocationRecord[]) {
+  const expectedCount = contractScopeTreeCount(doc);
+  const linkedCount = treeAssets.length;
+  if (!expectedCount) return 'Add scope tree count to compare this contract against JDT tree assets.';
+  const gap = expectedCount - linkedCount;
+  if (gap > 0) return `${gap} ${pluralTree(gap)} still needs to be reconciled`;
+  if (gap < 0) return `${Math.abs(gap)} extra JDT ${pluralTree(Math.abs(gap))} beyond contract scope`;
+  return 'Contract tree scope matches linked JDT tree assets';
 }
 
 function treeWorkOrdersForRecord(workOrders: WorkOrderRecord[], treeAssets: TreeRelocationRecord[]) {
@@ -918,6 +958,161 @@ function clientDocumentsForRecord(record: any, documents: DocumentRecord[], proj
   ));
 }
 
+type ClientDocumentFolder = {
+  id: string;
+  label: string;
+  description: string;
+  defaultCategory: string;
+  matches: RegExp[];
+};
+
+const clientDocumentFolders: ClientDocumentFolder[] = [
+  {
+    id: 'signed-contracts',
+    label: 'Signed Contracts',
+    description: 'Signed contracts, agreements, and approved scope documents tied to the client or project.',
+    defaultCategory: 'Signed Contract',
+    matches: [/signed contract/, /\bcontract\b/, /\bagreement\b/],
+  },
+  {
+    id: 'proposals-estimates',
+    label: 'Proposals / Estimates',
+    description: 'Proposals, estimates, quotes, bids, and pre-contract scope drafts.',
+    defaultCategory: 'Proposal',
+    matches: [/\bproposal\b/, /\bestimate\b/, /\bquote\b/, /\bbid\b/],
+  },
+  {
+    id: 'change-orders',
+    label: 'Change Orders',
+    description: 'Approved or pending scope changes that may affect schedule, cost, or billing.',
+    defaultCategory: 'Change Order',
+    matches: [/change order/, /change-order/, /changeorder/],
+  },
+  {
+    id: 'billing-terms',
+    label: 'Billing / Terms',
+    description: 'Billing terms, invoices, payment notes, account setup, and AP references.',
+    defaultCategory: 'Billing Terms',
+    matches: [/\bbilling\b/, /\bterms\b/, /\binvoice\b/, /\bpayment\b/, /accounts payable/, /\bap\b/],
+  },
+  {
+    id: 'insurance-coi-w9',
+    label: 'Insurance / COI / W-9',
+    description: 'Insurance documents, certificates of insurance, W-9s, and risk paperwork.',
+    defaultCategory: 'COI',
+    matches: [/\binsurance\b/, /\bcoi\b/, /certificate of insurance/, /\bw-?9\b/, /workers comp/],
+  },
+  {
+    id: 'site-maps-access',
+    label: 'Site Maps / Access Docs',
+    description: 'Access maps, route notes, site plans, GIS exports, boundaries, and location references.',
+    defaultCategory: 'Site Map',
+    matches: [/\bsite map\b/, /\bmap\b/, /\baccess\b/, /\broute\b/, /\bsite plan\b/, /\bboundary\b/, /\bkml\b/, /\bkmz\b/, /\bgis\b/, /arcgis/],
+  },
+  {
+    id: 'permits-compliance',
+    label: 'Permits / Compliance',
+    description: 'Permits, inspections, compliance approvals, and regulated paperwork.',
+    defaultCategory: 'Permit',
+    matches: [/\bpermit\b/, /\bcompliance\b/, /\binspection\b/, /\bapproval\b/],
+  },
+  {
+    id: 'photos-field-docs',
+    label: 'Photos / Field Docs',
+    description: 'Field photos, closeout proof, PODs, bills of lading, and field documentation.',
+    defaultCategory: 'Field Photo',
+    matches: [/\bphoto\b/, /\bimage\b/, /\bfield\b/, /\bcloseout\b/, /\bproof\b/, /\bpod\b/, /bill of lading/, /\bbol\b/],
+  },
+  {
+    id: 'client-correspondence',
+    label: 'Client Correspondence',
+    description: 'Emails, letters, meeting notes, client decisions, and written confirmations.',
+    defaultCategory: 'Client Correspondence',
+    matches: [/\bcorrespondence\b/, /\bemail\b/, /\bletter\b/, /\bmemo\b/, /\bmeeting\b/, /\bconfirmation\b/],
+  },
+  {
+    id: 'other',
+    label: 'Other',
+    description: 'Client files that do not fit a standard operating folder yet.',
+    defaultCategory: 'Other',
+    matches: [],
+  },
+];
+
+function documentFolderSearchText(doc: DocumentRecord): string {
+  return [
+    doc.documentFolder,
+    doc.category,
+    doc.name,
+    doc.title,
+    doc.fileType,
+    doc.relatedTitle,
+    doc.scopeOfWork,
+    doc.notes,
+  ].map(cleanMatchValue).join(' ');
+}
+
+function clientDocumentFolderFor(doc: DocumentRecord): ClientDocumentFolder {
+  const explicitFolder = cleanMatchValue(doc.documentFolder);
+  const byExplicitFolder = clientDocumentFolders.find((folder) => cleanMatchValue(folder.label) === explicitFolder);
+  if (byExplicitFolder) return byExplicitFolder;
+
+  const searchText = documentFolderSearchText(doc);
+  return clientDocumentFolders.find((folder) => folder.id !== 'other' && folder.matches.some((pattern) => pattern.test(searchText)))
+    || clientDocumentFolders[clientDocumentFolders.length - 1];
+}
+
+function groupedClientDocuments(documents: DocumentRecord[]) {
+  const groups = new Map<string, DocumentRecord[]>();
+  clientDocumentFolders.forEach((folder) => groups.set(folder.id, []));
+  documents.forEach((doc) => {
+    const folder = clientDocumentFolderFor(doc);
+    groups.get(folder.id)?.push(doc);
+  });
+  return clientDocumentFolders.map((folder) => ({
+    ...folder,
+    documents: groups.get(folder.id) || [],
+  }));
+}
+
+function clientDocumentLevel(doc: DocumentRecord): 'Client-level docs' | 'Project-level docs' | 'Job-level docs' {
+  const explicit = cleanMatchValue(doc.documentLevel);
+  if (explicit.includes('job')) return 'Job-level docs';
+  if (explicit.includes('project')) return 'Project-level docs';
+  if (uniqueValues([doc.jobId, doc.jobName]).length) return 'Job-level docs';
+  if (uniqueValues([doc.projectId, doc.projectName, doc.job]).length) return 'Project-level docs';
+  return 'Client-level docs';
+}
+
+function clientDocumentLevelCounts(documents: DocumentRecord[]) {
+  return documents.reduce((counts, doc) => {
+    const level = clientDocumentLevel(doc);
+    counts[level] += 1;
+    return counts;
+  }, {
+    'Client-level docs': 0,
+    'Project-level docs': 0,
+    'Job-level docs': 0,
+  });
+}
+
+function displayDocumentDate(value: unknown): string {
+  const clean = String(value || '').trim();
+  if (!clean) return '-';
+  return clean;
+}
+
+function documentLinkedProjectLabel(doc: DocumentRecord): string {
+  return displayValue(doc.projectName || doc.job || doc.relatedTitle || doc.jobName || doc.clientName);
+}
+
+function contractTreeCoverageLabel(doc: DocumentRecord): string {
+  const count = doc.scopeTreeCount;
+  const clean = String(count ?? '').trim();
+  if (!clean) return '-';
+  return `${clean} ${clean === '1' ? 'tree' : 'trees'}`;
+}
+
 function clientFieldUpdatesForRecord(record: any, fieldUpdates: FieldUpdateRecord[], projects: any[], jobs: any[], workOrders: WorkOrderRecord[], loads: LoadRecord[]) {
   if (!record) return [];
   const relatedIds = new Set([
@@ -1022,6 +1217,190 @@ function ProjectSiteAccessValue({ fieldKey, label, value }: { fieldKey: string; 
           <MapPin className="h-3 w-3" /> Open Map
         </a>
       ) : null}
+    </div>
+  );
+}
+
+function projectTreeHasSourcePin(tree: TreeRelocationRecord): boolean {
+  return Boolean(tree.existingSourcePin || (tree.existingLatitude !== undefined && tree.existingLongitude !== undefined) || tree.relocationMap?.source?.lat !== undefined);
+}
+
+function projectTreeHasDestinationPin(tree: TreeRelocationRecord): boolean {
+  return Boolean(tree.destinationPin || (tree.destinationLatitude !== undefined && tree.destinationLongitude !== undefined) || tree.relocationMap?.destination?.lat !== undefined);
+}
+
+function projectReadinessIssues({
+  record,
+  treeAssets,
+  workOrders,
+  equipment,
+  freight,
+}: {
+  record: any;
+  treeAssets: TreeRelocationRecord[];
+  workOrders: WorkOrderRecord[];
+  equipment: any[];
+  freight: LoadRecord[];
+}): string[] {
+  const issues: string[] = [];
+  const openWorkOrders = workOrders.filter((workOrder) => !/complete|cancel/i.test(String(workOrder.status || '')));
+  const treeWorkOrders = openWorkOrders.filter((workOrder) => ['tree_pruning', 'tree_relocation_work', 'treatment_aftercare'].includes(String(workOrder.workOrderType || '')));
+  const missingSourcePins = treeAssets.filter((tree) => !projectTreeHasSourcePin(tree)).length;
+  const missingDestinationPins = treeAssets.filter((tree) => !projectTreeHasDestinationPin(tree)).length;
+
+  if (!record?.location) issues.push('Missing main address');
+  if (!record?.crewAccessAddress && !record?.truckAccessAddress && !record?.constructionAccessPin && !record?.loadUnloadPin) issues.push('Missing access pins');
+  if (treeAssets.length === 0) issues.push('No tree assets');
+  if (missingSourcePins) issues.push(`${missingSourcePins} source pins missing`);
+  if (missingDestinationPins) issues.push(`${missingDestinationPins} destination pins missing`);
+  if (openWorkOrders.length === 0) issues.push('No active work orders');
+  if (treeWorkOrders.length > 0 && !treeWorkOrders.some((workOrder) => workOrder.crewLeadName || workOrder.assignedCrewNames?.length)) issues.push('Crew not assigned');
+  if (treeWorkOrders.length > 0 && equipment.length === 0) issues.push('No equipment marked on site');
+  if (treeAssets.some((tree) => treeAssetStatus(tree) === 'Ready for Relocation') && freight.length === 0) issues.push('Ready trees need freight plan');
+  if (workOrders.some((workOrder) => workOrder.blockerReason)) issues.push('Work order blocker open');
+
+  return issues;
+}
+
+function ProjectReadinessPanel({
+  record,
+  treeAssets,
+  workOrders,
+  equipment,
+  freight,
+  contracts,
+  projectContext,
+  openModal,
+}: {
+  record: any;
+  treeAssets: TreeRelocationRecord[];
+  workOrders: WorkOrderRecord[];
+  equipment: any[];
+  freight: LoadRecord[];
+  contracts: DocumentRecord[];
+  projectContext: Record<string, any>;
+  openModal: CommandDrawerProps['openModal'];
+}) {
+  const sourcePinned = treeAssets.filter(projectTreeHasSourcePin).length;
+  const destinationPinned = treeAssets.filter(projectTreeHasDestinationPin).length;
+  const openWorkOrders = workOrders.filter((workOrder) => !/complete|cancel/i.test(String(workOrder.status || '')));
+  const issues = projectReadinessIssues({ record, treeAssets, workOrders, equipment, freight });
+  const readyTrees = treeAssets.filter((tree) => treeAssetStatus(tree) === 'Ready for Relocation').length;
+  const pipeline = ['Not Started', '25% Cut', '50% Cut', '75% Cut', '100% Cut', 'Ready for Relocation', 'Moved to Holding', 'Relocated'].map((status) => ({
+    status,
+    count: treeAssets.filter((tree) => treeAssetStatus(tree).toLowerCase() === status.toLowerCase()).length,
+  }));
+
+  return (
+    <div className="space-y-4">
+      <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-sm font-black uppercase text-jdt-text">Project Readiness</h3>
+            <p className="mt-1 text-xs font-bold text-zinc-500">Dispatch blockers, map readiness, tree progress, and support needs for this project.</p>
+          </div>
+          <span className={`rounded border px-3 py-2 text-[10px] font-black uppercase ${issues.length ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
+            {issues.length ? 'Needs Review' : 'Ready'}
+          </span>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ['Tree Assets', treeAssets.length, `${readyTrees} ready to move`],
+            ['Source Pins', `${sourcePinned}/${treeAssets.length}`, 'Existing tree locations'],
+            ['Destination Pins', `${destinationPinned}/${treeAssets.length}`, 'Final / holding locations'],
+            ['Open Work Orders', openWorkOrders.length, 'Crew, freight, and equipment tasks'],
+            ['Equipment On Site', equipment.length, 'Machines, trailers, implements'],
+            ['Freight Moves', freight.length, 'Deliveries and equipment moves'],
+            ['Contracts', contracts.length, 'Signed scope references'],
+            ['Open Issues', issues.length, 'Items blocking clean dispatch'],
+          ].map(([label, value, detail]) => (
+            <div key={String(label)} className="rounded-lg border border-jdt-border bg-white p-3">
+              <p className="text-[9px] font-black uppercase tracking-wide text-zinc-400">{label}</p>
+              <p className="mt-1 text-xl font-black text-jdt-primary">{value}</p>
+              <p className="mt-1 text-[10px] font-bold text-zinc-500">{detail}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <div>
+            <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-zinc-400">Tree Relocation Pipeline</p>
+            <div className="flex flex-wrap gap-1.5">
+              {pipeline.map((bucket) => (
+                <span key={bucket.status} className={`rounded border px-2 py-1 text-[9px] font-black uppercase ${bucket.count ? relocationStatusBadgeClass(bucket.status) : 'border-jdt-border bg-white text-zinc-400'}`}>
+                  {bucket.status}: {bucket.count}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-zinc-400">Blockers / Cleanup</p>
+            <div className="flex flex-wrap gap-1.5">
+              {issues.length ? issues.map((issue) => (
+                <span key={issue} className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-900">{issue}</span>
+              )) : (
+                <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase text-emerald-800">No readiness blockers</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button type="button" onClick={() => openModal('assign_work', { ...projectContext, title: `Root Pruning for ${record?.title || record?.projectName || 'project'}`, workOrderType: 'tree_pruning', taskType: 'Root Pruning', status: 'Draft' })} className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark">Create Root Pruning</button>
+          <button type="button" onClick={() => openModal('assign_work', { ...projectContext, title: `Relocation Move for ${record?.title || record?.projectName || 'project'}`, workOrderType: 'tree_relocation_work', taskType: 'Relocation Work', status: 'Draft' })} className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark">Create Move Work</button>
+          <button type="button" onClick={() => openModal('assign_equipment', { ...projectContext, title: `Equipment change for ${record?.title || record?.projectName || 'project'}`, workOrderType: 'equipment', taskType: 'Equipment change request', status: 'Draft' })} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Request Equipment</button>
+          <button type="button" onClick={() => openModal('assign_freight', { ...projectContext, title: `Freight support for ${record?.title || record?.projectName || 'project'}`, workOrderType: 'freight', taskType: 'Freight support request', status: 'Draft' })} className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Request Freight</button>
+        </div>
+      </section>
+      <ProjectSiteAccessPanel record={record} />
+    </div>
+  );
+}
+
+function ProjectMapReadinessPanel({ record, treeAssets }: { record: any; treeAssets: TreeRelocationRecord[] }) {
+  const sourcePinned = treeAssets.filter(projectTreeHasSourcePin).length;
+  const destinationPinned = treeAssets.filter(projectTreeHasDestinationPin).length;
+  const mapStatus = displayValue(record?.mapGeometryStatus || record?.Map_Geometry_Status || 'Not reviewed');
+  const lastSync = displayValue(record?.lastMapSyncAt || record?.Last_Map_Sync_At || record?.arcGisLastSyncAt);
+
+  return (
+    <div className="space-y-4">
+      <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="flex items-center gap-2 text-sm font-black uppercase text-jdt-text">
+              <MapPin className="h-4 w-4 text-jdt-olive" /> Map / GIS Readiness
+            </h3>
+            <p className="mt-1 text-xs font-bold text-zinc-500">Project pins, tree source/destination counts, and ArcGIS sync references.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a href="/map" className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark">Open GIS Map</a>
+            {projectSiteMapUrl(record?.location) && (
+              <a href={projectSiteMapUrl(record?.location)} target="_blank" rel="noreferrer" className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive">Open Address</a>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ['Tree Assets', treeAssets.length],
+            ['Source Pinned', `${sourcePinned}/${treeAssets.length}`],
+            ['Destination Pinned', `${destinationPinned}/${treeAssets.length}`],
+            ['Map Geometry Status', mapStatus],
+            ['ArcGIS Feature ID', record?.arcGisFeatureId],
+            ['ArcGIS Layer URL', record?.arcGisLayerUrl],
+            ['Last Map Sync', lastSync],
+            ['Main Address', record?.location],
+          ].map(([label, value]) => (
+            <div key={String(label)} className="rounded-lg border border-jdt-border bg-white p-3">
+              <p className="text-[9px] font-black uppercase tracking-wide text-zinc-400">{label}</p>
+              <p className="mt-1 break-words text-sm font-black text-jdt-text">{displayValue(value)}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+      <ProjectSiteAccessPanel record={record} />
     </div>
   );
 }
@@ -1252,6 +1631,327 @@ function LinkedRecordList({ records, emptyLabel, type, openDrawer }: { records: 
   );
 }
 
+function ClientDocumentLevelSummary({ documents }: { documents: DocumentRecord[] }) {
+  const counts = clientDocumentLevelCounts(documents);
+  return (
+    <div className="grid gap-2 sm:grid-cols-3">
+      {Object.entries(counts).map(([label, value]) => (
+        <div key={label} className="rounded-lg border border-jdt-border bg-white px-3 py-2">
+          <p className="text-[10px] font-black uppercase tracking-wide text-zinc-400">{label}</p>
+          <p className="mt-1 text-lg font-black text-jdt-primary">{value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ClientDocumentFolderSummary({ documents }: { documents: DocumentRecord[] }) {
+  const folders = groupedClientDocuments(documents).filter((folder) => folder.documents.length > 0);
+  if (!folders.length) return <EmptyLinkedMessage label="documents" />;
+
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {folders.slice(0, 4).map((folder) => (
+        <div key={folder.id} className="rounded-lg border border-jdt-border bg-white px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-black uppercase tracking-wide text-zinc-500">{folder.label}</p>
+            <span className="rounded-full bg-jdt-sand px-2 py-0.5 text-[9px] font-black text-jdt-primary">{folder.documents.length}</span>
+          </div>
+          <p className="mt-1 text-[10px] font-bold text-zinc-500">{folder.description}</p>
+          <p className="mt-2 truncate text-xs font-black text-jdt-primary">{displayValue(folder.documents[0]?.name || folder.documents[0]?.title || 'Document on file')}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ClientDocumentCard({ doc, openModal }: { doc: DocumentRecord; openModal: CommandDrawerProps['openModal'] }) {
+  const title = displayValue(doc.name || doc.title || 'Document');
+  const isContract = isContractDocument(doc);
+  return (
+    <article className="rounded-lg border border-jdt-border bg-white p-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-black text-jdt-primary break-words">{title}</p>
+            <span className="rounded bg-jdt-sand px-2 py-0.5 text-[9px] font-black uppercase text-jdt-text">{displayValue(doc.category || doc.fileType || 'Document')}</span>
+            <span className="rounded bg-white px-2 py-0.5 text-[9px] font-black uppercase text-zinc-500 ring-1 ring-jdt-border">{clientDocumentLevel(doc)}</span>
+          </div>
+          <p className="mt-1 text-[10px] font-bold uppercase text-zinc-400 break-words">{documentLinkedProjectLabel(doc)}</p>
+          {isContract && (
+            <div className="mt-3 grid gap-2 text-xs font-bold text-zinc-600 md:grid-cols-2">
+              <div className="rounded border border-jdt-border bg-jdt-panel px-2 py-1.5">
+                <p className="text-[9px] font-black uppercase text-zinc-400">Contract Status</p>
+                <p className="text-jdt-primary">{displayValue(doc.reviewStatus || doc.status)}</p>
+              </div>
+              <div className="rounded border border-jdt-border bg-jdt-panel px-2 py-1.5">
+                <p className="text-[9px] font-black uppercase text-zinc-400">Contract Date</p>
+                <p className="text-jdt-primary">{displayDocumentDate(doc.signedDate || doc.createdAtIso || doc.uploadedAt)}</p>
+              </div>
+              <div className="rounded border border-jdt-border bg-jdt-panel px-2 py-1.5">
+                <p className="text-[9px] font-black uppercase text-zinc-400">Linked Project</p>
+                <p className="text-jdt-primary">{documentLinkedProjectLabel(doc)}</p>
+              </div>
+              <div className="rounded border border-jdt-border bg-jdt-panel px-2 py-1.5">
+                <p className="text-[9px] font-black uppercase text-zinc-400">Tree Assets Covered</p>
+                <p className="text-jdt-primary">{contractTreeCoverageLabel(doc)}</p>
+              </div>
+              {doc.scopeOfWork && (
+                <div className="rounded border border-jdt-border bg-jdt-panel px-2 py-1.5 md:col-span-2">
+                  <p className="text-[9px] font-black uppercase text-zinc-400">Scope Summary</p>
+                  <p className="text-jdt-primary">{displayValue(doc.scopeOfWork)}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {doc.url && (
+            <a
+              href={doc.url}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+            >
+              Open
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={() => openModal('document', doc)}
+            className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark"
+          >
+            Edit
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ClientDocumentFolderSection({
+  folder,
+  clientContext,
+  openModal,
+}: {
+  folder: ClientDocumentFolder & { documents: DocumentRecord[] };
+  clientContext: ReturnType<typeof clientContextForRecord>;
+  openModal: CommandDrawerProps['openModal'];
+}) {
+  const addSeed = {
+    ...clientContext,
+    name: `${clientContext.clientName || 'Client'} ${folder.defaultCategory}`,
+    documentFolder: folder.label,
+    category: folder.defaultCategory,
+    documentLevel: 'Client',
+    relatedEntityType: 'client',
+    relatedEntityId: clientContext.clientId,
+    relatedTitle: clientContext.clientName,
+    status: 'Received',
+    reviewStatus: 'Needs Review',
+  };
+
+  return (
+    <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-jdt-olive" />
+            <h4 className="text-sm font-black uppercase text-jdt-text">{folder.label}</h4>
+            <span className="rounded-full bg-white px-2 py-0.5 text-[9px] font-black text-jdt-primary ring-1 ring-jdt-border">{folder.documents.length}</span>
+          </div>
+          <p className="mt-1 text-xs font-bold text-zinc-500">{folder.description}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => openModal('document', addSeed)}
+          className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+        >
+          Add
+        </button>
+      </div>
+      {folder.documents.length > 0 ? (
+        <div className="space-y-2">
+          {folder.documents.map((doc, index) => (
+            <ClientDocumentCard key={doc.id || doc.name || doc.title || index} doc={doc} openModal={openModal} />
+          ))}
+        </div>
+      ) : (
+        <EmptyLinkedMessage label={`${folder.label.toLowerCase()} documents`} />
+      )}
+    </section>
+  );
+}
+
+function ClientDocumentLibrary({
+  documents,
+  clientContext,
+  openModal,
+}: {
+  documents: DocumentRecord[];
+  clientContext: ReturnType<typeof clientContextForRecord>;
+  openModal: CommandDrawerProps['openModal'];
+}) {
+  const folders = groupedClientDocuments(documents);
+  return (
+    <div className="space-y-4">
+      <section className="rounded-xl border border-jdt-border bg-white p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-sm font-black uppercase text-jdt-text">Client Document Library</h3>
+            <p className="mt-1 text-xs font-bold text-zinc-500">
+              One client file with folders for signed contracts, proposals, compliance, site access, photos, and correspondence. Documents can still be linked to the client, a project, or a job.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => openModal('document', {
+              ...clientContext,
+              documentLevel: 'Client',
+              relatedEntityType: 'client',
+              relatedEntityId: clientContext.clientId,
+              relatedTitle: clientContext.clientName,
+            })}
+            className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark"
+          >
+            Add Document
+          </button>
+        </div>
+        <div className="mt-3">
+          <ClientDocumentLevelSummary documents={documents} />
+        </div>
+      </section>
+
+      {folders.map((folder) => (
+        <ClientDocumentFolderSection
+          key={folder.id}
+          folder={folder}
+          clientContext={clientContext}
+          openModal={openModal}
+        />
+      ))}
+    </div>
+  );
+}
+
+type ContractProjectContext = Record<string, any> & {
+  projectSiteAddressOptions?: string[];
+};
+
+function ProjectContractsPanel({
+  contracts,
+  treeAssets,
+  projectContext,
+  openModal,
+}: {
+  contracts: DocumentRecord[];
+  treeAssets: TreeRelocationRecord[];
+  projectContext: ContractProjectContext;
+  openModal: CommandDrawerProps['openModal'];
+}) {
+  const addContractSeed = {
+    ...projectContext,
+    name: `${projectContext.projectName || projectContext.jobName || 'Project'} signed contract`,
+    job: projectContext.projectName || projectContext.jobName || '',
+    category: 'Contract',
+    status: 'Received',
+    reviewStatus: 'Needs Review',
+    fileType: 'PDF',
+    relatedEntityType: projectContext.jobId ? 'job' : 'project',
+    relatedEntityId: projectContext.jobId || projectContext.projectId,
+    relatedTitle: projectContext.jobName || projectContext.projectName,
+  };
+
+  return (
+    <div className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-black uppercase text-jdt-text flex items-center gap-2">
+            <FileText className="h-4 w-4 text-jdt-olive" /> Contracts
+          </h3>
+          <p className="mt-1 text-xs font-bold text-zinc-500">Signed agreements, scope of work, and contract tree counts tied to this job profile.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => openModal('document', addContractSeed)}
+          className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark"
+        >
+          Add Contract
+        </button>
+      </div>
+
+      {contracts.length > 0 ? (
+        <div className="space-y-3">
+          {contracts.map((contract) => {
+            const comparison = contractTreeComparisonLabel(contract, treeAssets);
+            const gap = contractTreeGapLabel(contract, treeAssets);
+            const scopeTreeCount = contractScopeTreeCount(contract);
+            return (
+              <article key={contract.id || contract.url || contract.name || contract.title} className="rounded-lg border border-jdt-border bg-white p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-sm font-black text-jdt-primary">{displayValue(contract.title || contract.name || 'Signed contract')}</p>
+                    <p className="mt-1 text-[10px] font-black uppercase tracking-wide text-zinc-400">
+                      {[contract.contractNumber, contract.status || contract.reviewStatus || contract.category].filter(Boolean).join(' | ') || 'Contract'}
+                    </p>
+                  </div>
+                  <span className="rounded bg-jdt-sand px-2 py-1 text-[9px] font-black uppercase text-jdt-text">{contract.reviewStatus || contract.status || 'Needs Review'}</span>
+                </div>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                  <div className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
+                    <p className="text-[9px] font-black uppercase tracking-wide text-zinc-400">Signed</p>
+                    <p className="mt-1 text-xs font-black text-jdt-text">{displayValue(contract.signedDate)}</p>
+                  </div>
+                  <div className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
+                    <p className="text-[9px] font-black uppercase tracking-wide text-zinc-400">Value</p>
+                    <p className="mt-1 text-xs font-black text-jdt-text">{formatRelocationCost(contract.contractValue)}</p>
+                  </div>
+                  <div className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
+                    <p className="text-[9px] font-black uppercase tracking-wide text-zinc-400">Contract Trees</p>
+                    <p className="mt-1 text-xs font-black text-jdt-text">{scopeTreeCount ?? '-'}</p>
+                  </div>
+                  <div className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
+                    <p className="text-[9px] font-black uppercase tracking-wide text-zinc-400">JDT Assets</p>
+                    <p className="mt-1 text-xs font-black text-jdt-text">{treeAssets.length}</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-lg border border-jdt-border bg-jdt-sand p-3">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-jdt-primary">Scope Reconciliation</p>
+                  <p className="mt-1 text-sm font-black text-jdt-text">{comparison}</p>
+                  <p className="mt-1 text-xs font-bold text-zinc-600">{gap}</p>
+                </div>
+
+                {(contract.scopeOfWork || contract.scopeTreeDetails) ? (
+                  <div className="mt-3 rounded-lg border border-jdt-border bg-white p-3">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-jdt-primary">Scope of Work / Tree Details</p>
+                    {contract.scopeOfWork && <p className="mt-2 whitespace-pre-wrap text-xs font-semibold text-zinc-700">{contract.scopeOfWork}</p>}
+                    {contract.scopeTreeDetails && <p className="mt-2 whitespace-pre-wrap text-xs font-semibold text-zinc-700">{contract.scopeTreeDetails}</p>}
+                  </div>
+                ) : null}
+
+                {contract.url && (
+                  <a
+                    href={contract.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 block break-all text-xs font-black text-jdt-primary hover:underline"
+                  >
+                    Open signed contract - {contract.url}
+                  </a>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="rounded-lg border border-dashed border-jdt-border bg-white px-3 py-8 text-center text-sm font-bold text-zinc-500">No signed contracts are linked to this job profile yet.</p>
+      )}
+    </div>
+  );
+}
+
 function StageGroup({ label, records, type, openDrawer }: { label: string; records: any[]; type: string; openDrawer?: CommandDrawerProps['openDrawer'] }) {
   return (
     <div className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
@@ -1300,28 +2000,50 @@ function ClientProfileOverview({
   openModal: CommandDrawerProps['openModal'];
   openDrawer?: CommandDrawerProps['openDrawer'];
 }) {
+  const contactCount = 1 + (Array.isArray(record?.members) ? record.members.length : 0);
+  const activeProjects = projects.filter((project) => relationshipStage(project) === 'current');
+  const openJobs = jobs.filter((job) => relationshipStage(job) !== 'completed');
+  const clientContext = clientContextForRecord(record);
+
   return (
     <>
       <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h3 className="text-sm font-black uppercase text-jdt-text">Client Operating Profile</h3>
-            <p className="mt-1 text-xs font-bold text-zinc-500">Everything currently tied to this account across projects, jobs, crews, freight, documents, and field updates.</p>
+            <p className="mt-1 text-xs font-bold text-zinc-500">Account details, contact records, project portfolio, job history, and signed documents for this client.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => openModal('client', record)}
-            className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark"
-          >
-            Edit Client
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => openModal('client', record)}
+              className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark"
+            >
+              Edit Client
+            </button>
+            <button
+              type="button"
+              onClick={() => openModal('contact', { company: record.name || record.title, clientId: record.id || record.clientId })}
+              className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+            >
+              Add Contact
+            </button>
+            <button
+              type="button"
+              onClick={() => openModal('job', { ...clientContext, client: clientContext.clientName, clientName: clientContext.clientName })}
+              className="rounded-lg border border-jdt-border bg-white px-3 py-2 text-[10px] font-black uppercase text-jdt-primary hover:border-jdt-olive"
+            >
+              Add Project
+            </button>
+          </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-5">
           {[
+            ['Contacts', contactCount],
             ['Projects', projects.length],
+            ['Active Projects', activeProjects.length],
             ['Jobs', jobs.length],
-            ['Work Orders', workOrders.length],
-            ['Freight Moves', loads.length],
+            ['Open Jobs', openJobs.length],
           ].map(([label, value]) => (
             <div key={label} className="rounded-lg border border-jdt-border bg-white p-3">
               <p className="text-[10px] font-black uppercase tracking-wide text-zinc-400">{label}</p>
@@ -1331,28 +2053,46 @@ function ClientProfileOverview({
         </div>
       </section>
 
+      <section className="rounded-xl border border-jdt-border bg-white p-4">
+        <h3 className="text-sm font-black uppercase text-jdt-text">{'Client / Project / Job'}</h3>
+        <div className="mt-3 grid gap-3 text-xs font-bold text-zinc-600 md:grid-cols-3">
+          <div className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
+            <p className="text-[10px] font-black uppercase text-zinc-400">Client</p>
+            <p className="mt-1 text-sm font-black text-jdt-primary">{displayValue(record.name || record.title)}</p>
+            <p className="mt-1">The customer/account record and source for contacts, billing, and documents.</p>
+          </div>
+          <div className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
+            <p className="text-[10px] font-black uppercase text-zinc-400">Project</p>
+            <p className="mt-1 text-sm font-black text-jdt-primary">Long-running scope</p>
+            <p className="mt-1">Examples: Boca West Course 1 Renovation, Carmax, Frenchman's Driving Range.</p>
+          </div>
+          <div className="rounded-lg border border-jdt-border bg-jdt-panel p-3">
+            <p className="text-[10px] font-black uppercase text-zinc-400">Job</p>
+            <p className="mt-1 text-sm font-black text-jdt-primary">Scheduled work package</p>
+            <p className="mt-1">Jobs hold the work orders, freight requests, crew updates, and field execution.</p>
+          </div>
+        </div>
+      </section>
+
       <ClientContactPanel record={record} openModal={openModal} />
-      <ClientStageGroups title="Project History" records={projects} type="project" openDrawer={openDrawer} />
-      <ClientStageGroups title="Job History" records={jobs} type="job" openDrawer={openDrawer} />
+      <ClientStageGroups title="Projects" records={projects} type="project" openDrawer={openDrawer} />
+      <ClientStageGroups title="Jobs" records={jobs} type="job" openDrawer={openDrawer} />
 
       <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
-        <h3 className="mb-3 text-sm font-black uppercase text-jdt-text">Work Orders</h3>
-        <LinkedRecordList records={workOrders} emptyLabel="work orders" type="job" openDrawer={openDrawer} />
-      </section>
-
-      <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
-        <h3 className="mb-3 text-sm font-black uppercase text-jdt-text">Freight</h3>
-        <LinkedRecordList records={loads} emptyLabel="freight moves" type="freight" openDrawer={openDrawer} />
-      </section>
-
-      <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
-        <h3 className="mb-3 text-sm font-black uppercase text-jdt-text">Documents</h3>
-        <LinkedRecordList records={documents} emptyLabel="documents" />
-      </section>
-
-      <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
-        <h3 className="mb-3 text-sm font-black uppercase text-jdt-text">Field Updates</h3>
-        <LinkedRecordList records={fieldUpdates} emptyLabel="field updates" />
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-black uppercase text-jdt-text">Document Folders</h3>
+            <p className="mt-1 text-xs font-bold text-zinc-500">Client, project, and job files grouped by operating document type.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => openModal('document', clientContext)}
+            className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark"
+          >
+            Add Document
+          </button>
+        </div>
+        <ClientDocumentFolderSummary documents={documents} />
       </section>
     </>
   );
@@ -1371,12 +2111,14 @@ export default function CommandDrawer(props: CommandDrawerProps) {
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [treeAssetFilters, setTreeAssetFilters] = useState<TreeAssetFilterState>(emptyTreeAssetFilters);
   const [expandedTreeAssetKey, setExpandedTreeAssetKey] = useState<string | null>(null);
+  const [isProfileExpanded, setIsProfileExpanded] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setActiveTab(defaultTab);
       setTreeAssetFilters(emptyTreeAssetFilters);
       setExpandedTreeAssetKey(null);
+      setIsProfileExpanded(false);
     }
   }, [isOpen, defaultTab, type, itemId]);
 
@@ -1418,15 +2160,17 @@ export default function CommandDrawer(props: CommandDrawerProps) {
   const relatedDocuments = type === 'client'
     ? clientDocumentsForRecord(record, props.documentsList || [], relatedClientProjects, relatedClientJobs)
     : documentsForRecord(record, props.documentsList || [], relatedTreeAssets);
+  const relatedContracts = relatedDocuments.filter(isContractDocument);
+  const relatedNonContractDocuments = relatedDocuments.filter((doc) => !isContractDocument(doc));
   const relatedEquipmentOnSite = equipmentOnSiteForRecord(type, record, props.equipmentList || []);
   const relatedFieldUpdates = type === 'client'
     ? clientFieldUpdatesForRecord(record, props.fieldUpdatesList || [], relatedClientProjects, relatedClientJobs, relatedWorkOrders, relatedLoads)
     : fieldUpdatesForRecord(type, record, props.fieldUpdatesList || [], relatedWorkOrders, relatedLoads);
   const isProjectProfile = type === 'job' || type === 'project';
   const profileTabs = isProjectProfile
-    ? ['overview', 'work orders', 'trees', 'equipment', 'freight', 'documents', 'field updates', 'financials', 'history']
+    ? ['overview', 'readiness', 'work orders', 'trees', 'map', 'equipment', 'freight', 'contracts', 'documents', 'field updates', 'financials', 'history']
     : type === 'client'
-      ? ['overview', 'contacts', 'projects', 'jobs', 'work orders', 'freight', 'documents', 'field updates', 'history']
+      ? ['overview', 'contacts', 'projects', 'jobs', 'documents', 'history']
       : ['overview', 'work orders', 'materials', 'history', 'documents'];
   const projectContext = type === 'client' ? clientContextForRecord(record) : projectModalContextForRecord(record);
   const treeIdFor = (tree: TreeRelocationRecord) => String(tree.treeId || tree.id || '').trim();
@@ -1471,8 +2215,12 @@ export default function CommandDrawer(props: CommandDrawerProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/30 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <aside className="h-full w-full max-w-2xl overflow-y-auto bg-jdt-bg shadow-2xl border-l border-jdt-border">
+    <div
+      className={`fixed inset-0 z-50 flex ${isProfileExpanded ? 'bg-jdt-bg' : 'justify-end bg-black/30 backdrop-blur-sm'}`}
+      role="dialog"
+      aria-modal="true"
+    >
+      <aside className={`h-full w-full overflow-y-auto bg-jdt-bg shadow-2xl ${isProfileExpanded ? 'max-w-none border-l-0' : 'max-w-2xl border-l border-jdt-border'}`}>
         <div className="sticky top-0 z-10 border-b border-jdt-border bg-jdt-panel/95 backdrop-blur px-5 py-4">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-3 min-w-0">
@@ -1484,9 +2232,22 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                 <h2 className="text-xl font-black text-jdt-text truncate">{heading}</h2>
               </div>
             </div>
-            <button type="button" onClick={onClose} className="rounded-lg border border-jdt-border bg-white p-2 text-zinc-500 hover:text-jdt-text">
-              <X className="h-5 w-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              {isProjectProfile && (
+                <button
+                  type="button"
+                  onClick={() => setIsProfileExpanded((value) => !value)}
+                  className="rounded-lg border border-jdt-border bg-white p-2 text-zinc-500 hover:text-jdt-text"
+                  title={isProfileExpanded ? 'Exit full page project profile' : 'Expand project profile'}
+                  aria-label={isProfileExpanded ? 'Exit full page project profile' : 'Expand project profile'}
+                >
+                  {isProfileExpanded ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+                </button>
+              )}
+              <button type="button" onClick={onClose} className="rounded-lg border border-jdt-border bg-white p-2 text-zinc-500 hover:text-jdt-text" aria-label="Close profile">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -1503,7 +2264,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
           </div>
         </div>
 
-        <div className="p-5 space-y-5">
+        <div className={`${isProfileExpanded ? 'p-5 lg:p-6' : 'p-5'} space-y-5`}>
           {!record ? (
             <div className="rounded-xl border border-dashed border-jdt-border bg-jdt-panel p-10 text-center">
               <FileText className="h-10 w-10 mx-auto text-zinc-300 mb-3" />
@@ -1551,6 +2312,19 @@ export default function CommandDrawer(props: CommandDrawerProps) {
               </div>
               </>
             )
+          ) : isProjectProfile && activeTab === 'readiness' ? (
+            <ProjectReadinessPanel
+              record={record}
+              treeAssets={relatedTreeAssets}
+              workOrders={relatedWorkOrders}
+              equipment={relatedEquipmentOnSite}
+              freight={relatedLoads}
+              contracts={relatedContracts}
+              projectContext={projectContext}
+              openModal={openModal}
+            />
+          ) : isProjectProfile && activeTab === 'map' ? (
+            <ProjectMapReadinessPanel record={record} treeAssets={relatedTreeAssets} />
           ) : type === 'client' && activeTab === 'contacts' ? (
             <ClientContactPanel record={record} openModal={openModal} />
           ) : type === 'client' && activeTab === 'projects' ? (
@@ -1568,19 +2342,11 @@ export default function CommandDrawer(props: CommandDrawerProps) {
               <LinkedRecordList records={relatedLoads} emptyLabel="freight moves" type="freight" openDrawer={openDrawer} />
             </section>
           ) : type === 'client' && activeTab === 'documents' ? (
-            <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h3 className="text-sm font-black uppercase text-jdt-text">Client Documents</h3>
-                <button
-                  type="button"
-                  onClick={() => openModal('document', clientContextForRecord(record))}
-                  className="rounded-lg bg-jdt-primary px-3 py-2 text-[10px] font-black uppercase text-white hover:bg-jdt-dark"
-                >
-                  Add Document
-                </button>
-              </div>
-              <LinkedRecordList records={relatedDocuments} emptyLabel="documents" />
-            </section>
+            <ClientDocumentLibrary
+              documents={relatedDocuments}
+              clientContext={clientContextForRecord(record)}
+              openModal={openModal}
+            />
           ) : type === 'client' && activeTab === 'field updates' ? (
             <section className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
               <h3 className="mb-3 text-sm font-black uppercase text-jdt-text">Client Field Updates</h3>
@@ -2057,6 +2823,13 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                 <p className="rounded-lg border border-dashed border-jdt-border bg-white px-3 py-8 text-center text-sm font-bold text-zinc-500">No freight moves are linked to this project yet.</p>
               )}
             </div>
+          ) : activeTab === 'contracts' ? (
+            <ProjectContractsPanel
+              contracts={relatedContracts}
+              treeAssets={relatedTreeAssets}
+              projectContext={projectContext}
+              openModal={openModal}
+            />
           ) : activeTab === 'documents' ? (
             <div className="rounded-xl border border-jdt-border bg-jdt-panel p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
@@ -2074,9 +2847,9 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                   Add Document
                 </button>
               </div>
-              {relatedDocuments.length > 0 ? (
+              {relatedNonContractDocuments.length > 0 ? (
                 <div className="space-y-2">
-                  {relatedDocuments.map((doc) => (
+                  {relatedNonContractDocuments.map((doc) => (
                     <article key={doc.id || doc.url || doc.name || doc.title} className="rounded-lg border border-jdt-border bg-white p-3">
                       <p className="text-sm font-black text-jdt-primary">{displayValue(doc.title || doc.name || 'Document')}</p>
                       <p className="mt-1 text-[10px] font-black uppercase text-zinc-400">{displayValue(doc.category || (doc as any).type || 'Linked document')}</p>
@@ -2085,7 +2858,7 @@ export default function CommandDrawer(props: CommandDrawerProps) {
                   ))}
                 </div>
               ) : (
-                <p className="rounded-lg border border-dashed border-jdt-border bg-white px-3 py-8 text-center text-sm font-bold text-zinc-500">No linked documents yet.</p>
+                <p className="rounded-lg border border-dashed border-jdt-border bg-white px-3 py-8 text-center text-sm font-bold text-zinc-500">No linked non-contract documents yet.</p>
               )}
             </div>
           ) : activeTab === 'field updates' ? (
